@@ -1,81 +1,159 @@
-# Claude Code Plugins
+# Pip-Boy 3000 Mark IV — Plugin Registry
 
-A personal curated directory of plugins for Claude Code.
+> *"War. War never changes. But your dev tooling should."*
 
-> **Warning:** Make sure you trust a plugin before installing, updating, or using it. Anthropic does not control what MCP servers, files, or other software are included in plugins and cannot verify that they will work as intended or that they won't change. See each plugin's homepage for more information.
+A personal Vault-Tec approved collection of Claude Code plugins. Each plugin is a module you slot into your Pip-Boy to gain new capabilities — like finding a Stealth Boy in an abandoned vault, except it actually works and doesn't expire after 30 seconds.
 
-## Structure
+> **Radiation Warning:** Make sure you trust a plugin before installing. Anthropic does not control what MCP servers, files, or other software are included in plugins. Some things in the Wasteland look like Stimpaks but are actually Radscorpion venom. Check each plugin's homepage before use.
 
-Plugins are organized by category, each with its own `plugins/` (internal) and `external_plugins/` (third-party) directories:
+## Vault Layout
 
-- **`/common`** - General-purpose plugins useful across all projects
-- **`/development`** - Development-focused plugins, with subcategories:
-  - **`/development/common`** - Language-agnostic development tools
-  - **`/development/js`** - JavaScript/TypeScript ecosystem plugins
-  - **`/development/php`** - PHP ecosystem plugins
-  - **`/development/python`** - Python ecosystem plugins
-- **`/infrastructure`** - Infrastructure and SRE plugins
-- **`/seo`** - SEO and search-related plugins
-- **`/bi`** - Business Intelligence and analytics plugins
-- **`/product`** - Product management and design plugins
+Plugins are organized into sections of the Vault, each with its own `plugins/` (Vault-Tec issued) and `external_plugins/` (scavenged from the Wasteland) directories:
 
-## Installation
+| Section | Contents | S.P.E.C.I.A.L. Stat |
+|---------|----------|---------------------|
+| **`/common`** | General-purpose plugins for any project | Luck |
+| **`/development/common`** | Language-agnostic dev tools | Intelligence |
+| **`/development/js`** | JavaScript/TypeScript ecosystem | Agility |
+| **`/development/php`** | PHP ecosystem | Endurance |
+| **`/development/python`** | Python ecosystem | Perception |
+| **`/infrastructure`** | Infrastructure & SRE plugins | Strength |
+| **`/seo`** | SEO and search tools | Charisma |
+| **`/bi`** | Business Intelligence & analytics | Perception |
+| **`/product`** | Product management & design | Charisma |
 
-Add the marketplace:
+## Installation — Leaving the Vault
+
+Add the marketplace to your Pip-Boy:
 
 ```
-/plugin marketplace add <your-git-url>
+/plugin marketplace add git@github.com:serban-marius/pip-boy.git
 ```
 
-Or add to `.claude/settings.json`:
+Or hardwire it into `.claude/settings.json` like a true Wasteland engineer:
 
 ```json
 {
   "extraKnownMarketplaces": {
-    "my-plugins": {
+    "pip-boy": {
       "source": {
         "source": "git",
-        "url": "<your-git-url>"
+        "url": "git@github.com:serban-marius/pip-boy.git"
       }
     }
   },
   "enabledPlugins": {
-    "plugin-name@ai-plugins": true
+    "plugin-name@pip-boy": true
   }
 }
 ```
 
-Install individual plugins with `/plugin install {plugin-name}@ai-plugins`, or browse via `/plugin > Discover`.
+Install individual modules with `/plugin install {plugin-name}@pip-boy`, or browse the catalog via `/plugin > Discover`.
 
-## Adding a Plugin
+## Crafting a New Module
 
-### External Plugin (third-party)
+*"In the Wasteland, you don't buy — you build."*
 
-1. Pick the right category directory (e.g., `common/`, `development/js/`)
-2. Create `{category}/external_plugins/{plugin-name}/`
-3. Add `.claude-plugin/plugin.json` with metadata
-4. Add `.mcp.json` with MCP server configuration
-5. Add `README.md` with documentation
-6. Register in `.claude-plugin/marketplace.json`
+### Scavenged Module (third-party)
 
-### Internal Plugin
+1. Find the right Vault section (e.g., `common/`, `development/js/`)
+2. Create `{section}/external_plugins/{module-name}/`
+3. Add `.claude-plugin/plugin.json` — your module's serial number
+4. Add `.mcp.json` — the wiring diagram
+5. Add `README.md` — because even Raiders leave notes
+6. Register in `.claude-plugin/marketplace.json` — or it doesn't exist
 
-Same steps, but under `{category}/plugins/{plugin-name}/`.
+### Vault-Tec Issued Module (internal)
 
-## Plugin Structure
+Same steps, but under `{section}/plugins/{module-name}/`. Quality assured. Probably.
+
+## Module Anatomy
 
 ```
-plugin-name/
+module-name/
 ├── .claude-plugin/
-│   └── plugin.json      # Plugin metadata (required)
-├── .mcp.json            # MCP server configuration (optional)
+│   └── plugin.json      # Module serial number (required)
+├── .mcp.json            # MCP wiring diagram (optional)
 ├── commands/            # Slash commands (optional)
-├── agents/              # Agent definitions (optional)
-├── skills/              # Skill definitions (optional)
+├── agents/              # Agent holotapes (optional) — must use Sudocode
+├── skills/              # Skill modules (optional)
 ├── rules/               # Rule files (optional)
-└── README.md            # Documentation
+└── README.md            # Wasteland survival guide
 ```
+
+## Sudocode — Agent Programming Language
+
+> *"Knowledge of the old world is the most valuable currency in the new."*
+
+All agents in this registry are written in **Sudocode** — a pseudocode convention that replaces free-form prose with structured, scannable instructions. Think of it as the programming language running on your Pip-Boy's OS.
+
+Instead of dumping a wall of text and hoping the AI figures it out (the Bethesda approach to QA), Sudocode uses explicit keywords:
+
+| Keyword | What it does |
+|---------|-------------|
+| `DO` | Execute an action |
+| `READ` | Read a file, API, or data source |
+| `GATHER` | Collect data from multiple sources |
+| `CLASSIFY` | Make a judgment call |
+| `NEVER` | Hard constraint — violating this is like drinking from a toilet in Megaton |
+| `ALWAYS` | Mandatory behavior |
+| `PREFER...OVER` | Soft preference |
+| `IF...THEN...ELSE` | Conditional logic |
+| `FOR EACH...IN` | Iteration |
+| `OUTPUT` | Produce structured results |
+| `ON FAILURE` | Graceful degradation — because nothing works first try in the Wasteland |
+
+Example — an agent holotape:
+
+```
+AGENT: dependency-auditor
+ROLE: audit project dependencies for security, licensing, and freshness
+PERSONA: thorough but concise security reviewer
+
+RULES:
+  NEVER install or modify packages — read-only
+  ALWAYS check both direct and transitive dependencies
+  PREFER official advisory databases OVER blog posts
+
+WHEN invoked:
+  1. READ package manifest
+  2. DO `npm audit` or equivalent for detected ecosystem
+  3. GATHER $advisories FROM GitHub Advisory Database
+  4. FOR EACH $dep IN dependencies:
+       CLASSIFY $dep AS up-to-date | outdated | abandoned | vulnerable
+  5. IF license is copyleft THEN
+       EMIT warning: "copyleft license detected"
+
+OUTPUT audit-report:
+  summary: one-paragraph health assessment
+  critical: CVEs requiring immediate action
+  outdated: deps more than 2 major versions behind
+  recommendations: prioritized action items
+
+ON FAILURE:
+  IF registry unreachable THEN skip, note in output
+  NEVER block on a single failure
+```
+
+Full spec: [`docs/sudocode.md`](docs/sudocode.md)
+
+## S.P.E.C.I.A.L. Stats
+
+- **S**tructure — Clean category-based organization
+- **P**lugins — MCP servers, skills, agents, commands
+- **E**xtensible — Add new categories anytime
+- **C**urated — Only stuff that actually works
+- **I**ndependent — Each plugin is self-contained
+- **A**gents — Written in Sudocode, not essays
+- **L**ightweight — No build system, no deps, no BS
 
 ## Documentation
 
 See the [official plugin docs](https://code.claude.com/docs/en/plugins) for more information.
+
+Or don't. The Wasteland rewards the self-taught.
+
+---
+
+*"Another settlement needs your help. I've marked it on your map."*
+*— This README, every time you forget to register a plugin in marketplace.json*
