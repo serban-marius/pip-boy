@@ -2,7 +2,36 @@
 
 Sudocode is a pseudocode convention for writing Claude Code agents. It replaces free-form prose with a structured, readable format that's easy to write, scan, and maintain.
 
-Agents are still `.md` files with YAML frontmatter (required by Claude Code). The body uses sudocode syntax instead of free-form markdown.
+## File Format
+
+Agent files are `.md` files with two parts:
+
+1. **YAML frontmatter** (required) — machine-readable metadata between `---` delimiters
+2. **Sudocode body** — the agent's instructions in pseudocode syntax
+
+```markdown
+---
+name: agent-name
+description: What this agent does and when to invoke it
+tools: Read, Bash, Grep, Glob, WebFetch
+model: inherit
+---
+
+AGENT: agent-name
+ROLE: ...
+(sudocode body)
+```
+
+### Frontmatter Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | yes | Kebab-case identifier, matches the filename |
+| `description` | yes | What the agent does — Claude Code uses this for discovery and routing |
+| `tools` | yes | Comma-separated list of tools the agent can access |
+| `model` | no | Model override (`inherit` = use parent model) |
+
+The frontmatter is for Claude Code's runtime. The sudocode body is for the agent's brain. Don't duplicate info between them — `name` and `description` in frontmatter are enough; the sudocode `AGENT:` and `ROLE:` lines provide the agent's self-understanding and can be more expressive.
 
 ## Syntax
 

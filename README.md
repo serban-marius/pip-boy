@@ -75,11 +75,43 @@ module-name/
 │   └── plugin.json      # Module serial number (required)
 ├── .mcp.json            # MCP wiring diagram (optional)
 ├── commands/            # Slash commands (optional)
-├── agents/              # Agent holotapes (optional) — must use Sudocode
-├── skills/              # Skill modules (optional)
-├── rules/               # Rule files (optional)
+├── agents/              # Agent holotapes (optional) — frontmatter + Sudocode
+├── skills/              # Skill modules (optional) — frontmatter + markdown
+├── rules/               # Convention files (optional) — frontmatter + markdown
 └── README.md            # Wasteland survival guide
 ```
+
+### YAML Frontmatter — The Module's Dog Tags
+
+Every `.md` content file (agents, skills, rules) starts with YAML frontmatter — the `---` delimited block at the top. It's how your Pip-Boy identifies and catalogs each piece of tech. No dog tags, no service.
+
+**Agent holotape** (`agents/*.md`):
+```yaml
+---
+name: recon-bot
+description: Scouts the codebase for security vulnerabilities
+tools: Read, Bash, Grep, Glob
+model: inherit
+---
+```
+
+**Skill module** (`skills/*/SKILL.md`):
+```yaml
+---
+name: lockpick
+description: "Crack open legacy code. Use when user says 'refactor', 'untangle', or '/lockpick'."
+---
+```
+
+**Rule file** (`rules/*.md`):
+```yaml
+---
+name: power-armor-protocol
+description: Convention for structuring API response handlers
+---
+```
+
+Without frontmatter, your module is just a note on a corpse. With it, it's a functioning piece of pre-war technology.
 
 ## Sudocode — Agent Programming Language
 
@@ -103,9 +135,16 @@ Instead of dumping a wall of text and hoping the AI figures it out (the Bethesda
 | `OUTPUT` | Produce structured results |
 | `ON FAILURE` | Graceful degradation — because nothing works first try in the Wasteland |
 
-Example — an agent holotape:
+Example — an agent holotape (frontmatter + sudocode):
 
-```
+```yaml
+---
+name: dependency-auditor
+description: Audits project dependencies for security issues, license conflicts, and staleness
+tools: Read, Bash, Grep, Glob, WebFetch
+model: inherit
+---
+
 AGENT: dependency-auditor
 ROLE: audit project dependencies for security, licensing, and freshness
 PERSONA: thorough but concise security reviewer
