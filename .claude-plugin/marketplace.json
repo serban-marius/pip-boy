@@ -1,5 +1,5 @@
 {
-  "name": "ai-plugins",
+  "name": "pip-boy",
   "owner": {
     "name": "Marius Serban"
   },
@@ -7,5 +7,32 @@
     "description": "Personal curated collection of Claude Code plugins",
     "version": "1.0.0"
   },
-  "plugins": []
+  "plugins": [
+    {
+      "name": "context7",
+      "source": "./common/external_plugins/context7",
+      "description": "Up-to-date, version-specific code documentation and examples for libraries",
+      "version": "1.0.0",
+      "author": {
+        "name": "Upstash"
+      },
+      "homepage": "https://context7.com",
+      "repository": "https://github.com/upstash/context7",
+      "keywords": ["documentation", "context", "mcp", "libraries"],
+      "category": "Common"
+    },
+    {
+      "name": "wasteland-recon",
+      "source": "./development/common/plugins/wasteland-recon",
+      "description": "Codebase reconnaissance agent and skill for exploring unfamiliar projects",
+      "version": "1.0.0",
+      "author": {
+        "name": "Marius Serban"
+      },
+      "homepage": "https://github.com/serban-marius/pip-boy",
+      "repository": "https://github.com/serban-marius/pip-boy",
+      "keywords": ["recon", "exploration", "architecture", "codebase", "agent", "skill"],
+      "category": "Development Tools"
+    }
+  ]
 }

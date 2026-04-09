@@ -30,6 +30,7 @@ ROLE: ...
 | `description` | yes | What the agent does — Claude Code uses this for discovery and routing |
 | `tools` | yes | Comma-separated list of tools the agent can access |
 | `model` | no | Model override (`inherit` = use parent model) |
+| `skills` | no | Comma-separated list of skills the agent can load on demand |
 
 The frontmatter is for Claude Code's runtime. The sudocode body is for the agent's brain. Don't duplicate info between them — `name` and `description` in frontmatter are enough; the sudocode `AGENT:` and `ROLE:` lines provide the agent's self-understanding and can be more expressive.
 

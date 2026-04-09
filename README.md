@@ -72,13 +72,17 @@ Same steps, but under `{section}/plugins/{module-name}/`. Quality assured. Proba
 ```
 module-name/
 ├── .claude-plugin/
-│   └── plugin.json      # Module serial number (required)
-├── .mcp.json            # MCP wiring diagram (optional)
-├── commands/            # Slash commands (optional)
-├── agents/              # Agent holotapes (optional) — frontmatter + Sudocode
-├── skills/              # Skill modules (optional) — frontmatter + markdown
-├── rules/               # Convention files (optional) — frontmatter + markdown
-└── README.md            # Wasteland survival guide
+│   └── plugin.json          # Module serial number (required)
+├── .mcp.json                # MCP wiring diagram (optional)
+├── commands/                # Slash commands (optional)
+├── agents/                  # Agent holotapes (optional) — frontmatter + Sudocode
+├── skills/
+│   └── skill-name/
+│       ├── SKILL.md         # Skill definition — frontmatter + markdown
+│       ├── references/      # Companion docs loaded on demand
+│       └── bin/             # Executable scripts the skill invokes
+├── rules/                   # Convention files (optional) — frontmatter + markdown
+└── README.md                # Wasteland survival guide
 ```
 
 ### YAML Frontmatter — The Module's Dog Tags
@@ -92,6 +96,7 @@ name: recon-bot
 description: Scouts the codebase for security vulnerabilities
 tools: Read, Bash, Grep, Glob
 model: inherit
+skills: recon, threat-assess
 ---
 ```
 

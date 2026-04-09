@@ -45,6 +45,10 @@ plugin-name/
 
 Optional directories: `commands/`, `agents/`, `skills/`, `rules/`.
 
+Skills can also contain subdirectories:
+- `skills/{skill-name}/references/` — companion docs loaded on demand by the skill
+- `skills/{skill-name}/bin/` — executable scripts the skill invokes
+
 ## YAML Frontmatter
 
 All markdown content files (`agents/*.md`, `skills/*/SKILL.md`, `rules/*.md`) **must** include YAML frontmatter — the `---` delimited block at the top of the file. Frontmatter provides machine-readable metadata that Claude Code uses to discover, load, and describe the content.
@@ -57,6 +61,7 @@ name: agent-name
 description: One-line description of what this agent does and when to use it
 tools: Read, Bash, Grep, Glob, WebFetch
 model: inherit
+skills: skill-a, skill-b
 ---
 ```
 
@@ -66,6 +71,7 @@ model: inherit
 | `description` | yes | What the agent does — used for discovery and routing |
 | `tools` | yes | Comma-separated list of tools the agent can use |
 | `model` | no | Model override (`inherit` uses parent model) |
+| `skills` | no | Comma-separated list of skills the agent can load on demand |
 
 ### Skills (`skills/*/SKILL.md`)
 
@@ -123,3 +129,19 @@ Plugins use different MCP transport types in `.mcp.json`:
 4. Add `.mcp.json` with the MCP server configuration
 5. Add a `README.md` with plugin documentation
 6. Register the plugin in `.claude-plugin/marketplace.json` under the `plugins` array, with the correct `source` path pointing to the plugin directory
+
+### Marketplace Entry Fields
+
+Each entry in `marketplace.json` supports these fields (in addition to `plugin.json` metadata):
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | yes | Plugin name (must match `plugin.json`) |
+| `source` | yes | Relative path to the plugin directory (e.g., `./common/external_plugins/context7`) |
+| `description` | yes | What the plugin does |
+| `version` | yes | Semver version string |
+| `author` | yes | Object with `name` field |
+| `homepage` | no | URL to the plugin's homepage |
+| `repository` | no | URL to the source repository |
+| `keywords` | no | Array of strings for discovery/search |
+| `category` | no | Marketplace category for grouping (e.g., `"Development Tools"`, `"Common"`) |
