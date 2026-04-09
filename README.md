@@ -2,35 +2,35 @@
 
 > *"War. War never changes. But your dev tooling should."*
 
-A personal Vault-Tec approved collection of Claude Code plugins. Each plugin is a module you slot into your Pip-Boy to gain new capabilities — like finding a Stealth Boy in an abandoned vault, except it actually works and doesn't expire after 30 seconds.
+A personal curated collection of Claude Code plugins. Each plugin is a module you slot into your Pip-Boy to gain new capabilities.
 
-> **Radiation Warning:** Make sure you trust a plugin before installing. Anthropic does not control what MCP servers, files, or other software are included in plugins. Some things in the Wasteland look like Stimpaks but are actually Radscorpion venom. Check each plugin's homepage before use.
+> **Warning:** Make sure you trust a plugin before installing. Anthropic does not control what MCP servers, files, or other software are included in plugins. Check each plugin's homepage before use.
 
-## Vault Layout
+## Structure
 
-Plugins are organized into sections of the Vault, each with its own `plugins/` (Vault-Tec issued) and `external_plugins/` (scavenged from the Wasteland) directories:
+Plugins are organized by category, each with `plugins/` (internal) and `external_plugins/` (third-party) directories:
 
-| Section | Contents | S.P.E.C.I.A.L. Stat |
-|---------|----------|---------------------|
-| **`/common`** | General-purpose plugins for any project | Luck |
-| **`/development/common`** | Language-agnostic dev tools | Intelligence |
-| **`/development/js`** | JavaScript/TypeScript ecosystem | Agility |
-| **`/development/php`** | PHP ecosystem | Endurance |
-| **`/development/python`** | Python ecosystem | Perception |
-| **`/infrastructure`** | Infrastructure & SRE plugins | Strength |
-| **`/seo`** | SEO and search tools | Charisma |
-| **`/bi`** | Business Intelligence & analytics | Perception |
-| **`/product`** | Product management & design | Charisma |
+| Section | Contents |
+|---------|----------|
+| **`/common`** | General-purpose plugins for any project |
+| **`/development/common`** | Language-agnostic dev tools |
+| **`/development/js`** | JavaScript/TypeScript ecosystem |
+| **`/development/php`** | PHP ecosystem |
+| **`/development/python`** | Python ecosystem |
+| **`/infrastructure`** | Infrastructure & SRE plugins |
+| **`/seo`** | SEO and search tools |
+| **`/bi`** | Business Intelligence & analytics |
+| **`/product`** | Product management & design |
 
-## Installation — Leaving the Vault
+## Installation
 
-Add the marketplace to your Pip-Boy:
+Add the marketplace:
 
 ```
 /plugin marketplace add git@github.com:serban-marius/pip-boy.git
 ```
 
-Or hardwire it into `.claude/settings.json` like a true Wasteland engineer:
+Or add to `.claude/settings.json`:
 
 ```json
 {
@@ -48,48 +48,46 @@ Or hardwire it into `.claude/settings.json` like a true Wasteland engineer:
 }
 ```
 
-Install individual modules with `/plugin install {plugin-name}@pip-boy`, or browse the catalog via `/plugin > Discover`.
+Install individual plugins with `/plugin install {plugin-name}@pip-boy`, or browse via `/plugin > Discover`.
 
-## Crafting a New Module
+## Adding a Plugin
 
-*"In the Wasteland, you don't buy — you build."*
+### External (third-party)
 
-### Scavenged Module (third-party)
-
-1. Find the right Vault section (e.g., `common/`, `development/js/`)
-2. Create `{section}/external_plugins/{module-name}/`
-3. Add `.claude-plugin/plugin.json` — your module's serial number
-4. Add `.mcp.json` — the wiring diagram
-5. Add `README.md` — because even Raiders leave notes
+1. Pick the right category (e.g., `common/`, `development/js/`)
+2. Create `{category}/external_plugins/{plugin-name}/`
+3. Add `.claude-plugin/plugin.json` with metadata
+4. Add `.mcp.json` with MCP server configuration
+5. Add `README.md` with documentation
 6. Register in `.claude-plugin/marketplace.json` — or it doesn't exist
 
-### Vault-Tec Issued Module (internal)
+### Internal
 
-Same steps, but under `{section}/plugins/{module-name}/`. Quality assured. Probably.
+Same steps, but under `{category}/plugins/{plugin-name}/`.
 
-## Module Anatomy
+## Plugin Anatomy
 
 ```
-module-name/
+plugin-name/
 ├── .claude-plugin/
-│   └── plugin.json          # Module serial number (required)
-├── .mcp.json                # MCP wiring diagram (optional)
+│   └── plugin.json          # Plugin metadata (required)
+├── .mcp.json                # MCP server configuration (optional)
 ├── commands/                # Slash commands (optional)
-├── agents/                  # Agent holotapes (optional) — frontmatter + Sudocode
+├── agents/                  # Agent definitions (optional) — frontmatter + Sudocode
 ├── skills/
 │   └── skill-name/
 │       ├── SKILL.md         # Skill definition — frontmatter + markdown
 │       ├── references/      # Companion docs loaded on demand
 │       └── bin/             # Executable scripts the skill invokes
 ├── rules/                   # Convention files (optional) — frontmatter + markdown
-└── README.md                # Wasteland survival guide
+└── README.md                # Plugin documentation
 ```
 
-### YAML Frontmatter — The Module's Dog Tags
+### YAML Frontmatter
 
-Every `.md` content file (agents, skills, rules) starts with YAML frontmatter — the `---` delimited block at the top. It's how your Pip-Boy identifies and catalogs each piece of tech. No dog tags, no service.
+Every `.md` content file (agents, skills, rules) starts with YAML frontmatter — the `---` delimited block at the top. It's how Claude Code identifies and catalogs each piece. No frontmatter, no discovery.
 
-**Agent holotape** (`agents/*.md`):
+**Agent** (`agents/*.md`):
 ```yaml
 ---
 name: recon-bot
@@ -100,7 +98,7 @@ skills: recon, threat-assess
 ---
 ```
 
-**Skill module** (`skills/*/SKILL.md`):
+**Skill** (`skills/*/SKILL.md`):
 ```yaml
 ---
 name: lockpick
@@ -108,23 +106,19 @@ description: "Crack open legacy code. Use when user says 'refactor', 'untangle',
 ---
 ```
 
-**Rule file** (`rules/*.md`):
+**Rule** (`rules/*.md`):
 ```yaml
 ---
-name: power-armor-protocol
+name: api-response-convention
 description: Convention for structuring API response handlers
 ---
 ```
 
-Without frontmatter, your module is just a note on a corpse. With it, it's a functioning piece of pre-war technology.
+## Sudocode — Agent Definition Language
 
-## Sudocode — Agent Programming Language
+All agents are written in **Sudocode** — a pseudocode convention that replaces free-form prose with structured, scannable instructions. Think of it as the programming language running on your Pip-Boy's OS.
 
-> *"Knowledge of the old world is the most valuable currency in the new."*
-
-All agents in this registry are written in **Sudocode** — a pseudocode convention that replaces free-form prose with structured, scannable instructions. Think of it as the programming language running on your Pip-Boy's OS.
-
-Instead of dumping a wall of text and hoping the AI figures it out (the Bethesda approach to QA), Sudocode uses explicit keywords:
+Instead of dumping a wall of text and hoping the AI figures it out, Sudocode uses explicit keywords:
 
 | Keyword | What it does |
 |---------|-------------|
@@ -132,15 +126,15 @@ Instead of dumping a wall of text and hoping the AI figures it out (the Bethesda
 | `READ` | Read a file, API, or data source |
 | `GATHER` | Collect data from multiple sources |
 | `CLASSIFY` | Make a judgment call |
-| `NEVER` | Hard constraint — violating this is like drinking from a toilet in Megaton |
+| `NEVER` | Hard constraint — do not violate |
 | `ALWAYS` | Mandatory behavior |
 | `PREFER...OVER` | Soft preference |
 | `IF...THEN...ELSE` | Conditional logic |
 | `FOR EACH...IN` | Iteration |
 | `OUTPUT` | Produce structured results |
-| `ON FAILURE` | Graceful degradation — because nothing works first try in the Wasteland |
+| `ON FAILURE` | Graceful degradation |
 
-Example — an agent holotape (frontmatter + sudocode):
+Example (frontmatter + sudocode):
 
 ```yaml
 ---
@@ -181,21 +175,9 @@ ON FAILURE:
 
 Full spec: [`docs/sudocode.md`](docs/sudocode.md)
 
-## S.P.E.C.I.A.L. Stats
-
-- **S**tructure — Clean category-based organization
-- **P**lugins — MCP servers, skills, agents, commands
-- **E**xtensible — Add new categories anytime
-- **C**urated — Only stuff that actually works
-- **I**ndependent — Each plugin is self-contained
-- **A**gents — Written in Sudocode, not essays
-- **L**ightweight — No build system, no deps, no BS
-
 ## Documentation
 
-See the [official plugin docs](https://code.claude.com/docs/en/plugins) for more information.
-
-Or don't. The Wasteland rewards the self-taught.
+See the [official plugin docs](https://code.claude.com/docs/en/plugins) for more.
 
 ---
 
