@@ -45,6 +45,17 @@ plugin-name/
 
 Optional directories: `commands/`, `agents/`, `skills/`, `rules/`.
 
+## Sudocode — Agent Convention
+
+All agents in this marketplace **must** be written using sudocode — a pseudocode convention that replaces free-form prose with structured, scannable instructions. See [`docs/sudocode.md`](docs/sudocode.md) for the full specification and examples.
+
+Key rules:
+- Use keywords (`DO`, `READ`, `GATHER`, `CLASSIFY`, `NEVER`, `ALWAYS`, etc.) for clarity
+- One instruction per line, indent sub-steps
+- Use `-- comment` for context annotations
+- Keep `OUTPUT` schemas explicit with named fields
+- `NEVER`/`ALWAYS` rules are hard constraints the agent must not violate
+
 ## MCP Server Transport Types
 
 Plugins use different MCP transport types in `.mcp.json`:
