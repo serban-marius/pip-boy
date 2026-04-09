@@ -1,0 +1,11 @@
+{
+  "name": "ai-plugins",
+  "owner": {
+    "name": "Marius Serban"
+  },
+  "metadata": {
+    "description": "Personal curated collection of Claude Code plugins",
+    "version": "1.0.0"
+  },
+  "plugins": []
+}
