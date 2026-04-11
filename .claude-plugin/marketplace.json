@@ -33,6 +33,19 @@
       "repository": "https://github.com/serban-marius/pip-boy",
       "keywords": ["recon", "exploration", "architecture", "codebase", "agent", "skill"],
       "category": "Development Tools"
+    },
+    {
+      "name": "frontend-design",
+      "source": "./development/common/external_plugins/frontend-design",
+      "description": "Create distinctive, production-grade frontend interfaces with high design quality. Avoids generic AI aesthetics.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Anthropic"
+      },
+      "homepage": "https://claude.com/plugins/frontend-design",
+      "repository": "https://github.com/anthropics/claude-plugins-official",
+      "keywords": ["frontend", "design", "ui", "ux", "aesthetics"],
+      "category": "Development Tools"
     }
   ]
 }
