@@ -46,6 +46,19 @@
       "repository": "https://github.com/anthropics/claude-plugins-official",
       "keywords": ["frontend", "design", "ui", "ux", "aesthetics"],
       "category": "Development Tools"
+    },
+    {
+      "name": "diagrams",
+      "source": "./development/common/plugins/diagrams",
+      "description": "Generate interactive visual flow diagrams as standalone HTML files using Mermaid.js",
+      "version": "1.0.0",
+      "author": {
+        "name": "Marius Serban"
+      },
+      "homepage": "https://github.com/serban-marius/pip-boy",
+      "repository": "https://github.com/serban-marius/pip-boy",
+      "keywords": ["diagrams", "mermaid", "visualization", "architecture", "flowchart", "skill"],
+      "category": "Development Tools"
     }
   ]
 }
