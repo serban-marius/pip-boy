@@ -1,0 +1,10 @@
+{
+  "name": "git-reset-on-clear",
+  "description": "SessionStart hook that checks out main and pulls latest when /clear is used",
+  "version": "1.0.0",
+  "author": {
+    "name": "Marius Serban"
+  },
+  "homepage": "https://github.com/serban-marius/pip-boy",
+  "repository": "https://github.com/serban-marius/pip-boy"
+}
