@@ -72,6 +72,24 @@
       "repository": "https://github.com/serban-marius/pip-boy",
       "keywords": ["hook", "git", "clear", "reset", "session"],
       "category": "Common"
+    },
+    {
+      "name": "caveman",
+      "source": {
+        "source": "github",
+        "repo": "JuliusBrussee/caveman",
+        "ref": "v1.6.0"
+      },
+      "description": "Ultra-compressed communication mode. Cuts ~75% of output tokens by making the assistant talk like a caveman, without losing technical accuracy.",
+      "version": "1.6.0",
+      "author": {
+        "name": "Julius Brussee",
+        "url": "https://github.com/JuliusBrussee"
+      },
+      "homepage": "https://juliusbrussee.github.io/caveman/",
+      "repository": "https://github.com/JuliusBrussee/caveman",
+      "keywords": ["tokens", "compression", "output", "hooks", "skill", "productivity"],
+      "category": "Common"
     }
   ]
 }
