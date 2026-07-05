@@ -24,7 +24,7 @@
     {
       "name": "wasteland-recon",
       "source": "./development/common/plugins/wasteland-recon",
-      "description": "Codebase reconnaissance agent and skill for exploring unfamiliar projects",
+      "description": "Codebase reconnaissance agent and skills (recon, design-patterns) for exploring projects and applying GoF patterns",
       "version": "1.0.0",
       "author": {
         "name": "Marius Serban"
