@@ -48,6 +48,20 @@
       "category": "Development Tools"
     },
     {
+      "name": "ponytail",
+      "source": "./development/common/external_plugins/ponytail",
+      "description": "Lazy senior dev mode. Forces the simplest, shortest solution that actually works: YAGNI, stdlib first, no unrequested abstractions.",
+      "version": "4.8.4",
+      "author": {
+        "name": "Dietrich Gebert",
+        "url": "https://github.com/DietrichGebert"
+      },
+      "homepage": "https://github.com/DietrichGebert/ponytail",
+      "repository": "https://github.com/DietrichGebert/ponytail",
+      "keywords": ["yagni", "minimal", "simplicity", "refactor", "hooks", "skill"],
+      "category": "Development Tools"
+    },
+    {
       "name": "diagrams",
       "source": "./development/common/plugins/diagrams",
       "description": "Generate interactive visual flow diagrams as standalone HTML files using Mermaid.js",
