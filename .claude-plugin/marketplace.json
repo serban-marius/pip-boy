@@ -50,7 +50,7 @@
     {
       "name": "tdd-workflow",
       "source": "./development/common/external_plugins/tdd-workflow",
-      "description": "Take a ticket from JIRA to a PR with a team of specialized agents in TDD, with two human gates, then review the shipped outputs (outcome-review). Stack-agnostic.",
+      "description": "Take a ticket from JIRA to a PR with a team of specialized agents in TDD, with two human gates. Stack-agnostic.",
       "version": "1.1.0",
       "author": {
         "name": "Softonic Development Team"

@@ -4,7 +4,7 @@ Take a JIRA ticket from ticket to a PR with a team of specialized agents, in TDD
 
 Stack-agnostic (detects the project). Hybrid design: the skill keeps the two human gates (after the spec, before the commit) and delegates the parallelizable, human-free steps to deterministic `.mjs` workflows.
 
-## Skills
+## Skill
 
 ### tdd-workflow
 
@@ -30,15 +30,3 @@ Say any of: `/tdd-workflow PROJ-123`, "implement ticket X with agents", "take th
 - **context7** — required by the architect panel's docs-backed lens and by any step that verifies library/stdlib usage against official docs. Install the `context7` plugin from this marketplace.
 - **ponytail** — required for the YAGNI/minimal-design lens in the architect panel (climbs the laziness ladder: does this need to exist? does the stdlib do it? can it be one line?). The skill's design assumes ponytail's judgment is available.
 - **`Workflow` tool** — needed for the fan-out steps (spec-explore, architect-panel, adversarial-review). Without it, each parallel step falls back to a single subagent.
-
-### outcome-review
-
-Review the outputs of a developed feature: verify worked-as-intended and detect regressions.
-
-**Two phases:**
-- **Phase 1 (pre-merge)** — run the spec-driven tests and adversarial review, post a PR comment with the verdict (pass/fail/review needed).
-- **Phase 2 (post-deploy loop)** — diff production error signatures against a pre-deploy baseline, triage new/worsened errors to Jira, and loop until resolved. No Slack notifications; errors surface in Jira only.
-
-**Modes:** `/outcome-review <pr|branch>` (run phase 1), `--watch <pr>` (loop phase 2), `--status <pr>` (check phase 2 progress), `--stop <pr>` (end phase 2 loop).
-
-**Note:** Phase 2 assumes the Softonic production stack — Elasticsearch via `$ES_CREDS` and Jira project `DS`.

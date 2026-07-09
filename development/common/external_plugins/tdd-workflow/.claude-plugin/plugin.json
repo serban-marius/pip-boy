@@ -1,7 +1,7 @@
 {
   "name": "tdd-workflow",
   "version": "1.1.0",
-  "description": "Take a ticket from JIRA to a PR with a team of specialized agents in TDD, with two human gates, then review the shipped outputs (outcome-review: pre-merge verdict + post-deploy regression watch). Stack-agnostic.",
+  "description": "Take a ticket from JIRA to a PR with a team of specialized agents in TDD, with two human gates. Stack-agnostic.",
   "author": {
     "name": "Softonic Development Team"
   },
