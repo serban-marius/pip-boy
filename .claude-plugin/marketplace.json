@@ -49,7 +49,11 @@
     },
     {
       "name": "ponytail",
-      "source": "./development/common/external_plugins/ponytail",
+      "source": {
+        "source": "github",
+        "repo": "DietrichGebert/ponytail",
+        "ref": "v4.8.4"
+      },
       "description": "Lazy senior dev mode. Forces the simplest, shortest solution that actually works: YAGNI, stdlib first, no unrequested abstractions.",
       "version": "4.8.4",
       "author": {
