@@ -48,6 +48,19 @@
       "category": "Development Tools"
     },
     {
+      "name": "tdd-workflow",
+      "source": "./development/common/external_plugins/tdd-workflow",
+      "description": "Take a ticket from JIRA to a PR with a team of specialized agents in TDD, with two human gates, then review the shipped outputs (outcome-review). Stack-agnostic.",
+      "version": "1.1.0",
+      "author": {
+        "name": "Softonic Development Team"
+      },
+      "homepage": "https://github.com/softonic-development/ai-plugins",
+      "repository": "https://github.com/softonic-development/ai-plugins",
+      "keywords": ["tdd", "jira", "agents", "workflow", "code-review", "pr", "skill"],
+      "category": "Development Tools"
+    },
+    {
       "name": "diagrams",
       "source": "./development/common/plugins/diagrams",
       "description": "Generate interactive visual flow diagrams as standalone HTML files using Mermaid.js",
