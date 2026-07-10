@@ -1,0 +1,10 @@
+{
+  "name": "tdd-workflow",
+  "version": "1.1.0",
+  "description": "Take a ticket from JIRA to a PR with a team of specialized agents in TDD, with two human gates. Stack-agnostic.",
+  "author": {
+    "name": "Softonic Development Team"
+  },
+  "homepage": "https://github.com/softonic-development/ai-plugins",
+  "repository": "https://github.com/softonic-development/ai-plugins"
+}
