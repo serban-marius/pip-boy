@@ -14,6 +14,10 @@ A read-only recon agent that autonomously explores a codebase and produces a str
 
 A lighter, interactive version — invoke with `/recon` to get a quick overview of the current project. See [`skills/recon/SKILL.md`](skills/recon/SKILL.md).
 
+### Skill: `design-patterns`
+
+Complete GoF design patterns catalog with decision trees, pattern relationships, and code structures. Trigger when discussing architecture, refactoring, or design patterns. See [`skills/design-patterns/SKILL.md`](skills/design-patterns/SKILL.md).
+
 ### References
 
 The `skills/recon/references/` directory contains companion docs the skill loads on demand:
