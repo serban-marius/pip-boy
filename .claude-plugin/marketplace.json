@@ -35,6 +35,19 @@
       "category": "Development Tools"
     },
     {
+      "name": "goat",
+      "source": "./development/common/plugins/goat",
+      "description": "G.O.A.T.: JIRA ticket to PR with a team of agents in TDD and two human gates (goat), plus pre-merge verdict and post-deploy regression watch (geiger)",
+      "version": "1.0.0",
+      "author": {
+        "name": "Marius Serban"
+      },
+      "homepage": "https://github.com/serban-marius/pip-boy",
+      "repository": "https://github.com/serban-marius/pip-boy",
+      "keywords": ["tdd", "workflow", "jira", "agents", "review", "regressions", "skill"],
+      "category": "Development Tools"
+    },
+    {
       "name": "frontend-design",
       "source": "./development/common/external_plugins/frontend-design",
       "description": "Create distinctive, production-grade frontend interfaces with high design quality. Avoids generic AI aesthetics.",
@@ -52,10 +65,10 @@
       "source": {
         "source": "github",
         "repo": "DietrichGebert/ponytail",
-        "ref": "v4.8.4"
+        "ref": "v4.9.0"
       },
       "description": "Lazy senior dev mode. Forces the simplest, shortest solution that actually works: YAGNI, stdlib first, no unrequested abstractions.",
-      "version": "4.8.4",
+      "version": "4.9.0",
       "author": {
         "name": "Dietrich Gebert",
         "url": "https://github.com/DietrichGebert"
@@ -96,10 +109,10 @@
       "source": {
         "source": "github",
         "repo": "JuliusBrussee/caveman",
-        "ref": "v1.6.0"
+        "ref": "v2.6.0"
       },
-      "description": "Ultra-compressed communication mode. Cuts ~75% of output tokens by making the assistant talk like a caveman, without losing technical accuracy.",
-      "version": "1.6.0",
+      "description": "Ultra-compressed communication mode. Cuts ~65% of output tokens (measured) by making the assistant talk like a caveman, without losing technical accuracy.",
+      "version": "2.6.0",
       "author": {
         "name": "Julius Brussee",
         "url": "https://github.com/JuliusBrussee"
