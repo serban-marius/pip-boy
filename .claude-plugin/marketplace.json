@@ -35,16 +35,16 @@
       "category": "Development Tools"
     },
     {
-      "name": "pr-janitor",
-      "source": "./automation/plugins/pr-janitor",
-      "description": "Keep your open pull requests healthy: verify review findings and CI against the latest head, fix what is still open, report with direct links. No redundant comments, never resolves human threads.",
-      "version": "1.0.0",
+      "name": "github-janitor",
+      "source": "./automation/plugins/github-janitor",
+      "description": "Keep GitHub quiet without you: pr-janitor maintains the PRs you author, inbox-janitor cleans your notification inbox and sends a digest of what needs a human.",
+      "version": "1.1.0",
       "author": {
         "name": "Marius Serban"
       },
       "homepage": "https://github.com/serban-marius/pip-boy",
       "repository": "https://github.com/serban-marius/pip-boy",
-      "keywords": ["github", "pull-request", "ci", "review", "automation", "openclaw", "skill"],
+      "keywords": ["github", "pull-request", "notifications", "inbox", "ci", "review", "automation", "openclaw", "skill"],
       "category": "Automation"
     },
     {
