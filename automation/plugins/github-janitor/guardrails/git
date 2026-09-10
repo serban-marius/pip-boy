@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# git shim (github-janitor guardrail). Installed at /usr/bin/git via dpkg-divert; the
+# real binary lives at /usr/bin/git.real. Refuses force pushes and remote
+# branch deletion; everything else passes straight through.
+real=/usr/bin/git.real
+deny() { echo "git shim: '$1' is blocked on this host (github-janitor guardrail: no force-push, no remote branch deletion). See automation/plugins/github-janitor/guardrails in serban-marius/pip-boy" >&2; exit 86; }
+
+is_push=0
+for a in "$@"; do
+  case "$a" in
+    push) is_push=1 ;;
+    -*) [ "$is_push" = 1 ] && case "$a" in
+          --force|--force-with-lease|--force-with-lease=*|--force-if-includes|--delete|-d) deny "git push $a" ;;
+          -[a-zA-Z]*) [[ "$a" =~ ^-[a-zA-Z]*[fd] ]] && deny "git push $a" ;;
+        esac ;;
+    +*|:*) [ "$is_push" = 1 ] && deny "git push $a" ;;
+  esac
+done
+
+exec "$real" "$@"

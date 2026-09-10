@@ -44,6 +44,16 @@ openclaw automations create "0 9 * * *" "Use the inbox-janitor skill: mark the n
   --name "Inbox Janitor" --tz Europe/Madrid --session isolated --announce --channel telegram --to <chat-id>
 ```
 
+## Guardrails (install before running unattended)
+
+The skills run with your `gh` token, so GitHub cannot tell the agent from you. The `guardrails/` shims replace `/usr/bin/gh` and `/usr/bin/git` on the host and refuse what the janitors must never do, whatever the prompt says: `gh pr merge|close|reopen|edit`, `gh issue close|edit|delete`, `gh repo delete|archive|edit`, `gh api` PUT on `/merge`, PATCH on `/pulls/` or `/issues/`, DELETE under `repos/`, merge/close/delete GraphQL mutations, and `git push` with `--force`, `-f`, `--force-with-lease`, `--delete`, `:branch` or `+ref`.
+
+```bash
+automation/plugins/github-janitor/guardrails/install.sh   # Debian/Ubuntu, uses dpkg-divert + sudo, runs test-shims.sh
+```
+
+**TODO whenever this plugin is deployed on a new host or agent: run `guardrails/install.sh` first.** Both skills check for `/usr/bin/gh.real` in unattended runs and stop with a blocker if the shims are missing. Pair this with branch protection ("require approvals", no bypass) on the repos that matter: the shims stop the agent, branch protection stops everyone.
+
 ## Requirements
 
 - `git`, `gh` (authenticated, `repo` scope), `jq`
@@ -54,6 +64,11 @@ openclaw automations create "0 9 * * *" "Use the inbox-janitor skill: mark the n
 github-janitor/
 ├── .claude-plugin/
 │   └── plugin.json
+├── guardrails/
+│   ├── gh                # shim: blocks merge/close/edit/delete
+│   ├── git               # shim: blocks force-push and remote deletion
+│   ├── install.sh        # dpkg-divert install + test
+│   └── test-shims.sh
 ├── skills/
 │   ├── pr-janitor/
 │   │   ├── SKILL.md

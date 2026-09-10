@@ -11,6 +11,8 @@ Keep the GitHub inbox down to what actually needs a human. Everything you post o
 
 ## 1. Clean
 
+**Unattended runs (scheduled automations):** first run `test -x /usr/bin/gh.real`. If it fails, the host guardrail shims from `guardrails/install.sh` are not installed: do nothing on GitHub and report "guardrails missing on this host" as the only blocker.
+
 Run `bin/inbox-clean.sh` (in this skill's directory; as a Claude Code plugin it is `${CLAUDE_PLUGIN_ROOT}/skills/inbox-janitor/bin/inbox-clean.sh`). It snapshots every inbox thread, marks as done the ones a rule proves are noise, remembers them in a state file (the notifications API keeps listing done threads; only the UI hides them), and prints one JSON summary:
 
 ```json
