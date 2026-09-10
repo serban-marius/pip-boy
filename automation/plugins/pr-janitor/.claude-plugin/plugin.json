@@ -1,0 +1,10 @@
+{
+  "name": "pr-janitor",
+  "version": "1.0.0",
+  "description": "Keep your open pull requests healthy: verify review findings and CI against the latest head, fix what is still open, and report with direct links. No redundant comments, never resolves human threads.",
+  "author": {
+    "name": "Marius Serban"
+  },
+  "homepage": "https://github.com/serban-marius/pip-boy",
+  "repository": "https://github.com/serban-marius/pip-boy"
+}
