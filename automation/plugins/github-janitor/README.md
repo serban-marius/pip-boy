@@ -40,7 +40,7 @@ openclaw automations create "*/10 8-21 * * *" "Use the pr-janitor skill to maint
   --name "PR Janitor" --tz Europe/Madrid --session isolated --announce --channel telegram --to <chat-id> --trigger-script pr-janitor.trigger.js
 
 # Inbox: once a day, always sends the digest
-openclaw automations create "0 9 * * *" "Use the inbox-janitor skill: mark the noise as done and send the digest of what needs me. Always send it, even if the inbox is clean." \
+openclaw automations create "0 6 * * *" "Use the inbox-janitor skill: mark the noise as done and send the digest of what needs me. Always send it, even if the inbox is clean." \
   --name "Inbox Janitor" --tz Europe/Madrid --session isolated --announce --channel telegram --to <chat-id>
 ```
 
