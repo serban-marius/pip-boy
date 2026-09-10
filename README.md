@@ -21,6 +21,7 @@ Plugins are organized by category, each with `plugins/` (internal) and `external
 | **`/seo`** | SEO and search tools |
 | **`/bi`** | Business Intelligence & analytics |
 | **`/product`** | Product management & design |
+| **`/automation`** | Skills for unattended agents & OpenClaw automations |
 
 ## Installation
 

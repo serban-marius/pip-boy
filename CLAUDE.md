@@ -26,6 +26,7 @@ Plugins are organized by **category** in top-level directories. Each category co
 | `seo/` | SEO and search-related plugins |
 | `bi/` | Business Intelligence and analytics plugins |
 | `product/` | Product management and design plugins |
+| `automation/` | Skills built to run unattended: scheduled agents, watchers, OpenClaw automations |
 
 ### Key Files
 

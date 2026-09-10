@@ -36,16 +36,16 @@
     },
     {
       "name": "pr-janitor",
-      "source": "./development/common/plugins/pr-janitor",
-      "description": "Keep authored pull requests current by fixing actionable review feedback and CI failures while avoiding redundant comments and preserving human-owned thread resolution",
+      "source": "./automation/plugins/pr-janitor",
+      "description": "Keep your open pull requests healthy: verify review findings and CI against the latest head, fix what is still open, report with direct links. No redundant comments, never resolves human threads.",
       "version": "1.0.0",
       "author": {
         "name": "Marius Serban"
       },
       "homepage": "https://github.com/serban-marius/pip-boy",
       "repository": "https://github.com/serban-marius/pip-boy",
-      "keywords": ["github", "pull-request", "ci", "review", "automation", "skill"],
-      "category": "Development Tools"
+      "keywords": ["github", "pull-request", "ci", "review", "automation", "openclaw", "skill"],
+      "category": "Automation"
     },
     {
       "name": "goat",
