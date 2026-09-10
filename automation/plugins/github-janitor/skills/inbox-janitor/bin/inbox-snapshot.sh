@@ -5,14 +5,19 @@
 # rule-based verdict:
 #   done -> safe to mark as done (rule says why)
 #   keep -> needs a human (pending review on a human PR, mention, assignment...)
+# Threads recorded in the inbox-clean.sh state file (already marked done, same
+# updatedAt) are left out: the API keeps listing done threads, only the UI hides them.
 # Usage: inbox-snapshot.sh [login]      (prints a JSON array)
 # Requires: gh (authenticated, repo scope), jq
 set -euo pipefail
 login="${1:-$(gh api user --jq .login)}"
+state="${INBOX_JANITOR_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/inbox-janitor/done.json}"
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+if [ -f "$state" ]; then cp "$state" "$tmp/done.json"; else echo '{}' > "$tmp/done.json"; fi
 # Large payloads go through files, not arguments: --argjson hits ARG_MAX on a 100-thread inbox.
 
-gh api --paginate 'notifications?all=true&per_page=100' | jq -s 'add // []' > "$tmp/notifs.json"
+gh api --paginate 'notifications?all=true&per_page=100' | jq -s --slurpfile D "$tmp/done.json" \
+  '(add // []) | map(select(($D[0][.id] // "") != .updated_at))' > "$tmp/notifs.json"
 
 # Enrich pull requests in batches of 40 through one GraphQL query per batch.
 # ponytail: issues are not enriched (none in this inbox today); add an Issue

@@ -38,7 +38,7 @@
       "name": "github-janitor",
       "source": "./automation/plugins/github-janitor",
       "description": "Keep GitHub quiet without you: pr-janitor maintains the PRs you author, inbox-janitor cleans your notification inbox and sends a digest of what needs a human.",
-      "version": "1.1.0",
+      "version": "1.1.1",
       "author": {
         "name": "Marius Serban"
       },

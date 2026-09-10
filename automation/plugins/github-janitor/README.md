@@ -17,7 +17,7 @@ Takes a fresh snapshot of each of your open, ready-for-review PRs (head SHA, che
 
 Snapshots every thread in your GitHub inbox with a rule-based verdict, marks the noise as done, and sends a short digest of what is left.
 
-Marked done: merged/closed subjects, review requests you already approved, review requests on bot-authored PRs (dependabot, updaters), activity on your own PRs, CI/push/subscription chatter. Kept and reported: mentions, assignments, pending reviews on human PRs. It only marks threads done; it never approves, merges or comments.
+Marked done: merged/closed subjects, review requests you already approved, review requests on bot-authored PRs (dependabot, updaters), activity on your own PRs, CI/push/subscription chatter. Kept and reported: mentions, assignments, pending reviews on human PRs. It only marks threads done; it never approves, merges or comments. Marked threads are remembered in `~/.local/state/inbox-janitor/done.json` because the notifications API keeps listing done threads.
 
 ## Tools
 
@@ -25,6 +25,7 @@ Marked done: merged/closed subjects, review requests you already approved, revie
 skills/pr-janitor/bin/pr-snapshot.sh owner/repo 42 | jq .   # full current state of one PR
 skills/pr-janitor/bin/pr-fingerprint.sh                      # one line per eligible PR: head, updatedAt, checks, unresolved threads
 skills/inbox-janitor/bin/inbox-snapshot.sh | jq .            # every inbox thread with verdict + rule
+skills/inbox-janitor/bin/inbox-clean.sh --dry-run            # what would be marked done, and what is kept
 ```
 
 `pr-fingerprint.sh` is meant for a condition trigger: compare its output with the previous run and only wake the agent when a line changed.
@@ -62,6 +63,7 @@ github-janitor/
 │   └── inbox-janitor/
 │       ├── SKILL.md
 │       └── bin/
-│           └── inbox-snapshot.sh
+│           ├── inbox-snapshot.sh
+│           └── inbox-clean.sh
 └── README.md
 ```
