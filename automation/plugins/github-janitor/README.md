@@ -52,7 +52,7 @@ The skills run with your `gh` token, so GitHub cannot tell the agent from you. T
 automation/plugins/github-janitor/guardrails/install.sh   # Debian/Ubuntu, uses dpkg-divert + sudo, runs test-shims.sh
 ```
 
-**TODO whenever this plugin is deployed on a new host or agent: run `guardrails/install.sh` first.** Both skills check for `/usr/bin/gh.real` in unattended runs and stop with a blocker if the shims are missing. Pair this with branch protection ("require approvals", no bypass) on the repos that matter: the shims stop the agent, branch protection stops everyone.
+**TODO whenever this plugin is deployed on a new host or agent: run `guardrails/install.sh` first**, and re-run it whenever `guardrails/` changes, since the shims are copies of these files. Both skills check for `/usr/bin/gh.real` in unattended runs and stop with a blocker if the shims are missing. Pair this with branch protection ("require approvals", no bypass) on the repos that matter: the shims stop the agent, branch protection stops everyone.
 
 ## Requirements
 
