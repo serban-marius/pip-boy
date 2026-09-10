@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# gh shim (github-janitor guardrail). Installed at /usr/bin/gh via dpkg-divert; the real
+# binary lives at /usr/bin/gh.real. Refuses the GitHub mutations the janitor
+# agents must never perform: merge, close, reopen, edit, delete, auto-merge.
+# ponytail: GraphQL bodies read from files (-f query=@file) are not inspected.
+real=/usr/bin/gh.real
+deny() { echo "gh shim: '$1' is blocked on this host (github-janitor guardrail: no merge/close/edit/delete). See automation/plugins/github-janitor/guardrails in serban-marius/pip-boy" >&2; exit 86; }
+
+args=("$@")
+for ((i = 0; i < ${#args[@]} - 1; i++)); do
+  case "${args[i]} ${args[i+1]}" in
+    "pr merge"|"pr close"|"pr reopen"|"pr edit"|"pr lock"|"pr ready"|\
+    "issue close"|"issue reopen"|"issue edit"|"issue delete"|"issue lock"|\
+    "repo delete"|"repo archive"|"repo edit"|"repo rename"|"release delete"|"label delete")
+      deny "gh ${args[i]} ${args[i+1]}" ;;
+  esac
+done
+
+if [ "${1:-}" = api ]; then
+  method=GET; endpoint=""; body="$*"
+  for ((i = 1; i < ${#args[@]}; i++)); do
+    case "${args[i]}" in
+      -X|--method) method="${args[i+1]^^}" ;;
+      -X*) method="${args[i]#-X}"; method="${method^^}" ;;
+      --method=*) method="${args[i]#--method=}"; method="${method^^}" ;;
+      -*) ;;
+      *) [ -z "$endpoint" ] && endpoint="${args[i]#/}" ;;
+    esac
+  done
+  case "$method:$endpoint" in
+    PUT:repos/*/merge|PUT:repos/*/merge?*) deny "gh api PUT $endpoint" ;;
+    PATCH:repos/*/pulls/*|PATCH:repos/*/issues/*) deny "gh api PATCH $endpoint" ;;
+    DELETE:repos/*) deny "gh api DELETE $endpoint" ;;
+  esac
+  if [ "$endpoint" = graphql ] && grep -qE 'mergePullRequest|closePullRequest|reopenPullRequest|updatePullRequest\b|enablePullRequestAutoMerge|closeIssue|deleteIssue|deleteRef|updateRef' <<<"$body"; then
+    deny "gh api graphql <mutation>"
+  fi
+fi
+
+exec "$real" "$@"

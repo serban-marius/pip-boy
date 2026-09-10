@@ -24,6 +24,8 @@ Always use it instead of assembling the state by hand. Re-run it before every mu
 
 ## 1. Scope
 
+**Unattended runs (scheduled automations):** first run `test -x /usr/bin/gh.real`. If it fails, the host guardrail shims from `guardrails/install.sh` are not installed: do nothing on GitHub and report "guardrails missing on this host" as the only blocker.
+
 1. `gh auth status` must succeed. `LOGIN=$(gh api user --jq .login)`.
 2. Candidates: the PR(s) the user named, or for an unattended run
    `gh search prs --author "$LOGIN" --state open --json number,url,repository,isDraft,title`.
