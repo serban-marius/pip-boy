@@ -1,0 +1,10 @@
+{
+  "name": "pr-janitor",
+  "version": "1.0.0",
+  "description": "Keep the author's open pull requests current: verify review findings against the latest head, fix actionable issues, and drive CI green without redundant comments or resolving human threads.",
+  "author": {
+    "name": "Marius Serban"
+  },
+  "homepage": "https://github.com/serban-marius/pip-boy",
+  "repository": "https://github.com/serban-marius/pip-boy"
+}

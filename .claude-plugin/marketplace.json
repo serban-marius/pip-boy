@@ -35,6 +35,19 @@
       "category": "Development Tools"
     },
     {
+      "name": "pr-janitor",
+      "source": "./development/common/plugins/pr-janitor",
+      "description": "Keep authored pull requests current by fixing actionable review feedback and CI failures while avoiding redundant comments and preserving human-owned thread resolution",
+      "version": "1.0.0",
+      "author": {
+        "name": "Marius Serban"
+      },
+      "homepage": "https://github.com/serban-marius/pip-boy",
+      "repository": "https://github.com/serban-marius/pip-boy",
+      "keywords": ["github", "pull-request", "ci", "review", "automation", "skill"],
+      "category": "Development Tools"
+    },
+    {
       "name": "goat",
       "source": "./development/common/plugins/goat",
       "description": "G.O.A.T.: JIRA ticket to PR with a team of agents in TDD and two human gates (goat), plus pre-merge verdict and post-deploy regression watch (geiger)",
