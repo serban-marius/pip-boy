@@ -20,7 +20,7 @@ if [ "${1:-}" = api ]; then
   method=GET; endpoint=""; body="$*"
   for ((i = 1; i < ${#args[@]}; i++)); do
     case "${args[i]}" in
-      -X|--method) method="${args[i+1]^^}" ;;
+      -X|--method) method="${args[i+1]^^}"; ((i++)) ;;   # skip the value
       -X*) method="${args[i]#-X}"; method="${method^^}" ;;
       --method=*) method="${args[i]#--method=}"; method="${method^^}" ;;
       -*) ;;
