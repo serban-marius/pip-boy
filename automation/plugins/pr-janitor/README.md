@@ -21,11 +21,14 @@ Designed to run unattended from an OpenClaw automation as well as interactively 
 - `/pr-janitor owner/repo` (all your open non-draft PRs there)
 - "Keep my open PRs green and handle the review feedback."
 
-The snapshot tool is usable on its own:
+The tools are usable on their own:
 
 ```bash
-skills/pr-janitor/bin/pr-snapshot.sh owner/repo 42 | jq .
+skills/pr-janitor/bin/pr-snapshot.sh owner/repo 42 | jq .   # full state of one PR
+skills/pr-janitor/bin/pr-fingerprint.sh                      # one line per eligible PR: head, updatedAt, checks, unresolved threads
 ```
+
+`pr-fingerprint.sh` is meant for a condition trigger: compare its output with the previous run and only wake the agent when a line changed.
 
 ## OpenClaw
 
@@ -51,6 +54,7 @@ pr-janitor/
 │   └── pr-janitor/
 │       ├── SKILL.md
 │       └── bin/
-│           └── pr-snapshot.sh
+│           ├── pr-snapshot.sh
+│           └── pr-fingerprint.sh
 └── README.md
 ```
