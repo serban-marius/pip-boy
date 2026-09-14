@@ -7,7 +7,7 @@ metadata: {"openclaw": {"requires": {"bins": ["git", "gh", "jq"]}, "primaryEnv":
 
 # PR Janitor
 
-Decide **which** pull requests deserve work and **whether to say anything at all**. The work on a single PR — verifying findings, replying, resolving — belongs to the `pr-address-comments` skill; follow it once you have picked a PR, with the silence rule below layered on top.
+Decide **which** pull requests deserve work and **whether to say anything at all**. The work on a single PR — verifying findings, replying, resolving — belongs to the `pr-address-comments` skill, in `../pr-address-comments/SKILL.md` next to this file. Read it once you have picked a PR and follow it, with the silence rule below layered on top.
 
 The one rule that matters here: **never act on a finding you have not proven is still open on the current head.** Reviewers, CI and other agents move faster than you. A comment that was true an hour ago is often already fixed, and answering it again is worse than saying nothing.
 
@@ -43,7 +43,7 @@ A PR with green checks and nothing unresolved is done. Record it and move on —
 
 ## 3. Deep pass: follow pr-address-comments
 
-For each PR that survived triage, do the work described in the `pr-address-comments` skill: read files at the PR's SHA, separate each finding's premise from its conclusion, reach a verdict of correct / false positive / out of scope, fix what is genuinely broken, commit, push, reply with reproducible evidence, and resolve bot threads only.
+For each PR that survived triage, read `../pr-address-comments/SKILL.md` and do what it says: read files at the PR's SHA, separate each finding's premise from its conclusion, reach a verdict of correct / false positive / out of scope, fix what is genuinely broken, commit, push, reply with reproducible evidence, and resolve bot threads only.
 
 Two additions for unattended work:
 
