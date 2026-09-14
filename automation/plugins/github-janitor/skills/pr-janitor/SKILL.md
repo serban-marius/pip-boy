@@ -58,4 +58,4 @@ In English, compact, one bullet per PR, always with the direct `https://github.c
 
 A blocker is only something you cannot fix from here: missing credentials, external infrastructure, a product decision. Never report green from an earlier SHA.
 
-Unattended runs: if no PR changed and there is no new blocker, return exactly `NO_REPLY`.
+Unattended runs: silence applies to the report too. Return exactly `NO_REPLY` unless this run changed code, posted a reply, resolved a thread, or hit a blocker. A PR you triaged as clean is not news, however it entered your scope: a run that swept ten PRs and found nothing to do still returns `NO_REPLY`.
