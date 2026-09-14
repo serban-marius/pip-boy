@@ -7,68 +7,55 @@ metadata: {"openclaw": {"requires": {"bins": ["git", "gh", "jq"]}, "primaryEnv":
 
 # PR Janitor
 
-Maintain pull requests without creating review noise. Use `gh` and `git`. Everything that touches GitHub or reaches the user (commits, replies, PR text, run reports) is written in **English**.
+Decide **which** pull requests deserve work and **whether to say anything at all**. The work on a single PR — verifying findings, replying, resolving — belongs to the `pr-address-comments` skill; follow it once you have picked a PR, with the silence rule below layered on top.
 
-The one rule that matters: **never act on a finding you have not proven is still open on the current head.** Reviewers, CI and other agents move faster than you. A comment that was true an hour ago is often already fixed.
+The one rule that matters here: **never act on a finding you have not proven is still open on the current head.** Reviewers, CI and other agents move faster than you. A comment that was true an hour ago is often already fixed, and answering it again is worse than saying nothing.
 
-## Snapshot tool
+**Unattended runs (scheduled automations):** first run `test -x /usr/bin/gh.real`. If it fails, the host guardrail shims from `../../guardrails/install.sh` are not installed: do nothing on GitHub and report "guardrails missing on this host" as the only blocker.
 
-`bin/pr-snapshot.sh <owner/repo> <number>` (in this skill's directory; as a Claude Code plugin it is `${CLAUDE_PLUGIN_ROOT}/skills/pr-janitor/bin/pr-snapshot.sh`) prints one JSON document with:
+## Tools
 
-- `pr`: state, `isDraft`, author, `headRefOid`, branches, `reviewDecision`.
-- `checks`: rollup state and every check attached to **that** head SHA.
-- `reviewThreads[]`: `isResolved`, `isOutdated`, `path`, `rootAuthor.type`, and every comment with `author.type` (`User`, `Bot`, `Mannequin`...), `outdated`, `commit`, `replyTo`.
-- `reviews[]` and `issueComments[]`.
+Both live in this skill's directory (`${CLAUDE_PLUGIN_ROOT}/skills/pr-janitor/bin/` as a Claude Code plugin):
 
-Always use it instead of assembling the state by hand. Re-run it before every mutation; a snapshot is stale the moment you push or someone else does.
+- `bin/pr-fingerprint.sh` — one line per eligible PR: head SHA, `updatedAt`, check rollup, unresolved thread count. One GraphQL call. This is what the scheduled trigger compares between runs.
+- `bin/pr-snapshot.sh <owner/repo> <number>` — the full current state of one PR: checks on that exact SHA, review threads with `isResolved`, `isOutdated` and each author's account type, reviews and issue comments.
+
+Use them instead of assembling state by hand, and re-run the snapshot before every mutation: it is stale the moment you push or someone else does.
 
 ## 1. Scope
 
-**Unattended runs (scheduled automations):** first run `test -x /usr/bin/gh.real`. If it fails, the host guardrail shims from `guardrails/install.sh` are not installed: do nothing on GitHub and report "guardrails missing on this host" as the only blocker.
-
 1. `gh auth status` must succeed. `LOGIN=$(gh api user --jq .login)`.
-2. Candidates: the PR(s) the user named, or for an unattended run
-   `gh search prs --author "$LOGIN" --state open --json number,url,repository,isDraft,title`.
-3. Keep only PRs that are open, not draft, and authored by `$LOGIN`. Apply any repo or PR filter from the request. Organization repos are in scope.
-4. Hard limits in every repo, personal or organization: never merge, close, reopen, relabel, edit the PR title/body, request reviewers, or force-push. Never touch a PR outside the list from step 3.
+2. **If the run message names the PRs that changed, those are your entire scope.** The scheduled trigger has already compared fingerprints and tells you exactly which ones moved. Do not sweep the others: they are unchanged since a previous run that already cleared them, and re-reading them is the single most expensive thing this job can do.
+3. Only when no PR is named — a manual run, or a first run with no previous state — discover candidates with `gh search prs --author "$LOGIN" --state open --json number,url,repository,isDraft,title`.
+4. Keep only PRs that are open, not draft, and authored by `$LOGIN`. Organization repos are in scope.
+5. Hard limits everywhere: never merge, close, reopen, relabel, edit the PR title or body, request reviewers, or force-push. The host shims refuse these anyway. Never touch a PR outside the list above.
 
-## 2. Snapshot
+## 2. Triage before you descend
 
-For each candidate, run the snapshot tool and clone or fetch the repo into `~/repos/<repo>` (create it if needed). Check out `headRefName` and confirm `git rev-parse HEAD` equals `pr.headRefOid`. If the PR is no longer open, non-draft and yours, drop it.
+For each PR in scope, run `bin/pr-snapshot.sh` and decide whether there is anything worth a deep pass:
 
-## 3. Prove work remains
+- a required check on the current head is failing (`conclusion` in `FAILURE`, `TIMED_OUT`, `CANCELLED`, `ACTION_REQUIRED`, `ERROR`), or
+- a review thread has `isResolved: false` and its last comment is not already an answer from you.
 
-Build the work queue from the snapshot only. An item is actionable only if you can point at current evidence on `headRefOid`:
+A PR with green checks and nothing unresolved is done. Record it and move on — do not read its diff, do not clone it.
 
-- **Failing check**: `checks.contexts[]` with `conclusion` in `FAILURE`, `TIMED_OUT`, `CANCELLED`, `ACTION_REQUIRED` or `ERROR`. Read the failed job log (`gh run view <id> --log-failed`) and reproduce locally when practical.
-- **Review finding**: the thread is `isResolved: false`, the complaint is still visible in the current code at `path`, and no later comment in the thread (from anyone) or later commit already addresses it. `isOutdated: true` or a comment `commit` older than the head is a strong hint the finding is already handled; verify against the code before deciding.
+`isOutdated: true`, or a comment pinned to a SHA older than the head, means the code moved under the finding. That is a strong hint it is already handled, but it is a hint: check the current code before deciding either way.
 
-Everything else is **no-action**: fixed, outdated, resolved, duplicated, superseded, non-reproducible, praise, status messages, optional suggestions, `SKIPPED`/`NEUTRAL` checks. For no-action items make no change, post nothing, resolve nothing. Do not post "already fixed", "acknowledged" or "thanks". Mention skips only in the private run report.
+## 3. Deep pass: follow pr-address-comments
 
-If the queue is empty, go to step 7.
+For each PR that survived triage, do the work described in the `pr-address-comments` skill: read files at the PR's SHA, separate each finding's premise from its conclusion, reach a verdict of correct / false positive / out of scope, fix what is genuinely broken, commit, push, reply with reproducible evidence, and resolve bot threads only.
 
-## 4. Fix
+Two additions for unattended work:
 
-Work on the PR branch. Make the smallest change that resolves the actionable item. Run the focused tests, then the project's usual checks (lint, static analysis, test suite) as far as they run locally. Commit with a conventional English message and `git push` (never `--force`).
+- **Silence is the default.** That skill replies to every unresolved thread it looked at; here you reply only when this run produced something new to say — a fix you just pushed, or evidence refuting a finding nobody has refuted yet. Before posting, scan the thread and the PR comments for an equivalent reply and never write a second one. Post no acknowledgements, no "already fixed", no status updates.
+- **Bot feedback is welcome on false positives.** When you refute a bot finding with evidence, include the "Feedback for the bot" block from that skill's template. It is what makes the reviewer better, and it only ever appears in a reply you were already going to post.
 
-After every push: re-run the snapshot, confirm `headRefOid` is your commit, and re-classify the remaining queue against it.
+After every push, re-run the snapshot, confirm the head is your commit, and re-triage what is left against it.
 
-## 5. Reply and resolve
+## 4. Report
 
-Immediately before any reply or thread resolution, re-run the snapshot. If the head, the thread or its comments changed since you decided, decide again.
+In English, compact, one bullet per PR, always with the direct `https://github.com/<owner>/<repo>/pull/<n>` link. Per PR: head SHA and CI state, what changed and how it was verified, human threads replied to (still open), bot threads resolved, findings skipped with the reason, blockers.
 
-Account type comes from `author.type` in the snapshot, never from the login. Unknown counts as `User`.
+A blocker is only something you cannot fix from here: missing credentials, external infrastructure, a product decision. Never report green from an earlier SHA.
 
-- A thread is **human** if any comment in it, root or reply, is from a `User` other than `$LOGIN`. Reply only when this run pushed a change that addresses it, in one concise English comment citing the commit and file. **Never resolve a human thread.**
-- A thread is **bot** if every comment is from `Bot` accounts (plus your own earlier replies). After the fix is on the current head and verified, reply only if it adds evidence not already in the thread, then resolve it with the `resolveReviewThread` GraphQL mutation. Re-check that it is still unresolved right before the mutation.
-- Before posting anything, scan the thread and the PR comments for an equivalent existing reply. Never post a duplicate.
-
-## 6. CI on the latest head
-
-Read checks only from a snapshot whose `headRefOid` equals the remote head. Wait for pending required checks when the run is expected to leave the PR green. Never report green based on an earlier SHA. A blocker is only something you cannot fix from here: missing credentials, external infrastructure, a product decision.
-
-## 7. Report
-
-In English, compact, one bullet per PR, always with the direct `https://github.com/<owner>/<repo>/pull/<n>` link. Per PR: head SHA and CI state, what changed and how it was verified, human threads replied (still open), bot threads resolved, skipped items with the reason, blockers.
-
-Unattended runs (OpenClaw automation): if no PR changed and there is no new blocker, return exactly `NO_REPLY`.
+Unattended runs: if no PR changed and there is no new blocker, return exactly `NO_REPLY`.
