@@ -37,14 +37,14 @@
     {
       "name": "github-janitor",
       "source": "./automation/plugins/github-janitor",
-      "description": "Keep GitHub quiet without you: pr-janitor maintains the PRs you author, inbox-janitor cleans your notification inbox and sends a digest of what needs a human.",
-      "version": "1.2.0",
+      "description": "Keep GitHub quiet without you: pr-address-comments answers a PR's review feedback with evidence, pr-janitor decides which PRs need it, inbox-janitor cleans your notification inbox.",
+      "version": "1.3.0",
       "author": {
         "name": "Marius Serban"
       },
       "homepage": "https://github.com/serban-marius/pip-boy",
       "repository": "https://github.com/serban-marius/pip-boy",
-      "keywords": ["github", "pull-request", "notifications", "inbox", "ci", "review", "automation", "openclaw", "skill"],
+      "keywords": ["github", "pull-request", "code-review", "notifications", "inbox", "ci", "automation", "openclaw", "skill"],
       "category": "Automation"
     },
     {

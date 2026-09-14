@@ -1,15 +1,24 @@
 # GitHub Janitor
 
-Two skills that keep GitHub quiet without you: one maintains the PRs you author, the other keeps your notification inbox down to what needs a human. Both are designed to run unattended from OpenClaw automations and interactively from Claude Code.
+Three skills that keep GitHub quiet without you: one works through the review comments on a pull request, one decides which of your PRs need that treatment and when to stay silent, and one keeps your notification inbox down to what needs a human. All are designed to run unattended from OpenClaw automations and interactively from Claude Code.
 
 ## Skills
 
+### `/pr-address-comments`
+
+Works through the review comments on one pull request. Reads every file it cites at the PR's own SHA, separates each finding's premise from its conclusion, reaches a verdict of correct / false positive / out of scope, fixes what is genuinely broken, replies with reproducible evidence, and resolves the bot's threads while leaving human threads open.
+
+- Everything published to GitHub is written in English, whatever language you asked in.
+- Claims only what it actually did: no "verified with X" for a command it never ran, no "fixed in `<sha>`" before the commit exists.
+- When it refutes a bot finding it adds a **Feedback for the bot** block aimed at the class of mistake, so the reviewer gets better instead of being blindly obeyed.
+- Counterpart of `github-pr-review`: that one leaves the comments, this one answers them.
+
 ### `/pr-janitor`
 
-Takes a fresh snapshot of each of your open, ready-for-review PRs (head SHA, checks on that SHA, review threads with author account types), proves which findings are still open on the current head, makes the smallest verified fix, pushes, and reports with direct PR links.
+The unattended layer on top: decides which of your open, ready-for-review PRs deserve a pass and whether to say anything at all, then follows `pr-address-comments` for the ones that do.
 
-- Everything on GitHub and in reports is written in English.
-- A finding that is already fixed, outdated, resolved, duplicated or superseded gets no code change and no comment.
+- Scoped by the scheduled trigger: only the PRs whose fingerprint changed get read.
+- A finding that is already fixed, outdated, resolved, duplicated or superseded gets no code change and no comment. Silence is the default.
 - A thread where any human commented is never resolved. Only all-bot threads are resolved, after the fix is verified on the latest head.
 - Never merges, closes, relabels, edits the PR description, or force-pushes. Organization repos included.
 
@@ -70,6 +79,10 @@ github-janitor/
 │   ├── install.sh        # dpkg-divert install + test
 │   └── test-shims.sh
 ├── skills/
+│   ├── pr-address-comments/
+│   │   ├── SKILL.md
+│   │   ├── references/github-api.md   # gh + GraphQL cheatsheet
+│   │   └── evals/evals.json
 │   ├── pr-janitor/
 │   │   ├── SKILL.md
 │   │   └── bin/
