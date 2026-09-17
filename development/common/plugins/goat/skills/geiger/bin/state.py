@@ -73,9 +73,9 @@ def _lock_release(key):
     if _lock_file(key).exists(): _lock_file(key).unlink()
     return {"released": True}
 
-def _init(key, services, changed, base_branch, deploy_at):
+def _init(key, services, changed, base_branch, deploy_at, window_hours=4):
     st = {"key": key, "services": services, "changed_files": changed,
-          "base_branch": base_branch, "deploy_at": deploy_at or now_iso(),
+          "base_branch": base_branch, "deploy_at": deploy_at or now_iso(), "window_hours": int(window_hours),
           "started_at": now_iso(), "iter_count": 0, "quiet_iters": 0,
           "interval_s": PACING[0], "last_iter_at": now_iso(), "jiras": {}}
     _write(key, st); return st
@@ -159,6 +159,10 @@ def _selftest():
     except SystemExit:
         pass
 
+    # window_hours: default 4, overridable at init
+    assert _init("win-default", ["svc"], [], "main", None)["window_hours"] == 4
+    assert _init("win-30", ["svc"], [], "main", None, window_hours=30)["window_hours"] == 30
+
     print("state selftest OK")
 
 def main():
@@ -171,6 +175,7 @@ def main():
     pi = sub.add_parser("init"); pi.add_argument("--key", required=True)
     pi.add_argument("--services", required=True); pi.add_argument("--changed-file", required=True)
     pi.add_argument("--base-branch", required=True); pi.add_argument("--deploy-at")
+    pi.add_argument("--window-hours", type=int, default=4)
     pt = sub.add_parser("tick"); pt.add_argument("--key", required=True); pt.add_argument("--active", action="store_true")
     pj = sub.add_parser("record-jira"); pj.add_argument("--key", required=True)
     pj.add_argument("--hash", required=True); pj.add_argument("--jira", required=True)
@@ -184,7 +189,7 @@ def main():
     elif a.cmd == "baseline-path": print(str(_dir(k) / "baseline.json"))
     elif a.cmd == "init":
         changed = [l.strip() for l in open(a.changed_file) if l.strip()]
-        print(json.dumps(_init(k, [s for s in a.services.split(",") if s], changed, a.base_branch, a.deploy_at), indent=2))
+        print(json.dumps(_init(k, [s for s in a.services.split(",") if s], changed, a.base_branch, a.deploy_at, a.window_hours), indent=2))
     elif a.cmd == "tick": print(json.dumps(_tick(k, a.active)))
     elif a.cmd == "record-jira": print(json.dumps(_record_jira(k, a.hash, a.jira)))
     elif a.cmd == "reset":

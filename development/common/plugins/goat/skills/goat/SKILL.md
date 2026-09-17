@@ -17,7 +17,10 @@ Orchestrate a team of specialized agents to implement a JIRA task following TDD,
 
 ## The argument
 
-`$ARGUMENTS` = the ticket key (e.g. `PROJ-123`). If absent, ask for it.
+`$ARGUMENTS` = the ticket key (e.g. `PROJ-123`), optionally preceded by `--auto` (see **`--auto` mode**
+at the end: the human gates become automated checks and the run ends with a `GOAT RESULT:`
+line). If the key is absent, ask for it — unless `--auto`, in which case print
+`GOAT RESULT: blocked needs-decision: no ticket key` and stop.
 
 ## Prerequisites (required)
 
@@ -36,9 +39,9 @@ Orchestrate a team of specialized agents to implement a JIRA task following TDD,
    - Node → `test` script in `package.json` (jest/vitest).
    - Python → `pytest`.
    - Other → find the runner; if you can't, ask.
-   - **Smoke-test the runner BEFORE continuing:** knowing the command isn't enough; confirm it can RUN. Run something trivial (a small existing test, `--version`, or the runner empty). If the test environment isn't alive (DB down, k8s/Docker cluster not up, container stopped), **stop and ask the user to bring it up NOW** — don't discover it mid-Step 4, after you've written the tests and can't see red. Heavy environments (KIND/k8s, sail/docker, remote DB) are the #1 cause of late blocking.
+   - **Smoke-test the runner BEFORE continuing:** knowing the command isn't enough; confirm it can RUN. Run something trivial (a small existing test, `--version`, or the runner empty). If the test environment isn't alive (DB down, k8s/Docker cluster not up, container stopped), **stop and ask the user to bring it up NOW** — don't discover it mid-Step 4, after you've written the tests and can't see red. Heavy environments (KIND/k8s, sail/docker, remote DB) are the #1 cause of late blocking. (`--auto`: see the mode table.)
 3. **Capture the base branch, then create the work branch.** Don't assume `main` — many repos (e.g. Laravel/`develop`, `master`) fork elsewhere. Record the branch you're forking from (`git rev-parse --abbrev-ref HEAD`, or the remote default via `git symbolic-ref refs/remotes/origin/HEAD`); call it `<BASE_BRANCH>`. Then `git checkout -b feat/<PROJ-123>-<short-slug>`. Pass `<BASE_BRANCH>` to every `git diff` and to the reviewer workflow below — `main` is only a fallback.
-4. **Detect spec-kit**: does the repo have `specs/` and/or `.specify/`? If **yes**, this pipeline persists the spec artifacts (see Step 2.5). If **no**, do NOT assume: ask the user *"this repo doesn't use spec-kit — should I just generate the spec in chat (as usual) or do you want to adopt it?"* and respect the answer. Check whether `scripts/check-specs.sh` exists for validation.
+4. **Detect spec-kit**: does the repo have `specs/` and/or `.specify/`? If **yes**, this pipeline persists the spec artifacts (see Step 2.5). If **no**, do NOT assume: ask the user *"this repo doesn't use spec-kit — should I just generate the spec in chat (as usual) or do you want to adopt it?"* and respect the answer. Check whether `scripts/check-specs.sh` exists for validation. (`--auto`: see the mode table.)
 
 ## Step 1 · 📋 Fetch the JIRA ticket
 
@@ -57,7 +60,7 @@ spec, tests, and review all inherit that blind starting point. So:
    (e.g. the session scratchpad). This pulls images, PDFs, logs, etc.
 2. `Read` every downloaded image/PDF — the Read tool interprets images, so screenshots become
    text you can actually use. Transcribe the meaningful content (error messages, query, values).
-3. If an attachment is unreadable or ambiguous, say so and ask the user rather than guessing.
+3. If an attachment is unreadable or ambiguous, say so and ask the user rather than guessing. (`--auto`: see the mode table.)
 
 Summarize the ticket in 3-4 lines, **folding in what the attachments revealed** (often the real
 crux). Carry this combined text forward — it is what you pass as `args.ticket` in Step 2.
@@ -117,7 +120,7 @@ open questions — exploring the code before writing.)
 ### 🚦 GATE 1 — present the spec and STOP
 Show the spec + criteria + assumptions to the user — **including the delivery plan if the ticket
 spans repos** (repos, PR order, the contract between PRs). Ask: **"Do I approve this spec or adjust something?"**
-**End the turn and wait for their answer.** Don't proceed without an explicit OK. Incorporate their changes if asked.
+**End the turn and wait for their answer.** Don't proceed without an explicit OK. Incorporate their changes if asked. (`--auto`: see the mode table.)
 
 ## Step 2.5 · 📄 Persist the spec artifact (only if the repo uses spec-kit)
 
@@ -162,7 +165,7 @@ created/touched, layers, contracts, dependencies. Respect existing conventions (
 implement: deliver the PLAN — files + what each change does + recommended order + risks."*)
 
 Show the plan in 5-6 lines (not a gate; it's so the user sees it go by). If the plan reveals
-the spec was wrong, go back to Gate 1.
+the spec was wrong, go back to Gate 1. (`--auto`: see the mode table.)
 
 **Spec-kit**: if the repo uses it, dump the plan's evidence (paths, classes, contracts, risks, links
 to Jira/PR) into `specs/NNN-<slug>/research.md` — implementation details that `spec.md` does NOT carry go here.
@@ -183,7 +186,7 @@ Launch an independent subagent (does not implement):
 > does NOT verify it — that is precisely the gap that lets the original bug ship again.
 
 Then **run the test command and CONFIRM they are RED — and red for the RIGHT reason.** If they pass
-green without implementation, something is wrong (a test that proves nothing) → fix it. Beware the
+green without implementation, something is wrong (a test that proves nothing) → fix it. (`--auto`: see the mode table.) Beware the
 structural test for a behavioural criterion: it can be RED for the wrong reason (a missing method, not
 the missing guarantee) and still prove nothing once green — check each test actually pins its
 criterion's behaviour. If the headline criterion is a behavioural guarantee and no test drives it,
@@ -259,11 +262,11 @@ Apply the confirmed high-severity findings (go back to Step 5 if needed) and rep
 ### 🚦 GATE 2 — present the diff + review and STOP
 Show: change summary, tests green, reviewer findings, and (if the change touches a query) the
 `EXPLAIN` plan + any index gap from Step 5. Ask:
-**"Do I commit and open the PR, or adjust something?"** **End the turn and wait for the OK.**
+**"Do I commit and open the PR, or adjust something?"** **End the turn and wait for the OK.** (`--auto`: see the mode table.)
 
 ## Step 7 · 🚀 Commit + PR (after the OK)
 
-- If the project is Laravel and the `laravel-workflow:ship` skill exists, **delegate to it** (commit + duster + PR).
+- If the project is Laravel and the `laravel-workflow:ship` skill exists, **delegate to it** (commit + duster + PR). (`--auto`: see the mode table.)
 - Otherwise: commit with a message referencing the ticket (`PROJ-123: <title>`), push, and `gh pr create`
   with body = spec + what was done + how it was validated + open reviewer findings. Link the JIRA ticket.
 
@@ -277,13 +280,46 @@ next repo's pipeline:
 2. Present what you found and **STOP**: *"PR N has X review comments / CI status Y — do I address
    them now, or proceed to the next repo's PR?"* **End the turn and wait.** Warn that
    contract-level feedback (anything changing the API shape / schema / version the next PR builds
-   against) would force rework if we proceed — addressing that first is almost always right.
+   against) would force rework if we proceed — addressing that first is almost always right. (`--auto`: see the mode table.)
 3. Addressing feedback is a normal edit → test → adjust loop on the existing branch (back to
    Step 5; re-run Step 6 if the change is substantial), then push.
 4. When the user says proceed: start the next repo's pipeline **from Step 0 in that repo**,
    carrying the approved spec's delivery plan and the agreed contract into `args.ticket` — the
    dependent PR builds against the contract, not against an unmerged branch's implementation
    details.
+
+## `--auto` mode (unattended; what sprint-autopilot's workers run)
+
+Without `--auto` nothing in this skill changes. With it, every point where the interactive run asks or
+stops takes the conservative automated path below.
+
+The run ends with exactly one line:
+
+- `GOAT RESULT: pr-open <url> [<url>…] [ac:<id>[,<id>…]] [needs-repo:<repo>:<why>]`
+- `GOAT RESULT: blocked <code>: <reason>`
+
+When the task spec names acceptance-criterion ids (`AC1`, `AC2`…), `ac:` lists the ones this PR actually
+covers — the ids whose criterion the diff satisfies, not the ids you were handed. If the spec work shows a
+criterion lands in a repo you were not given, say so with `needs-repo:<repo>:<why>` rather than shipping
+around it or calling the ticket done: reporting the gap is the successful outcome there.
+
+Before printing a `blocked` line, push the branch as it is (`git push -u origin <branch>`) so a human can
+resume from exactly where you stopped — **except** on `secret-in-diff`, where nothing is pushed.
+
+| Point | Interactive | `--auto` |
+|-------|-------------|----------|
+| Step 0 test env down | ask | `blocked test-env-down` |
+| Step 0 no spec-kit | ask to adopt | don't adopt; the spec goes in the PR body |
+| Step 1 unreadable attachment | ask | `blocked unreadable-attachment` |
+| **Gate 1** | STOP | self-check: `spec.summary` matches the ticket (and its attachments) and `openQuestions` is empty or holds only questions the explorers answered from code. A product question left → `blocked needs-decision: <questions>` |
+| Step 3 plan contradicts spec | back to Gate 1 | `blocked spec-plan-mismatch` |
+| Step 4 tests won't go RED | fix and continue | same, 2 attempts, then `blocked tests-not-red` |
+| **Gate 2** | STOP | require `verdict: apto`; apply confirmed high findings and re-review; 2 cycles max → `blocked review-not-apto: <findings>` |
+| Step 7 | `ship` if Laravel | `ship --auto` if Laravel, then translate its last `SHIP RESULT: pr-open …` / `SHIP RESULT: blocked …` line into your own final `GOAT RESULT: pr-open …` / `GOAT RESULT: blocked …` line, appending your own `ac:` / `needs-repo:` (same PR payload, outer marker — the coordinator only reads the outer one); otherwise `gh pr create` **ready for review** (not draft), body = spec + EXPLAIN + open findings |
+| **Gate 3** multi-repo | STOP between PRs | proceed to the next repo; feedback on the open PR is handled by whoever runs the merge watch |
+| Any question a human would answer | ask | decide conservatively from the code, or `blocked needs-decision` |
+
+Blocked codes are the ones sprint-autopilot's `references/conventions.md` lists; use them verbatim.
 
 ---
 

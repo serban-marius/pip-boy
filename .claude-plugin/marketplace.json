@@ -51,7 +51,7 @@
       "name": "goat",
       "source": "./development/common/plugins/goat",
       "description": "G.O.A.T.: JIRA ticket to PR with a team of agents in TDD and two human gates (goat), plus pre-merge verdict and post-deploy regression watch (geiger)",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": {
         "name": "Marius Serban"
       },

@@ -184,7 +184,9 @@ heartbeat from a closed session), this is a fresh launch → proceed with Boot:
 
 - **Record deploy time** as now, unless the user gives an explicit deploy timestamp (pass
   `--deploy-at <ISO>` to `state.py init` if Phase 1's `init` hasn't already run, or re-`init`
-  with the real deploy time).
+  with the real deploy time) — and the watch window: `--window-hours <h>` (default 4). A change
+  that ships a scheduled job or a queue consumer needs a window that contains at least one real
+  run of it — pass the hours explicitly.
 
 - **Check baseline file.** Existence alone isn't enough — an ES failure during Phase 1's atomic
   write leaves nothing behind (that path is now safe), but an older/hand-created file could still
@@ -330,7 +332,7 @@ silent/slow/costly regression is visible even when `errors` is clean, e.g.:
 [tick {iter_count}] errors=0 throughput=-93% latency=54>180s cost=↑ kpi=0 · fresh=2 · next ~{interval_s}s
 ```
 
-**Auto-close** the watch when either: the window since `started_at` exceeds the default 4h, or
+**Auto-close** the watch when either: the window since `started_at` exceeds `window_hours` (from `state.py show`; default 4h), or
 activity has been quiet through the widest pacing step for long enough that further ticks are
 unlikely to add signal. On close: apply the same PR-existence check as Phase 1 step 6
 (`gh pr view <anchor> --json number`) before posting — post the final verdict as a PR comment
