@@ -1,6 +1,6 @@
 {
   "name": "goat",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "G.O.A.T. (Generalized Occupational Aptitude Test): take a ticket from JIRA to a PR with a team of specialized agents in TDD, with two human gates. Spec (fan-out) -> Architect (judge-panel) -> failing tests -> implementation -> adversarial review -> commit/PR. Then geiger scans the shipped outputs (pre-merge verdict + post-deploy regression watch). Stack-agnostic.",
   "author": {
     "name": "Marius Serban"

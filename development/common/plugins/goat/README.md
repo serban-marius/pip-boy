@@ -26,6 +26,8 @@ If the repo uses spec-kit (`specs/` + `.specify/`), the approved spec is persist
 
 Say any of: `/goat PROJ-123`, "implement ticket X with agents", "take this jira task and build it with TDD", "from jira to PR with agents". Spanish triggers also work.
 
+`/goat --auto PROJ-123` runs unattended (the gates become automated checks; a blocked run pushes the branch) and ends with a `GOAT RESULT: pr-open <url> | blocked <code>: <reason>` line — what the `sprint-autopilot` plugin's workers run.
+
 **Requirements:**
 
 - **JIRA MCP** — required to fetch the ticket in Step 1 (`mcp__atlassian-local__jira_get_issue` / `jira_search`). Without it, provide the ticket text directly.
@@ -41,6 +43,6 @@ Review the outputs of a developed feature: verify worked-as-intended and detect 
 - **Phase 1 (pre-merge)** — run the spec-driven tests and adversarial review, post a PR comment with the verdict (pass/fail/review needed).
 - **Phase 2 (post-deploy loop)** — diff production error signatures against a pre-deploy baseline, triage new/worsened errors to Jira, and loop until resolved. No Slack notifications; errors surface in Jira only.
 
-**Modes:** `/geiger <pr|branch>` (run phase 1), `--watch <pr>` (loop phase 2), `--status <pr>` (check phase 2 progress), `--stop <pr>` (end phase 2 loop).
+**Modes:** `/geiger <pr|branch>` (run phase 1), `--watch <pr>` (loop phase 2), `--status <pr>` (check phase 2 progress), `--stop <pr>` (end phase 2 loop). The phase 2 window defaults to 4h; `state.py init --window-hours <h>` sets a longer one for changes that ship a scheduled job or a queue consumer.
 
 **Note:** Phase 2 assumes the Softonic production stack — Elasticsearch via `$ES_CREDS` and Jira project `DS`.
