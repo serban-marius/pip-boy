@@ -30,9 +30,10 @@ check "bash, git -C path commit too"       2 "$T" commit '{"tool_input":{"comman
 check "bash, commit in another segment no" 0 "$T" commit '{"tool_input":{"command":"git status; echo commit"}}'
 check "unknown mode is a usage error"      1 "$T" nope   '{}'
 
-# ── personal mode: pristine script outside the repo + a rules file named after the repo's origin ──
-P=$tmp/home/vats.sh && mkdir -p "$tmp/home" && cp "$here/vats.sh" "$P"
-cat >"$tmp/home/demo.sh" <<'EOF'
+# ── personal mode: the pristine shipped script + a rules file named after the repo's origin ──
+# The script runs from wherever the plugin is cached; the rules come from $VATS_HOME (default ~/.claude/vats).
+P=$here/vats.sh && export VATS_HOME=$tmp/home && mkdir -p "$VATS_HOME"
+cat >"$VATS_HOME/demo.sh" <<'EOF'
 on_edit()   { added_lines "$1" | grep -E '^[0-9]+:.*FORBIDDEN' && return 1; return 0; }
 on_commit() { return "$SKIP"; }
 EOF

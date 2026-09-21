@@ -19,7 +19,9 @@ In the repo you want to harness:
 /vats
 ```
 
-The skill detects the stack, picks the fast per-file commands **the repo already has** (it never installs anything), times them, writes `.claude/hooks/vats.sh`, merges two hook entries into `.claude/settings.json`, and proves the hook works by watching it fail on a deliberately broken file and pass again. Restart the session afterwards so the hooks load.
+The skill reads the repo's own standards and tooling, picks fast per-file checks using only what **the repo already has** (it never installs anything), times them, writes the rules, and proves they work by watching them fail on a deliberately broken file and pass again.
+
+**Setting it up, adding a repo, and the reasoning behind every design decision: see [RUNBOOK.md](RUNBOOK.md).**
 
 ```
 /vats mutate app/Billing
@@ -29,8 +31,8 @@ Runs the stack's mutation tester (Infection, Stryker, mutmut, PIT, cargo-mutants
 
 ## Two ways to run it
 
-- **Team mode** (default): the script and the hook entries are committed to the repo, so everyone gets them.
-- **Personal mode**: nothing lands in the repo. The script lives in `~/.claude/vats/`, with one rules file per repo (`<repo-name>.sh`) matched by the name of the repo's `origin`, so it covers every worktree. For trialling rules on a shared repo before proposing them.
+- **Personal mode** (default): the plugin ships the hooks (`hooks/hooks.json`), so installing it is all the wiring there is. You write one rules file per repo, `~/.claude/vats/<repo-name>.sh`, matched by the name of the repo's `origin`, so it covers every worktree. Nothing lands in the repo; repos without a rules file are left alone. For trialling rules on a shared codebase before proposing them.
+- **Team mode**: the script and two hook entries are committed to the repo, so everyone gets them without the plugin.
 
 Rules judge **only the lines a change adds** (`added_lines`), so legacy code that already breaks them stays out of the agent's way. A check that can't run (container down, tool missing) returns `$SKIP` and never blocks.
 
@@ -56,7 +58,7 @@ The contract is small: a check that passes prints nothing; a check that fails ex
 ## Development
 
 ```
-skills/vats/templates/vats.test.sh   # self-check for the hook script: fake hook JSON in, exit codes out
+hooks/vats.test.sh   # self-check for the hook script: fake hook JSON in, exit codes out
 ```
 
 ## Plugin structure
@@ -65,11 +67,13 @@ skills/vats/templates/vats.test.sh   # self-check for the hook script: fake hook
 vats/
 ├── .claude-plugin/
 │   └── plugin.json
+├── hooks/
+│   ├── hooks.json       # registers the two hooks when the plugin is enabled
+│   ├── vats.sh          # the script (also the template copied into a repo in team mode)
+│   └── vats.test.sh
 ├── skills/
 │   └── vats/
-│       ├── SKILL.md
-│       └── templates/
-│           ├── vats.sh
-│           └── vats.test.sh
+│       └── SKILL.md
+├── RUNBOOK.md           # setup, adding a repo, and why it's built this way
 └── README.md
 ```

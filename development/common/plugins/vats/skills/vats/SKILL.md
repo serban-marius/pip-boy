@@ -10,8 +10,8 @@ review. So: many small, fast checks while the agent works, instead of one big re
 
 | Cadence | What runs | Where |
 |---|---|---|
-| every edit | lint, types, antipatterns, **on the one file** | `PostToolUse` hook -> `vats.sh edit` |
-| every `git commit` | tests, contracts | `PreToolUse(Bash)` hook -> `vats.sh commit` |
+| every edit | lint, types, antipatterns, **on the one file** | `PostToolUse` hook -> `vats.sh edit` -> `on_edit` |
+| every `git commit` | tests, contracts | `PreToolUse(Bash)` hook -> `vats.sh commit` -> `on_commit` |
 | release | integration, E2E | **CI. Not a hook.** Don't build it here. |
 | now and then | mutation testing on sensitive modules | `/vats mutate <path>` (below) |
 
@@ -23,8 +23,8 @@ review. So: many small, fast checks while the agent works, instead of one big re
 - **Judge the delta, not the file.** In a legacy repo most files already break the rules (one real repo: 183 of 228 files lacked `declare(strict_types=1)`, a rule its own standards call mandatory). A whole-file check fires on every edit and pushes the agent into changes nobody asked for. Pattern rules run over `added_lines "$file"` (the lines this change adds, as `N:text`); only whole-file tools that the repo already passes clean (a formatter, a type checker) look at the full file.
 - **"Couldn't run" is not "failed".** A check that can't execute (container down, tool missing) returns `$SKIP` (75) and never blocks. Otherwise a stopped dev cluster blocks every edit.
 - **Pick where it lives (ask if unclear):**
-  - **Team mode**: `<repo>/.claude/hooks/vats.sh` + `<repo>/.claude/settings.json`, committed. Teammates get the verifiers without this plugin, through Claude Code's normal hook-trust flow.
-  - **Personal mode**: nothing lands in the repo. `~/.claude/vats/vats.sh` + one rules file per repo, `~/.claude/vats/<repo-name>.sh`, wired once in `~/.claude/settings.json`. The script finds the rules by the basename of `origin`'s URL, so every worktree of the repo is covered; repos without a rules file are left alone. Use it to trial rules on a shared repo before proposing them to the team.
+  - **Personal mode (default)**: nothing lands in the repo and there is nothing to wire. This plugin's `hooks/hooks.json` already runs `hooks/vats.sh` on every edit and commit; your whole job is to write ONE file, `~/.claude/vats/<repo-name>.sh`, defining `on_edit` and `on_commit`. The script finds it by the basename of `origin`'s URL, so every worktree of the repo is covered; repos without a rules file are left alone. Use it to trial rules on a shared repo before proposing them to the team.
+  - **Team mode**: `<repo>/.claude/hooks/vats.sh` + two entries in `<repo>/.claude/settings.json`, committed. Teammates get the verifiers without this plugin, through Claude Code's normal hook-trust flow. Never both modes on one repo: every check would fire twice.
 - **Merge, never overwrite** `.claude/settings.json`. Show the diff.
 - **Not verified = not installed.** Step 3 is not optional.
 
@@ -44,11 +44,16 @@ Run each candidate once on a real file and note the time. Prefer the repo's own 
 
 ## Step 2 · install
 
-1. Copy `templates/vats.sh` (next to this file), `chmod +x`:
-   - team mode -> `<repo>/.claude/hooks/vats.sh`
-   - personal mode -> `~/.claude/vats/vats.sh` (once; skip if it's already there and current)
-2. Write the checks. Team mode: fill in `on_edit` (a `case` on the file extension) and `on_commit` inside the script. Personal mode: define the same two functions in `~/.claude/vats/<repo-name>.sh` and leave the script pristine. Either way: chain with `&&` so the first failure stops, print one short line per violation with its line number, and quote the repo's own rule file when there is one (`.claude/rules/*.md`, `CLAUDE.md`), so the agent knows the rule is the team's and not yours.
-3. Merge the two hook entries into `<repo>/.claude/settings.json` (team) or `~/.claude/settings.json` (personal, with the command `"$HOME"/.claude/vats/vats.sh edit|commit`). Back the file up first and never print its `env` block:
+**Personal mode.** Write `~/.claude/vats/<repo-name>.sh` (name = `basename -s .git "$(git remote get-url origin)"`) defining `on_edit` and `on_commit`. That's all; the plugin's hooks are already live. The file is sourced by `hooks/vats.sh`, so it can use `added_lines FILE`, `$SKIP` and `$input` (the raw hook JSON). `RUNBOOK.md` at the plugin root has an annotated example.
+
+**Team mode.**
+1. Copy `../../hooks/vats.sh` (relative to this file, i.e. the plugin's `hooks/vats.sh`) to `<repo>/.claude/hooks/vats.sh`, `chmod +x`, and fill in `on_edit` and `on_commit` inside it.
+2. Merge the two hook entries below into `<repo>/.claude/settings.json`. Back the file up first, merge (never overwrite), and show the diff.
+3. If the user had a personal rules file for this repo, rename it so checks don't run twice.
+
+**Either way**, when writing the checks: chain with `&&` so the first failure stops; print one short line per violation with its line number; quote the repo's own rule file when there is one (`.claude/rules/*.md`, `CLAUDE.md`), so the agent knows the rule is the team's and not yours; and make soft nudges read only the text of the current edit (`jq -r '.tool_input.new_string // .tool_input.content' <<<"$input"`) so they fire once instead of on every later edit.
+
+Team-mode hook entries:
 
 ```json
 {
@@ -69,19 +74,19 @@ Set the commit `timeout` (seconds) above the real duration of the test suite. If
 
 ## Step 3 · see it RED, then GREEN
 
-From the repo root, with a real source file `F`:
+From the repo root, with a real source file `F` (`V` = `.claude/hooks/vats.sh` in team mode, the plugin's `hooks/vats.sh` in personal mode):
 
 ```bash
-echo '{"tool_input":{"file_path":"'$PWD/F'"}}' | .claude/hooks/vats.sh edit; echo "exit=$?"   # expect 0, no output
+echo '{"tool_input":{"file_path":"'"$PWD/F"'"}}' | CLAUDE_PROJECT_DIR=$PWD bash "$V" edit; echo "exit=$?"   # expect 0, no output
 ```
 
 Then break `F` on purpose (a type error, a lint violation), run it again, and confirm **exit 2** with a short, readable message on stderr. Revert `F`. Do the same for commit:
 
 ```bash
-echo '{"tool_input":{"command":"git commit -m x"}}' | .claude/hooks/vats.sh commit; echo "exit=$?"
+echo '{"tool_input":{"command":"git commit -m x"}}' | CLAUDE_PROJECT_DIR=$PWD bash "$V" commit; echo "exit=$?"
 ```
 
-If you never saw it fail, you don't know it works. Hooks load at session start: tell the user to restart the session (or check `/hooks`) to activate them.
+If you never saw it fail, you don't know it works. Test against a throwaway copy or revert with git; never leave the deliberate violation behind. A personal rules file applies on the next edit, nothing to reload. Team-mode hooks load at session start: tell the user to open `/hooks` once or restart the session.
 
 ## Step 4 · report
 

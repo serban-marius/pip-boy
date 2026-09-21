@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# vats: verifiers by cadence. Installed by the pip-boy `vats` skill.
-# Wired as Claude Code hooks:  PostToolUse(Edit|Write) -> vats.sh edit   ·   PreToolUse(Bash) -> vats.sh commit
+# vats: verifiers by cadence (pip-boy plugin). Runs as two Claude Code hooks:
+#   PostToolUse(Edit|Write) -> vats.sh edit      PreToolUse(Bash) -> vats.sh commit
 # Contract: exit 0 = silent pass. exit 2 + stderr = on edit, Claude gets the failure as a reminder; on commit, the commit is blocked.
 #
-# Team mode:     this file lives in <repo>/.claude/hooks/ and you edit on_edit/on_commit below.
-# Personal mode: this file lives in ~/.claude/vats/ and each repo's rules live next to it in <repo-name>.sh,
-#                which redefines on_edit/on_commit. Repos without a rules file are left alone. Nothing lands in the repo.
+# Personal mode (default): the plugin's hooks/hooks.json runs this file as shipped. The checks for each repo live in
+#   ~/.claude/vats/<repo-name>.sh, which defines on_edit/on_commit. Repos without a rules file are left alone.
+# Team mode: a copy of this file is committed at <repo>/.claude/hooks/vats.sh with on_edit/on_commit filled in below.
+# See RUNBOOK.md.
 
 set -u
 cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
@@ -39,9 +40,9 @@ added_lines() { # $1 = file
 }
 
 # ponytail: repo identity = basename of origin's URL, so every worktree of a repo shares one rules file.
-rules="$(dirname "$0")/$(basename -s .git "$(git remote get-url origin 2>/dev/null)" 2>/dev/null).sh"
+rules="${VATS_HOME:-$HOME/.claude/vats}/$(basename -s .git "$(git remote get-url origin 2>/dev/null)" 2>/dev/null).sh"
 # shellcheck disable=SC1090
-[ -f "$rules" ] && [ "$rules" != "$0" ] && . "$rules"
+[ -f "$rules" ] && ! [ "$rules" -ef "$0" ] && . "$rules"
 
 run() { # silent on success; on failure hand Claude the tail of the output, not the whole log (context is not free)
   local out rc
