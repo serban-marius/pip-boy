@@ -20,7 +20,11 @@ review. So: many small, fast checks while the agent works, instead of one big re
 - **Silent on green, short on red.** A passing check prints nothing. A failing one hands the agent the last 40 lines, not the log. Verbose hooks are context poisoning.
 - **The edit cadence has a ~5 s budget.** Time every command on a real file. Anything slower, or anything that only works project-wide (`tsc`, `cargo check`, a whole-tree phpstan), moves down to the commit cadence.
 - **Only tools the repo already has.** Read `composer.json`, `package.json`, `pyproject.toml`, `Makefile`, CI config. NEVER install a dependency to have something to run; list what's missing in the report instead.
-- **Hooks live in the repo** (`.claude/hooks/vats.sh` + `.claude/settings.json`), committed. Teammates get them without this plugin, and they go through Claude Code's normal hook-trust flow.
+- **Judge the delta, not the file.** In a legacy repo most files already break the rules (one real repo: 183 of 228 files lacked `declare(strict_types=1)`, a rule its own standards call mandatory). A whole-file check fires on every edit and pushes the agent into changes nobody asked for. Pattern rules run over `added_lines "$file"` (the lines this change adds, as `N:text`); only whole-file tools that the repo already passes clean (a formatter, a type checker) look at the full file.
+- **"Couldn't run" is not "failed".** A check that can't execute (container down, tool missing) returns `$SKIP` (75) and never blocks. Otherwise a stopped dev cluster blocks every edit.
+- **Pick where it lives (ask if unclear):**
+  - **Team mode**: `<repo>/.claude/hooks/vats.sh` + `<repo>/.claude/settings.json`, committed. Teammates get the verifiers without this plugin, through Claude Code's normal hook-trust flow.
+  - **Personal mode**: nothing lands in the repo. `~/.claude/vats/vats.sh` + one rules file per repo, `~/.claude/vats/<repo-name>.sh`, wired once in `~/.claude/settings.json`. The script finds the rules by the basename of `origin`'s URL, so every worktree of the repo is covered; repos without a rules file are left alone. Use it to trial rules on a shared repo before proposing them to the team.
 - **Merge, never overwrite** `.claude/settings.json`. Show the diff.
 - **Not verified = not installed.** Step 3 is not optional.
 
@@ -40,9 +44,11 @@ Run each candidate once on a real file and note the time. Prefer the repo's own 
 
 ## Step 2 · install
 
-1. Copy `templates/vats.sh` (next to this file) to `<repo>/.claude/hooks/vats.sh`, `chmod +x`.
-2. Fill in `on_edit` (a `case` on the file extension) and `on_commit`. Chain with `&&` so the first failure stops. Leave the rest of the script alone.
-3. Merge into `<repo>/.claude/settings.json`:
+1. Copy `templates/vats.sh` (next to this file), `chmod +x`:
+   - team mode -> `<repo>/.claude/hooks/vats.sh`
+   - personal mode -> `~/.claude/vats/vats.sh` (once; skip if it's already there and current)
+2. Write the checks. Team mode: fill in `on_edit` (a `case` on the file extension) and `on_commit` inside the script. Personal mode: define the same two functions in `~/.claude/vats/<repo-name>.sh` and leave the script pristine. Either way: chain with `&&` so the first failure stops, print one short line per violation with its line number, and quote the repo's own rule file when there is one (`.claude/rules/*.md`, `CLAUDE.md`), so the agent knows the rule is the team's and not yours.
+3. Merge the two hook entries into `<repo>/.claude/settings.json` (team) or `~/.claude/settings.json` (personal, with the command `"$HOME"/.claude/vats/vats.sh edit|commit`). Back the file up first and never print its `env` block:
 
 ```json
 {

@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
-# vats: verifiers by cadence. Installed by the pip-boy `vats` skill; the two functions below are yours to edit.
-# Wired from .claude/settings.json:  PostToolUse(Edit|Write) -> vats.sh edit   ·   PreToolUse(Bash) -> vats.sh commit
+# vats: verifiers by cadence. Installed by the pip-boy `vats` skill.
+# Wired as Claude Code hooks:  PostToolUse(Edit|Write) -> vats.sh edit   ·   PreToolUse(Bash) -> vats.sh commit
 # Contract: exit 0 = silent pass. exit 2 + stderr = on edit, Claude gets the failure as a reminder; on commit, the commit is blocked.
+#
+# Team mode:     this file lives in <repo>/.claude/hooks/ and you edit on_edit/on_commit below.
+# Personal mode: this file lives in ~/.claude/vats/ and each repo's rules live next to it in <repo-name>.sh,
+#                which redefines on_edit/on_commit. Repos without a rules file are left alone. Nothing lands in the repo.
 
 set -u
 cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
 command -v jq >/dev/null || { echo "vats: jq not found, verifiers are OFF" >&2; exit 1; }
 input=$(cat)
+
+SKIP=75 # a check returns this when it could not RUN (no container, tool missing). Not a failure: never blocks.
 
 # Every edit. Must be FAST (budget ~5s) and scoped to the one file: lint, types, antipatterns.
 on_edit() { # $1 = path of the edited file
@@ -22,12 +28,27 @@ on_commit() {
   return 0 # e.g. php artisan test --stop-on-failure
 }
 
-run() { # silent on success; on failure hand Claude the tail of the output, not the whole log (context is not free)
-  local out
-  if ! out=$("$@" 2>&1); then
-    printf 'vats (%s) failed. Fix this before continuing:\n%s\n' "$mode" "$(printf '%s\n' "$out" | tail -n 40)" >&2
-    exit 2
+# Lines this change ADDS to a file ("NNN:text"), so rules judge the delta and leave legacy code alone.
+# A file git doesn't know yet counts as all new.
+added_lines() { # $1 = file
+  if git ls-files --error-unmatch -- "$1" >/dev/null 2>&1; then
+    git diff -U0 HEAD -- "$1" | awk '/^@@/{split($3,a,","); n=substr(a[1],2)+0; next} /^\+\+\+/{next} /^\+/{print n ":" substr($0,2); n++}'
+  else
+    grep -n '' -- "$1"
   fi
+}
+
+# ponytail: repo identity = basename of origin's URL, so every worktree of a repo shares one rules file.
+rules="$(dirname "$0")/$(basename -s .git "$(git remote get-url origin 2>/dev/null)" 2>/dev/null).sh"
+# shellcheck disable=SC1090
+[ -f "$rules" ] && [ "$rules" != "$0" ] && . "$rules"
+
+run() { # silent on success; on failure hand Claude the tail of the output, not the whole log (context is not free)
+  local out rc
+  out=$("$@" 2>&1); rc=$?
+  [ "$rc" -eq 0 ] || [ "$rc" -eq "$SKIP" ] && exit 0
+  printf 'vats (%s) failed. Fix this before continuing:\n%s\n' "$mode" "$(printf '%s\n' "$out" | tail -n 40)" >&2
+  exit 2
 }
 
 mode=${1:-}

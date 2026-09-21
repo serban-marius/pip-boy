@@ -27,7 +27,14 @@ The skill detects the stack, picks the fast per-file commands **the repo already
 
 Runs the stack's mutation tester (Infection, Stryker, mutmut, PIT, cargo-mutants) filtered to that path and reports the surviving mutants: the code changes no test noticed.
 
-## What lands in your repo
+## Two ways to run it
+
+- **Team mode** (default): the script and the hook entries are committed to the repo, so everyone gets them.
+- **Personal mode**: nothing lands in the repo. The script lives in `~/.claude/vats/`, with one rules file per repo (`<repo-name>.sh`) matched by the name of the repo's `origin`, so it covers every worktree. For trialling rules on a shared repo before proposing them.
+
+Rules judge **only the lines a change adds** (`added_lines`), so legacy code that already breaks them stays out of the agent's way. A check that can't run (container down, tool missing) returns `$SKIP` and never blocks.
+
+## What lands in your repo (team mode)
 
 ```
 .claude/
