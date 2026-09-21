@@ -1,0 +1,10 @@
+{
+  "name": "vats",
+  "version": "1.0.0",
+  "description": "V.A.T.S. (Verifiers At Tiered Stages): wire cheap, frequent verifiers into a repo as Claude Code hooks, each at its own cadence. Every edit -> lint + types on the one file; every git commit -> tests + contracts; failures go straight back to the agent. Plus on-demand mutation testing for sensitive modules. Stack-agnostic.",
+  "author": {
+    "name": "Marius Serban"
+  },
+  "homepage": "https://github.com/serban-marius/pip-boy",
+  "repository": "https://github.com/serban-marius/pip-boy"
+}
