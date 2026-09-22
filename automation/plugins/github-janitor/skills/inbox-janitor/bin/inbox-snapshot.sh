@@ -43,8 +43,8 @@ jq -n --slurpfile N "$tmp/notifs.json" --slurpfile E "$tmp/enriched.json" '
                         author: ($p.author | actor), myLastReview: ($p.reviews.nodes[0].state // null),
                         checks: ($p.commits.nodes[0].commit.statusCheckRollup.state // "NONE") } else null end) }
     | . + (
-        if (.reason | IN("mention", "assign", "team_mention")) then {verdict: "keep", rule: "direct \(.reason)"}
-        elif .pr != null and .pr.state != "OPEN" then {verdict: "done", rule: "pr \(.pr.state | ascii_downcase)"}
+        if .pr != null and .pr.state != "OPEN" then {verdict: "done", rule: "pr \(.pr.state | ascii_downcase)"}
+        elif (.reason | IN("mention", "assign", "team_mention")) then {verdict: "keep", rule: "direct \(.reason)"}
         elif (.reason | IN("author", "ci_activity", "push", "subscribed")) then {verdict: "done", rule: "noise \(.reason)"}
         elif .reason == "review_requested" and .pr != null and .pr.author.type == "Bot" then {verdict: "done", rule: "bot pr"}
         elif .reason == "review_requested" and .pr != null and .pr.myLastReview == "APPROVED" then {verdict: "done", rule: "already approved"}

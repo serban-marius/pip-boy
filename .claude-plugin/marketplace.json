@@ -61,6 +61,19 @@
       "category": "Development Tools"
     },
     {
+      "name": "vats",
+      "source": "./development/common/plugins/vats",
+      "description": "V.A.T.S.: verifiers by cadence as Claude Code hooks. Every edit -> lint + types on the one file; every git commit -> tests; failures go back to the agent. Plus on-demand mutation testing.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Marius Serban"
+      },
+      "homepage": "https://github.com/serban-marius/pip-boy",
+      "repository": "https://github.com/serban-marius/pip-boy",
+      "keywords": ["hooks", "harness", "verifiers", "lint", "types", "tests", "mutation-testing", "skill"],
+      "category": "Development Tools"
+    },
+    {
       "name": "frontend-design",
       "source": "./development/common/external_plugins/frontend-design",
       "description": "Create distinctive, production-grade frontend interfaces with high design quality. Avoids generic AI aesthetics.",

@@ -1,0 +1,21 @@
+{
+  "description": "vats: verifiers by cadence. Every edit and every git commit run the checks defined for the current repo in ~/.claude/vats/<repo-name>.sh; repos without a rules file are left alone.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          { "type": "command", "command": "bash", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/vats.sh", "edit"], "timeout": 30 }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "bash", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/vats.sh", "commit"], "timeout": 300 }
+        ]
+      }
+    ]
+  }
+}
