@@ -41,20 +41,6 @@ A PR with green checks and nothing unresolved is done. Record it and move on —
 
 `isOutdated: true`, or a comment pinned to a SHA older than the head, means the code moved under the finding. That is a strong hint it is already handled, but it is a hint: check the current code before deciding either way.
 
-## 2.5. Retry transient failures first
-
-**Before** deep analysis, try to recover from transient infrastructure failures (DNS errors, timeouts, rate limits, temporary service outages) with 1-2 check reruns:
-
-1. For each **failing** check on the current head, extract its workflow run ID from the check's `detailsUrl`.
-2. Rerun it: `gh run rerun <run-id> --repo <owner/repo>` (requires write access; unattended runs may lack it — that's fine, skip to deep pass).
-3. Wait ~30-60s, then fetch the check state again (`bin/pr-snapshot.sh`).
-4. If the check now passes (`SUCCESS`), done — no deep pass needed for that finding.
-5. If still failing after 1 retry, or the rerun failed with a permissions error, proceed to deep pass for that check.
-
-Track which checks you already retried (store run IDs in a local temp file or bash array). Never retry the same run more than once per janitor invocation — infinite loops on persistent failures waste quota.
-
-The fingerprint doesn't change on a rerun alone (same HEAD), so the janitor won't fire again until the check completes and the `statusCheckRollup` state updates. That's fine — the next 10-min evaluation will see the change.
-
 ## 3. Deep pass: follow pr-address-comments
 
 For each PR that survived triage, read `../pr-address-comments/SKILL.md` and do what it says: read files at the PR's SHA, separate each finding's premise from its conclusion, reach a verdict of correct / false positive / out of scope, fix what is genuinely broken, commit, push, reply with reproducible evidence, and resolve bot threads only.
