@@ -1,6 +1,6 @@
 ---
 name: pr-janitor
-description: "Keep the authenticated GitHub user's open, ready-for-review pull requests healthy: fix failing CI, address still-valid review feedback, drive checks green on the latest head, and report with direct PR links. Never posts redundant comments and never resolves threads a human took part in. Use when the user says 'pr janitor', 'fix my PRs', 'address the review comments', 'keep my PRs green', '/pr-janitor', or from a scheduled OpenClaw automation."
+description: "Keep the authenticated GitHub user's open, ready-for-review pull requests healthy: address still-valid review feedback, report failing CI for manual analysis, and drive checks green with direct PR links. Never posts redundant comments and never resolves threads a human took part in. Use when the user says 'pr janitor', 'fix my PRs', 'address the review comments', 'keep my PRs green', '/pr-janitor', or from a scheduled OpenClaw automation."
 user-invocable: true
 metadata: {"openclaw": {"requires": {"bins": ["git", "gh", "jq"]}, "primaryEnv": "GH_TOKEN"}}
 ---
@@ -34,8 +34,9 @@ Use them instead of assembling state by hand, and re-run the snapshot before eve
 
 For each PR in scope, run `bin/pr-snapshot.sh` and decide whether there is anything worth a deep pass:
 
-- a required check on the current head is failing (`conclusion` in `FAILURE`, `TIMED_OUT`, `CANCELLED`, `ACTION_REQUIRED`, `ERROR`), or
 - a review thread has `isResolved: false` and its last comment is not already an answer from you.
+
+**Failing CI checks are reported but not automatically fixed** — they go in the report with check name and detailsUrl for manual analysis.
 
 A PR with green checks and nothing unresolved is done. Record it and move on — do not read its diff, do not clone it.
 
@@ -56,6 +57,11 @@ After every push, re-run the snapshot, confirm the head is your commit, and re-t
 
 In English, compact, one bullet per PR, always with the direct `https://github.com/<owner>/<repo>/pull/<n>` link. Per PR: head SHA and CI state, what changed and how it was verified, human threads replied to (still open), bot threads resolved, findings skipped with the reason, blockers.
 
+**Failing CI checks:** list each one with its name and `detailsUrl` so you can investigate manually. Format:
+- `❌ [Check Name](detailsUrl) — check logs for details`
+
+Example: `❌ [Run CI tests](https://github.com/softonic-development/apk-signature-provider/actions/runs/35227351827/job/106703547019) — check logs for details`
+
 A blocker is only something you cannot fix from here: missing credentials, external infrastructure, a product decision. Never report green from an earlier SHA.
 
-Unattended runs: silence applies to the report too. Return exactly `NO_REPLY` unless this run changed code, posted a reply, resolved a thread, or hit a blocker. A PR you triaged as clean is not news, however it entered your scope: a run that swept ten PRs and found nothing to do still returns `NO_REPLY`.
+Unattended runs: silence applies to the report too. Return exactly `NO_REPLY` unless this run changed code, posted a reply, resolved a thread, hit a blocker, **or found failing CI checks**. A PR you triaged as clean is not news, however it entered your scope: a run that swept ten PRs and found nothing to do still returns `NO_REPLY`.
