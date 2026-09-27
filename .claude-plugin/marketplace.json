@@ -64,7 +64,7 @@
       "name": "vats",
       "source": "./development/common/plugins/vats",
       "description": "V.A.T.S.: verifiers by cadence as Claude Code hooks. Every edit -> lint + types on the one file; every git commit -> tests; failures go back to the agent. Plus on-demand mutation testing.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": {
         "name": "Marius Serban"
       },
