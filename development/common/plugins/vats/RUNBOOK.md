@@ -92,6 +92,7 @@ Expect `exit=0` and no output. Now add a violation to `F`, run it again, and exp
 - **What the agent sees.** After an edit, a failing check reaches it as a reminder (the edit itself already happened) and it fixes the file on its next step. Before a commit, a failing check blocks the commit and the agent gets the tail of the test output.
 - **What you see.** Nothing, when it works. Claude Code only surfaces a hook that errors or is slow. To watch hooks run, start with `claude --debug`.
 - **A rule misfires.** Fix the pattern in the rules file; it applies on the next edit. If you can't make it precise, delete it: a verifier that cries wolf makes the agent "fix" correct code, which is worse than no verifier.
+- **Is it earning its keep?** Every check that runs is logged to `~/.claude/vats/log.jsonl`. `/vats stats` (or `vats.sh stats [days]`) reads it back: fails per rule, how often the agent fixed itself (fail>pass), rules it can't satisfy (fail>fail), checks that only ever skip, and seconds spent. A rule that never fires in a month is a candidate to delete: the point of a harness is a higher first-try success rate, not more rules. Start each rule's failure message with its name so the failures group cleanly.
 - **Turn it off.** One repo: rename its rules file. Everything: disable the plugin in `/plugin`.
 - **Mutation testing.** `/vats mutate <path>` on a sensitive module answers a different question: do the tests the agent wrote actually assert anything? Run it now and then, not on a cadence.
 

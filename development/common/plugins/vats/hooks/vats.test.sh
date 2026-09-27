@@ -11,7 +11,11 @@ check() { # name, expected exit, script, mode, json, [text stderr must contain]
   if [ "$code" -eq "$2" ] && { [ -z "${6:-}" ] || grep -q -- "$6" <<<"$err"; }; then echo "ok   $1"
   else echo "FAIL $1 (exit $code, wanted $2) $err"; fails=$((fails + 1)); fi
 }
+has() { # name, pattern, text
+  if grep -q -- "$2" <<<"$3"; then echo "ok   $1"; else echo "FAIL $1: no '$2' in: $3"; fails=$((fails + 1)); fi
+}
 edit() { printf '{"tool_input":{"file_path":"%s"}}' "$1"; }
+export VATS_HOME=$tmp/home && mkdir -p "$VATS_HOME" # rules AND the log live here: the tests never touch ~/.claude/vats
 
 # ── team mode: the script lives in the repo, with checks that fail on *.bad files and on every commit ──
 export CLAUDE_PROJECT_DIR=$tmp/team && mkdir -p "$CLAUDE_PROJECT_DIR"
@@ -32,7 +36,7 @@ check "unknown mode is a usage error"      1 "$T" nope   '{}'
 
 # ── personal mode: the pristine shipped script + a rules file named after the repo's origin ──
 # The script runs from wherever the plugin is cached; the rules come from $VATS_HOME (default ~/.claude/vats).
-P=$here/vats.sh && export VATS_HOME=$tmp/home && mkdir -p "$VATS_HOME"
+P=$here/vats.sh
 cat >"$VATS_HOME/demo.sh" <<'EOF'
 on_edit()   { added_lines "$1" | grep -E '^[0-9]+:.*FORBIDDEN' && return 1; return 0; }
 on_commit() { return "$SKIP"; }
@@ -54,5 +58,15 @@ check "skip: a check that can't run never blocks" 0 "$P" commit '{"tool_input":{
 export CLAUDE_PROJECT_DIR=$tmp/other && repo "$CLAUDE_PROJECT_DIR" git@example.com:org/other.git
 printf 'FORBIDDEN\n' >"$tmp/other/new.php"
 check "a repo without a rules file is left alone" 0 "$P" edit "$(edit "$tmp/other/new.php")"
+
+# ── the log: every check that ran left a line, and stats reads the story back ──
+export CLAUDE_PROJECT_DIR=$tmp/demo
+printf 'legacy FORBIDDEN line\na clean new line\n' >"$tmp/demo/old.php"
+check "edit, the agent's fix passes"               0 "$P" edit "$(edit "$tmp/demo/old.php")"
+out=$(bash "$P" stats </dev/null)
+has "stats: fail then pass on a file counts as fixed" 'fail>pass): 1$' "$out"
+has "stats: failures are grouped by their first line" '1x 3:a new FORBIDDEN line' "$out"
+has "log: team mode is recorded too"                  '"repo":"team","mode":"edit".*"result":"fail".*"first":"boom"' "$(cat "$VATS_HOME/log.jsonl")"
+has "log: a repo without rules is not recorded"       '^0$' "$(grep -c '"repo":"other"' "$VATS_HOME/log.jsonl")"
 
 [ "$fails" -eq 0 ] && echo "all green" || { echo "$fails failed"; exit 1; }

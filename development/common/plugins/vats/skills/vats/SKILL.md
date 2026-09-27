@@ -1,6 +1,6 @@
 ---
 name: vats
-description: "V.A.T.S. (Verifiers At Tiered Stages): wire cheap, frequent verifiers into a repo as Claude Code hooks, each at its own cadence. Every edit -> lint + types on the one file; every `git commit` -> tests + contracts. A failure goes straight back to the agent, so it fixes its own mess before a human ever looks. Stack-agnostic (detects the project, uses only tools the repo already has). Also `/vats mutate <path>` for on-demand mutation testing of a sensitive module. Triggers- '/vats', 'set up verifier hooks', 'add lint/type hooks to this repo', 'make the agent check itself', 'harness this repo', '/vats mutate'. Spanish triggers also- 'monta los verificadores', 'ponle hooks de lint y tests a este repo', 'arnés para este repo', 'tests de mutación de este módulo'."
+description: "V.A.T.S. (Verifiers At Tiered Stages): wire cheap, frequent verifiers into a repo as Claude Code hooks, each at its own cadence. Every edit -> lint + types on the one file; every `git commit` -> tests + contracts. A failure goes straight back to the agent, so it fixes its own mess before a human ever looks. Stack-agnostic (detects the project, uses only tools the repo already has). Also `/vats mutate <path>` for on-demand mutation testing of a sensitive module. And `/vats stats` to see whether the rules earn their keep (fails per rule, fixed by the agent, never fired). Triggers- '/vats', 'set up verifier hooks', 'add lint/type hooks to this repo', 'make the agent check itself', 'harness this repo', '/vats mutate', '/vats stats', 'are my verifiers useful'. Spanish triggers also- 'monta los verificadores', 'ponle hooks de lint y tests a este repo', 'arnés para este repo', 'tests de mutación de este módulo'."
 ---
 
 # vats · verifiers by cadence
@@ -103,6 +103,17 @@ Agents write tests that touch every line and assert nothing. Coverage won't tell
 1. Pick the tool the repo has or the stack's standard: Infection (PHP), Stryker (JS/TS/C#), mutmut (Python), PIT (Java), cargo-mutants (Rust). If it isn't installed, say so and stop; installing it is the user's call.
 2. Run it **filtered to `<path>`** (e.g. `vendor/bin/infection --filter=<path> --threads=max --show-mutations`).
 3. Report: mutation score, then each surviving mutant as "this change to the code broke no test", grouped by file, worst first. Propose the missing assertions; write them only if asked.
+
+## `/vats stats [days]` · is the harness earning its keep?
+
+Every check that runs leaves a line in `~/.claude/vats/log.jsonl` (repo, mode, file, pass/fail/skip, ms, session, first line of the failure). Run `"${CLAUDE_PLUGIN_ROOT}/hooks/vats.sh" stats [days]` (team mode: the repo's own copy) and read it back to the user as decisions, not numbers:
+
+- **A rule that never fails** over a few weeks of real work: dead weight, or the model already does it unprompted. Propose deleting it.
+- **fail>pass**: the agent fixed itself, an interruption the human didn't have. This is the value.
+- **fail>fail, or left failing**: the agent can't satisfy the rule. It's vague or wrong; tighten it or delete it.
+- **Mostly skip**: the check never really runs (container down, tool missing). Fix the environment or move it to CI.
+
+The log can't tell a real catch from a false alarm; say so rather than calling every fail a save. Failures group by their first output line, so a rule's message should start with its name.
 
 ## Not included (on purpose)
 

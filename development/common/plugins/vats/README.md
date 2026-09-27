@@ -29,6 +29,12 @@ The skill reads the repo's own standards and tooling, picks fast per-file checks
 
 Runs the stack's mutation tester (Infection, Stryker, mutmut, PIT, cargo-mutants) filtered to that path and reports the surviving mutants: the code changes no test noticed.
 
+```
+/vats stats
+```
+
+Reads the log every check leaves behind (`~/.claude/vats/log.jsonl`) and says whether the rules earn their keep: how often each one fails, how often the agent fixed it on its own, which ones never fire, and how much time they cost.
+
 ## Two ways to run it
 
 - **Personal mode** (default): the plugin ships the hooks (`hooks/hooks.json`), so installing it is all the wiring there is. You write one rules file per repo, `~/.claude/vats/<repo-name>.sh`, matched by the name of the repo's `origin`, so it covers every worktree. Nothing lands in the repo; repos without a rules file are left alone. For trialling rules on a shared codebase before proposing them.
