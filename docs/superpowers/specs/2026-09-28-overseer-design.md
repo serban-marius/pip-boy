@@ -15,9 +15,9 @@ no agent fleet, no human gates, no per-repo config. The agent works however it l
 - Human approval gates, multi-agent review, EXPLAIN checks, automatic PR splitting (the hook says *split*; how is up to the agent/user).
 - Hardening against an agent that writes production files through Bash (`cat > file`). The rule forbids it; the hook does not police it.
 - Replacing CI.
-- Model-judged checks (e.g. Jev, pip-boy #25) for what git can't decide: is the spec real, does the PR match it, is a
-  test-less commit a refactor. Candidate after the #25 spike, on the slow cadences only (commit, PR), and only to warn or
-  block more, never to unlock what a deterministic rule blocked.
+- Other model-judged checks (is the spec real, does the PR match it, is a test-less commit a refactor). Rule 5's Jev judge
+  is the first; more only on the slow cadences (commit, PR), and only to warn or block more, never to unlock what a
+  deterministic rule blocked.
 
 ## Rules
 
@@ -77,7 +77,27 @@ Known friction it covers: hotfixes without a spec, spikes, and carving a stack w
 - The test-runner list is a fixed regex; add a runner when a repo needs one.
 - Any failure of a test command counts as red, including "command not found".
 - Red is required once per branch, not once per cycle, because refactoring on green is legitimate.
-- Rule 5 cannot judge whether a cut makes sense; size only decides when to ask. Next step: a Jev judge (pip-boy #25) asked "could this PR split into smaller pieces that each build, pass tests and review alone?" over the spec, `git diff --stat` and commit subjects (no code). It only blocks more; with no key, a timeout or low confidence it falls back to the size ask. Benchmark: toucan #101 (should be splittable) and its 14-phase stack #103–#117 (should be indivisible).
+- Rule 5 asks Jev (`jev-latest`, `POST https://api.typesafe.ai/v1/systemone`) one `choice` question, `indivisible` vs
+  `splittable`, over the PR body, `git diff --numstat` and commit subjects (no code). It blocks on `splittable` with
+  confidence ≥ 0.7; no key (`OVERSEER_JEV_KEY`, else keychain item `jev`), a 5 s timeout, an error or lower confidence all
+  fall back to the size ask.
+
+## Jev benchmark (pip-boy #25, 2026-09-28)
+
+Dataset: toucan DS-3650. #101 (5,043 lines, later split) and 13 synthetic pairs of adjacent stack phases should be
+`splittable`; the 14 stack phases #103–#117 were expected `indivisible`. State = "What does this PR do" section, files with
++/−, commit subjects; the Stack and Notes sections were stripped so the phase list could not leak.
+
+| confidence ≥ | splittable caught | stack phases flagged |
+|---|---|---|
+| 0.5 | 14/14 | #103 #106 #115 #116 #117 |
+| 0.7 | 13/14 (misses #101, conf 0.55) | #103 #116 #117 |
+| 0.9 | 10/14 | #117 |
+
+At 0.7 the three flags are real multi-part PRs by their own descriptions: #103 "two small fixes… neither is about the
+program page", #116 several independent review calls, #117 "the last three points of the review, one commit each". Two runs
+gave the same choices (max probability drift 0.07). About 270 ms and 700–2,500 input tokens per call. #101's miss is covered
+by the size ask. Live through the hook: a one-function PR passed (441 ms); add + sub + a UI theme was blocked (p 0.97, conf 0.95).
 - Rule 7 reads line comments and docblocks; Python docstrings are not detected, and a `ponytail:` marker must fit on one line.
 - The script and its self-check follow rule 7 themselves: no prose comments, only `ponytail:` markers on the shortcuts above.
 

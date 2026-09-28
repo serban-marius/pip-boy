@@ -9,7 +9,7 @@ command -v jq >/dev/null || { echo "overseer: jq not found, rules are OFF" >&2; 
 
 branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
 log="$(git rev-parse --git-dir)/overseer/${branch//\//-}.log"
-ASK_PR_LINES=400 # ponytail: size only decides when to ask, never where to cut; a model judge replaces it after pip-boy #25
+ASK_PR_LINES=400 # ponytail: size only decides when to ask for a reason; Jev judges the cut when it is reachable
 TESTS='\b(phpunit|pest|artisan test|pytest|vitest|jest|go test|cargo test|(npm|pnpm) (run )?test|yarn test|bun test|rspec|mix test|gradle test|mvn test)\b' # ponytail: fixed list; add a runner when a repo needs one
 COMMIT='\bgit\b[^;&|]*\bcommit\b'
 PR_CREATE='\bgh\s+pr\s+create\b'
@@ -55,6 +55,16 @@ prose_comments() {
     grep -vE '^[0-9]+:[[:space:]]*(#!|#\[|(//|#|/\*+|\*/?|\{\{--|<!--|-->|--\}\})[[:space:]]*$)' |
     grep -vE '@[A-Za-z]|phpcs:|phpstan-|psalm-|eslint-|prettier-ignore|@ts-|noqa|type: ?ignore|pylint:|nolint|NOSONAR|//go:|(end)?region|istanbul|c8 ignore|-\*-|shellcheck|yamllint|ponytail:'
 }
+jev_split() {
+  local key=${OVERSEER_JEV_KEY-$(security find-generic-password -s jev -w 2>/dev/null)} r # ponytail: macOS keychain only; OVERSEER_JEV_KEY elsewhere
+  [ -n "$key" ] || return 1
+  r=$(jq -n --arg s "$1" '{model: "jev-latest", state: $s, questions: {split: {type: "choice",
+      instructions: "Could this pull request be split into smaller pull requests, stacked one on top of the other, where each one builds, passes its own tests and can be reviewed and merged on its own?",
+      criteria: {indivisible: "It is one piece of functionality: taking any part out leaves something that does not build, fails its tests, or cannot be reviewed and merged on its own.",
+                 splittable: "It holds two or more pieces that could each be their own pull request, merged in order, each building and passing its tests without the ones after it."}}}}' |
+    curl -sf --max-time 5 -H "Authorization: Bearer $key" -H 'Content-Type: application/json' --data @- "${OVERSEER_JEV_URL:-https://api.typesafe.ai/v1/systemone}") || return 1
+  jq -er '.answers.split | select(.choice == "splittable" and .confidence >= 0.7) | "p=\(.probabilities.splittable) confidence=\(.confidence)"' <<<"$r" # ponytail: 0.7 from the toucan benchmark (13/14 caught, 3 flags all multi-part); re-tune on more cases
+}
 cmd() { jq -r '.tool_input.command // ""' <<<"$input"; }
 dirty_files() { git status --porcelain --untracked-files=all | cut -c4-; }
 
@@ -90,6 +100,8 @@ case "${1:-}" in
       while IFS=$'\t' read -r a d f; do is_prod "$f" && [ "$a" != - ] && n=$((n + a + d)); done < <(git diff --numstat "$b"...HEAD 2>/dev/null)
       body=$c; bf=$(grep -oE -- '(--body-file|-F)[ =]+[^ ]+' <<<"$c" | head -1 | sed -E 's/^(--body-file|-F)[ =]+//')
       [ -n "$bf" ] && [ -f "$bf" ] && body+=$(cat "$bf")
+      j=$(jev_split "$(printf '%s\n\nChanged files (+added -deleted):\n%s\n\nCommits:\n%s' "$body" "$(git diff --numstat "$b"...HEAD 2>/dev/null | awk '{print $3 " +" $1 " -" $2}')" "$(git log --format='- %s' "$b"..HEAD 2>/dev/null)")") &&
+        block "Jev judges this PR holds more than one piece ($j). Split it into a stack by function: each PR builds, passes its tests and can be reviewed on its own, each based on the previous branch."
       [ "$n" -le "$ASK_PR_LINES" ] || grep -q 'Why not smaller:' <<<"$body" ||
         block "this PR changes $n lines of production code vs $b. If it splits into smaller pieces that each build, pass their tests and can be reviewed on their own, split it into a stack, each PR based on the previous branch. If it cannot, say why in the body: 'Why not smaller: ...'."
       grep -Eq 'specs/|openspec/changes/' <<<"$body" || block "the PR body must link its spec (the specs/... or openspec/changes/... path)."

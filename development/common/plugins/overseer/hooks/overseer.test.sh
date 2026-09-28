@@ -15,7 +15,8 @@ edit() { printf '{"tool_input":{"file_path":"%s"}}' "$R/$1"; }
 bash_() { jq -nc --arg c "$1" '{tool_input:{command:$c}}'; }
 fire() { printf '%s' "$2" | bash "$S" "$1" >/dev/null 2>&1; }
 
-export CLAUDE_PROJECT_DIR=$tmp/repo R=$tmp/repo
+export CLAUDE_PROJECT_DIR=$tmp/repo R=$tmp/repo OVERSEER_JEV_KEY=test OVERSEER_JEV_URL=file://$tmp/nope.json
+jev() { printf '{"answers":{"split":{"choice":"%s","probabilities":{"splittable":%s},"confidence":%s}}}' "$1" "$2" "$3" >"$tmp/jev.json"; echo "file://$tmp/jev.json"; }
 git init -q -b main "$R" && git -C "$R" config user.email t@t && git -C "$R" config user.name t
 mkdir -p "$R/src" "$R/tests" && echo '<?php' >"$R/src/Old.php" && git -C "$R" add . && git -C "$R" commit -qm init
 git -C "$R" checkout -qb feat/castle
@@ -54,6 +55,10 @@ check "small PR with its spec passes"           0 pre-bash "$(bash_ "$PR")"
 check "PR without the spec path is blocked"     2 pre-bash "$(bash_ "gh pr create --title Castle --body 'hi'")" "link its spec"
 printf 'Spec: openspec/changes/castle/\n' >"$tmp/body.md"
 check "--body-file is read"                     0 pre-bash "$(bash_ "gh pr create --title Castle --body-file $tmp/body.md")"
+OVERSEER_JEV_URL=$(jev splittable 0.92 0.83) check "Jev sure it splits: blocked"     2 pre-bash "$(bash_ "$PR")" "Jev"
+OVERSEER_JEV_URL=$(jev splittable 0.60 0.40) check "Jev unsure: passes"              0 pre-bash "$(bash_ "$PR")"
+OVERSEER_JEV_URL=$(jev indivisible 0.10 0.90) check "Jev says indivisible: passes"   0 pre-bash "$(bash_ "$PR")"
+OVERSEER_JEV_KEY= check "no Jev key: rule 5 falls back to size"        0 pre-bash "$(bash_ "$PR")"
 seq 1 300 | sed 's/^/\/\/ /' >"$R/src/Big.php" && git -C "$R" add -A && git -C "$R" commit -qm big1
 seq 1 101 | sed 's/^/\/\/ /' >"$R/src/Big2.php" && git -C "$R" add -A && git -C "$R" commit -qm big2
 check "big PR without a reason is blocked"      2 pre-bash "$(bash_ "$PR")" "Why not smaller"
