@@ -15,20 +15,19 @@ no agent fleet, no human gates, no per-repo config. The agent works however it l
 - Human approval gates, multi-agent review, EXPLAIN checks, automatic PR splitting (the hook says *split*; how is up to the agent/user).
 - Hardening against an agent that writes production files through Bash (`cat > file`). The rule forbids it; the hook does not police it.
 - Replacing CI.
-- Other model-judged checks (is the spec real, does the PR match it, is a test-less commit a refactor). Rule 5's Jev judge
-  is the first; more only on the slow cadences (commit, PR), and only to warn or block more, never to unlock what a
-  deterministic rule blocked.
+- Model-judged checks. A Jev judge for rule 5 was built and dropped (see *Jev, tried and dropped*); the cut is left to the
+  `split-pr-stack` skill.
 
 ## Rules
 
 | # | Rule | Event | Effect |
 |---|------|-------|--------|
-| 1 | **Spec first**: the branch has touched a spec | `PreToolUse` Edit/Write/MultiEdit on a prod file | block |
+| 1 | **Spec first**: the branch has touched a spec, or a commit since the base says `Spec impact: None — <why>` (tooling, config, lint fixes) | `PreToolUse` Edit/Write/MultiEdit on a prod file | block |
 | 2 | **Red first**: in this branch a test file was edited and a test run failed after that edit | `PreToolUse` Edit/Write/MultiEdit on a prod file | block |
 | 3 | **Green commit**: the latest recorded event is a green test run; a test run chained into the commit command does not count | `PreToolUse` Bash `git commit` (only if the working tree has code changes, tracked or untracked) | block |
 | 4 | **Commit carries a test**: a commit touching prod also touches a test | `PostToolUse` Bash `git commit` | warn (exit 2 after the fact; the commit stays) |
-| 5 | **Smallest PR the feature allows**: cut by function, not size. Each PR is the smallest piece that builds, passes its tests and is reviewable alone. Over ~400 prod lines (added + deleted) vs the PR base, the body must carry `Why not smaller: …` | `PreToolUse` Bash `gh pr create` | block without the reason |
-| 6 | **Ship**: the PR body mentions the spec path | `PreToolUse` Bash `gh pr create` | block |
+| 5 | **Smallest PR the feature allows**: cut by function, not size. Each PR is the smallest piece that builds, passes its tests and is reviewable alone. A PR against the default branch with over ~400 prod lines (added + deleted) goes through the `split-pr-stack` skill or carries `Why not smaller: …`; PRs based on another branch are a stack and trusted | `PreToolUse` Bash `gh pr create` | block without the reason |
+| 6 | **Ship**: the PR body mentions the spec path, or `Spec impact: None — <why>` | `PreToolUse` Bash `gh pr create` | block |
 | 7 | **No prose comments**: an edit adds no explanatory comment lines to code or config (`yaml yml toml sh bash Dockerfile Makefile` too). Annotations (`@…`), tool directives (`phpcs: eslint- noqa @ts- type: ignore shellcheck`…), attributes `#[…]`, shebangs, bare delimiters and one-line `ponytail:` markers (a deliberate shortcut: what it skips, its ceiling, the upgrade path) are allowed. Only added lines count (`git diff -U0 HEAD`, whole file when untracked). The why goes in the PR as a review comment on that line | `PostToolUse` Edit/Write/MultiEdit | warn (exit 2 after the edit) |
 
 Block = exit 2 with a short reason on stderr (Claude sees it, the tool call does not happen). Silent on pass.
@@ -55,35 +54,38 @@ Append-only log at `$(git rev-parse --git-dir)/overseer/<branch>.log`, one `epoc
 
 - Rule 2 passes when there is a `red` line after some `test-edit` line. Once per branch.
 - Rule 3 passes when, among `test-edit|prod-edit|red|green`, the last line is `green`. No test re-run inside the hook, so committing is instant.
+- Rule 7 logs `prose <file>` when it fires. After a successful `gh pr create`, those files are listed back so the agent posts the why as line review comments.
+- A branch with no log inherits a copy of the log of the closest local branch that is an ancestor of HEAD (fewest commits
+  between), within the same worktree. Detached HEAD inherits nothing.
 
 ## Base branch
 
 `origin/HEAD`'s target, falling back to `origin/main`, `origin/master`, then local `main`, `master` (repos with no remote). Rule 1 looks at
 `git diff --name-only <base>...HEAD` plus `git status --porcelain` (staged, unstaged, untracked). A spec in a lower PR of a stack counts, because the diff is against the default branch.
-Rule 5 uses the `--base`/`-B` value of the `gh pr create` command when present (stacked PRs), resolved as `origin/<x>`, then `<x>`.
+Rule 5 uses the `--base`/`-B` value of the `gh pr create` command when present, resolved as `origin/<x>`, then `<x>`, and
+`--head`/`-H` when present (`split-pr-stack` opens every PR of a stack from one checkout). It only measures PRs whose base is
+the default branch.
 
 ## Rule 6 body
 
-Body text = the `--body`/`-b` value in the command, or the contents of `--body-file`/`-F`. It must contain `specs/` or `openspec/changes/`.
+Body text = the `--body`/`-b` value in the command, or the contents of `--body-file`/`-F`. It must contain `specs/`, `openspec/changes/`, or `Spec impact: None` followed by a reason.
 `--fill` without a body gets blocked, which is intended.
 
 ## Escape hatch
 
 `.git/overseer/off` (in `git rev-parse --git-common-dir`) disables every rule for the repo. The user creates and removes it by hand; the rule forbids the agent from touching it.
-Known friction it covers: hotfixes without a spec, spikes, and carving a stack with `split-pr-stack` (new branches start with no `red` recorded).
+Known friction it covers: hotfixes and spikes.
 
 ## Known limits
 
 - The test-runner list is a fixed regex; add a runner when a repo needs one.
 - Any failure of a test command counts as red, including "command not found".
 - Red is required once per branch, not once per cycle, because refactoring on green is legitimate.
-- Rule 5 asks Jev (`jev-latest`, `POST https://api.typesafe.ai/v1/systemone`) one `choice` question, `indivisible` vs
-  `splittable`, over the PR body, `git diff --numstat`, commit subjects and the full diff, cut so the state stays under 100k
-  characters (Jev's state limit is ~32k tokens). It blocks on `splittable` with
-  confidence ≥ 0.7; no key (`OVERSEER_JEV_KEY`, else keychain item `jev`), a 5 s timeout, an error or lower confidence all
-  fall back to the size ask.
 
-## Jev benchmark (pip-boy #25, 2026-09-28)
+## Jev, tried and dropped (pip-boy #25, 2026-09-28)
+
+A Jev (TypeSafe AI) judge for rule 5 was built and benchmarked, then dropped: the cut is left to the `split-pr-stack`
+skill's judgment, with no third-party call in the hook. The record:
 
 Dataset: toucan DS-3650. #101 (5,043 lines, later split) and 13 synthetic pairs of adjacent stack phases should be
 `splittable`; the 14 stack phases #103–#117 were expected `indivisible`. State = "What does this PR do" section, files with

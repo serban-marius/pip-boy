@@ -15,8 +15,7 @@ edit() { printf '{"tool_input":{"file_path":"%s"}}' "$R/$1"; }
 bash_() { jq -nc --arg c "$1" '{tool_input:{command:$c}}'; }
 fire() { printf '%s' "$2" | bash "$S" "$1" >/dev/null 2>&1; }
 
-export CLAUDE_PROJECT_DIR=$tmp/repo R=$tmp/repo OVERSEER_JEV_KEY=test OVERSEER_JEV_URL=file://$tmp/nope.json
-jev() { printf '{"answers":{"split":{"choice":"%s","probabilities":{"splittable":%s},"confidence":%s}}}' "$1" "$2" "$3" >"$tmp/jev.json"; echo "file://$tmp/jev.json"; }
+export CLAUDE_PROJECT_DIR=$tmp/repo R=$tmp/repo
 git init -q -b main "$R" && git -C "$R" config user.email t@t && git -C "$R" config user.name t
 mkdir -p "$R/src" "$R/tests" && echo '<?php' >"$R/src/Old.php" && git -C "$R" add . && git -C "$R" commit -qm init
 git -C "$R" checkout -qb feat/castle
@@ -55,15 +54,14 @@ check "small PR with its spec passes"           0 pre-bash "$(bash_ "$PR")"
 check "PR without the spec path is blocked"     2 pre-bash "$(bash_ "gh pr create --title Castle --body 'hi'")" "link its spec"
 printf 'Spec: openspec/changes/castle/\n' >"$tmp/body.md"
 check "--body-file is read"                     0 pre-bash "$(bash_ "gh pr create --title Castle --body-file $tmp/body.md")"
-OVERSEER_JEV_URL=$(jev splittable 0.92 0.83) check "Jev sure it splits: blocked"     2 pre-bash "$(bash_ "$PR")" "Jev"
-OVERSEER_JEV_URL=$(jev splittable 0.60 0.40) check "Jev unsure: passes"              0 pre-bash "$(bash_ "$PR")"
-OVERSEER_JEV_URL=$(jev indivisible 0.10 0.90) check "Jev says indivisible: passes"   0 pre-bash "$(bash_ "$PR")"
-OVERSEER_JEV_KEY= check "no Jev key: rule 5 falls back to size"        0 pre-bash "$(bash_ "$PR")"
+check "Spec impact: None with a reason passes"  0 pre-bash "$(bash_ "gh pr create --title Tooling --body 'Spec impact: None — tooling'")"
+check "Spec impact: None without a reason"      2 pre-bash "$(bash_ "gh pr create --title Tooling --body 'Spec impact: None'")" "link its spec"
 seq 1 300 | sed 's/^/\/\/ /' >"$R/src/Big.php" && git -C "$R" add -A && git -C "$R" commit -qm big1
 seq 1 101 | sed 's/^/\/\/ /' >"$R/src/Big2.php" && git -C "$R" add -A && git -C "$R" commit -qm big2
-check "big PR without a reason is blocked"      2 pre-bash "$(bash_ "$PR")" "Why not smaller"
+check "big PR without a reason is blocked"      2 pre-bash "$(bash_ "$PR")" "split-pr-stack"
 check "big PR that says why not smaller passes" 0 pre-bash "$(bash_ "gh pr create --title Castle --body 'Spec: specs/001-castle/spec.md. Why not smaller: one migration and its model'")"
-check "--base of a stacked PR is honoured"      0 pre-bash "$(bash_ "$PR --base feat/castle~1")"
+check "a stacked PR is trusted on size"         0 pre-bash "$(bash_ "$PR --base feat/castle~2")"
+check "--head is measured, not HEAD"            0 pre-bash "$(bash_ "$PR --head feat/castle~2")"
 
 printf 'a: 1\n' >"$R/deploy.yaml" && printf '<?php\n// legacy note\nclass Legacy {}\n' >"$R/src/Legacy.php" && git -C "$R" add -A && git -C "$R" commit -qm legacy
 printf '# Reverb resolves hosts with its own DNS\nb: 2\n' >>"$R/deploy.yaml"
@@ -81,6 +79,7 @@ printf '# A heading\n' >"$R/NOTES.md"
 check "markdown is free"                        0 post-edit "$(edit NOTES.md)"
 printf '/**\n * The page read model.\n */\n' >"$R/src/Fresh.php"
 check "a new file with a prose docblock"        2 post-edit "$(edit src/Fresh.php)" "page read model"
+check "PR creation reminds to post the why"     2 post-bash "$(bash_ "$PR")" "review comment"
 git -C "$R" checkout -q -- src/Legacy.php && rm -f "$R/src/Fresh.php" "$R/NOTES.md"
 
 mkdir -p "$R/src/my dir" && touch "$R/src/my dir/Spaced.php"
@@ -94,6 +93,14 @@ rm "$R/.git/overseer/off"
 CLAUDE_PROJECT_DIR=$tmp/wt R=$tmp/wt check "a worktree keeps its own log (no red yet)" 2 pre-edit "$(R=$tmp/wt edit src/New.php)" "red first"
 git -C "$R" checkout -q --detach
 check "detached HEAD is guarded, not crashed"   2 pre-edit "$(edit src/New.php)" "red first"
+git -C "$R" checkout -q feat/castle
+git -C "$R" checkout -q -b feat/castle-part2
+check "a branch inherits its parent's red"      0 pre-edit "$(edit src/New.php)"
+git -C "$R" checkout -q -b chore/tooling main
+check "no spec, no declaration: blocked"        2 pre-edit "$(edit src/Tool.php)" "no spec"
+git -C "$R" commit -q --allow-empty -m "chore: tooling" -m "Spec impact: None — tooling"
+check "a Spec impact: None commit stands in"    2 pre-edit "$(edit src/Tool.php)" "red first"
+check "no prose removed, no reminder"           0 post-bash "$(bash_ "gh pr create --body 'Spec impact: None — tooling'")"
 git -C "$R" checkout -q feat/castle
 
 check "session prints the rules"                0 session '{}'

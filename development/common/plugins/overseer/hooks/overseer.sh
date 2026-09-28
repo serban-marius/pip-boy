@@ -8,9 +8,10 @@ command -v jq >/dev/null || { echo "overseer: jq not found, rules are OFF" >&2; 
 [ -f "$(git rev-parse --git-common-dir)/overseer/off" ] && exit 0
 
 branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
-log="$(git rev-parse --git-dir)/overseer/${branch//\//-}.log"
-JEV_STATE_CHARS=100000 # ponytail: Jev takes ~32k tokens of state; the diff is cut to fit, body, numstat and commits always go
-ASK_PR_LINES=400 # ponytail: size only decides when to ask for a reason; Jev judges the cut when it is reachable
+dir="$(git rev-parse --git-dir)/overseer"
+log="$dir/${branch//\//-}.log"
+ASK_PR_LINES=400 # ponytail: size only decides when to send a PR to split-pr-stack; the skill judges the cut
+NO_SPEC='Spec impact: *None *(—|–|-|:) *[^ ]'
 TESTS='\b(phpunit|pest|artisan test|pytest|vitest|jest|go test|cargo test|(npm|pnpm) (run )?test|yarn test|bun test|rspec|mix test|gradle test|mvn test)\b' # ponytail: fixed list; add a runner when a repo needs one
 COMMIT='\bgit\b[^;&|]*\bcommit\b'
 PR_CREATE='\bgh\s+pr\s+create\b'
@@ -37,7 +38,21 @@ branch_files() {
   [ -n "$b" ] && git diff --name-only "$b"...HEAD 2>/dev/null
   dirty_files
 }
-has_spec() { branch_files | grep -Eq '^(specs/[^/]+/spec\.md|openspec/changes/[^/]+/)'; }
+has_spec() {
+  branch_files | grep -Eq '^(specs/[^/]+/spec\.md|openspec/changes/[^/]+/)' && return
+  local b; b=$(default_base)
+  [ -n "$b" ] && git log --format=%B "$b"..HEAD 2>/dev/null | grep -Eq "$NO_SPEC"
+}
+inherit() {
+  [ -f "$log" ] || [ "$branch" = HEAD ] || [ ! -d "$dir" ] && return
+  local b n best= min=
+  while read -r b; do
+    [ "$b" != "$branch" ] && [ -f "$dir/${b//\//-}.log" ] && git merge-base --is-ancestor "$b" HEAD 2>/dev/null || continue
+    n=$(git rev-list --count "$b"..HEAD)
+    [ -z "$min" ] || [ "$n" -lt "$min" ] && { min=$n; best=$b; }
+  done < <(git for-each-ref --format='%(refname:short)' refs/heads)
+  [ -z "$best" ] || cp "$dir/${best//\//-}.log" "$log"
+}
 
 rel_file() {
   local f; f=$(jq -r '.tool_input.file_path // empty' <<<"$input")
@@ -56,19 +71,10 @@ prose_comments() {
     grep -vE '^[0-9]+:[[:space:]]*(#!|#\[|(//|#|/\*+|\*/?|\{\{--|<!--|-->|--\}\})[[:space:]]*$)' |
     grep -vE '@[A-Za-z]|phpcs:|phpstan-|psalm-|eslint-|prettier-ignore|@ts-|noqa|type: ?ignore|pylint:|nolint|NOSONAR|//go:|(end)?region|istanbul|c8 ignore|-\*-|shellcheck|yamllint|ponytail:'
 }
-jev_split() {
-  local key=${OVERSEER_JEV_KEY-$(security find-generic-password -s jev -w 2>/dev/null)} r # ponytail: macOS keychain only; OVERSEER_JEV_KEY elsewhere
-  [ -n "$key" ] || return 1
-  r=$(jq -n --arg s "$1" '{model: "jev-latest", state: $s, questions: {split: {type: "choice",
-      instructions: "Could this pull request be split into smaller pull requests, stacked one on top of the other, where each one builds, passes its own tests and can be reviewed and merged on its own?",
-      criteria: {indivisible: "It is one piece of functionality: taking any part out leaves something that does not build, fails its tests, or cannot be reviewed and merged on its own.",
-                 splittable: "It holds two or more pieces that could each be their own pull request, merged in order, each building and passing its tests without the ones after it."}}}}' |
-    curl -sf --max-time 5 -H "Authorization: Bearer $key" -H 'Content-Type: application/json' --data @- "${OVERSEER_JEV_URL:-https://api.typesafe.ai/v1/systemone}") || return 1
-  jq -er '.answers.split | select(.choice == "splittable" and .confidence >= 0.7) | "p=\(.probabilities.splittable) confidence=\(.confidence)"' <<<"$r" # ponytail: 0.7 from the toucan benchmark (13/14 caught, 3 flags all multi-part); re-tune on more cases
-}
 cmd() { jq -r '.tool_input.command // ""' <<<"$input"; }
 dirty_files() { git status --porcelain --untracked-files=all | cut -c4-; }
 
+inherit
 case "${1:-}" in
   session)
     cat "${0%/*}/../rules/overseer.md"
@@ -84,7 +90,7 @@ case "${1:-}" in
     if is_prod "$f"; then note prod-edit; elif is_code_test "$f"; then note test-edit; fi
     [ -f "$f" ] && is_commented "$f" || exit 0
     p=$(prose_comments "$f" | head -n 10)
-    [ -z "$p" ] || block "$(printf 'prose comments added to %s. Delete them; the why of a change goes in the PR as a review comment on that line:\n%s' "$f" "$p")"
+    [ -z "$p" ] || { note "prose $f"; block "$(printf 'prose comments added to %s. Delete them; the why of a change goes in the PR as a review comment on that line:\n%s' "$f" "$p")"; }
     ;;
   pre-bash)
     c=$(cmd)
@@ -97,22 +103,23 @@ case "${1:-}" in
     if matches "$PR_CREATE"; then
       b=$(grep -oE -- '(--base|-B)[ =]+[^ ]+' <<<"$c" | head -1 | sed -E 's/^(--base|-B)[ =]+//')
       if [ -n "$b" ]; then git rev-parse -q --verify "origin/$b" >/dev/null && b="origin/$b"; else b=$(default_base); fi
+      h=$(grep -oE -- '(--head|-H)[ =]+[^ ]+' <<<"$c" | head -1 | sed -E 's/^(--head|-H)[ =]+//')
+      [ -n "$h" ] || h=HEAD
       n=0
-      while IFS=$'\t' read -r a d f; do is_prod "$f" && [ "$a" != - ] && n=$((n + a + d)); done < <(git diff --numstat "$b"...HEAD 2>/dev/null)
+      [ "$b" = "$(default_base)" ] && while IFS=$'\t' read -r a d f; do is_prod "$f" && [ "$a" != - ] && n=$((n + a + d)); done < <(git diff --numstat "$b...$h" 2>/dev/null)
       body=$c; bf=$(grep -oE -- '(--body-file|-F)[ =]+[^ ]+' <<<"$c" | head -1 | sed -E 's/^(--body-file|-F)[ =]+//')
       [ -n "$bf" ] && [ -f "$bf" ] && body+=$(cat "$bf")
-      st=$(printf '%s\n\nChanged files (+added -deleted):\n%s\n\nCommits:\n%s\n\nDiff:\n' "$(awk '/^#+ Stack/{s=1; next} /^#+ /{s=0} !s' <<<"$body")" "$(git diff --numstat "$b"...HEAD 2>/dev/null | awk '{print $3 " +" $1 " -" $2}')" "$(git log --format='- %s' "$b"..HEAD 2>/dev/null)") # ponytail: the Stack section lists every phase; Jev must judge this PR, not the stack
-      df=$(git diff "$b"...HEAD 2>/dev/null); room=$((JEV_STATE_CHARS - ${#st})); [ "$room" -gt 0 ] || room=0
-      [ "${#df}" -le "$room" ] || df="${df:0:room}"$'\n[diff truncated]'
-      j=$(jev_split "$st$df") &&
-        block "Jev judges this PR holds more than one piece ($j). Split it into a stack by function: each PR builds, passes its tests and can be reviewed on its own, each based on the previous branch."
       [ "$n" -le "$ASK_PR_LINES" ] || grep -q 'Why not smaller:' <<<"$body" ||
-        block "this PR changes $n lines of production code vs $b. If it splits into smaller pieces that each build, pass their tests and can be reviewed on their own, split it into a stack, each PR based on the previous branch. If it cannot, say why in the body: 'Why not smaller: ...'."
-      grep -Eq 'specs/|openspec/changes/' <<<"$body" || block "the PR body must link its spec (the specs/... or openspec/changes/... path)."
+        block "this PR changes $n lines of production code vs $b. Cut it into a stack by function with the split-pr-stack skill (caravan): each PR builds, passes its tests and can be reviewed on its own. If it cannot be smaller, say why in the body: 'Why not smaller: ...'."
+      grep -Eq "specs/|openspec/changes/|$NO_SPEC" <<<"$body" || block "the PR body must link its spec (the specs/... or openspec/changes/... path), or say 'Spec impact: None — <why>'."
     fi
     ;;
   post-bash | bash-failed)
     matches "$TESTS" && { [ "$1" = post-bash ] && note green || note red; } # ponytail: any failure is red, even command-not-found; tighten if a fake red ever slips through
+    if [ "$1" = post-bash ] && matches "$PR_CREATE" && [ -f "$log" ]; then
+      w=$(awk '$2=="prose"{print $3}' "$log" | sort -u | tr '\n' ' ')
+      [ -z "$w" ] || block "PR open. Earlier you had to delete prose comments from: $w. Post the why of those changes as review comments on their lines (gh api repos/{owner}/{repo}/pulls/<number>/comments with path, line, side=RIGHT, commit_id)."
+    fi
     if [ "$1" = post-bash ] && matches "$COMMIT"; then
       files=$(git show --name-only --format= HEAD 2>/dev/null)
       any is_prod <<<"$files" && ! any is_code_test <<<"$files" &&
