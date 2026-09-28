@@ -101,7 +101,7 @@ case "${1:-}" in
       while IFS=$'\t' read -r a d f; do is_prod "$f" && [ "$a" != - ] && n=$((n + a + d)); done < <(git diff --numstat "$b"...HEAD 2>/dev/null)
       body=$c; bf=$(grep -oE -- '(--body-file|-F)[ =]+[^ ]+' <<<"$c" | head -1 | sed -E 's/^(--body-file|-F)[ =]+//')
       [ -n "$bf" ] && [ -f "$bf" ] && body+=$(cat "$bf")
-      st=$(printf '%s\n\nChanged files (+added -deleted):\n%s\n\nCommits:\n%s\n\nDiff:\n' "$body" "$(git diff --numstat "$b"...HEAD 2>/dev/null | awk '{print $3 " +" $1 " -" $2}')" "$(git log --format='- %s' "$b"..HEAD 2>/dev/null)")
+      st=$(printf '%s\n\nChanged files (+added -deleted):\n%s\n\nCommits:\n%s\n\nDiff:\n' "$(awk '/^#+ Stack/{s=1; next} /^#+ /{s=0} !s' <<<"$body")" "$(git diff --numstat "$b"...HEAD 2>/dev/null | awk '{print $3 " +" $1 " -" $2}')" "$(git log --format='- %s' "$b"..HEAD 2>/dev/null)") # ponytail: the Stack section lists every phase; Jev must judge this PR, not the stack
       df=$(git diff "$b"...HEAD 2>/dev/null); room=$((JEV_STATE_CHARS - ${#st})); [ "$room" -gt 0 ] || room=0
       [ "${#df}" -le "$room" ] || df="${df:0:room}"$'\n[diff truncated]'
       j=$(jev_split "$st$df") &&
