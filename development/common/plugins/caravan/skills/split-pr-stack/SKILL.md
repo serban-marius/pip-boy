@@ -105,7 +105,8 @@ once on the top branch plus targeted suites per branch is a fair trade.
 - Push all branches in **one** `git push -u origin b1 b2 …`: pre-push hooks then run once,
   not n times.
 - Create PRs bottom-up with `gh pr create --base <previous-branch> --head <branch>` and a
-  placeholder body, collecting the numbers; then write the real bodies (they need the numbers)
+  placeholder body that already names the PR's spec path (or `Spec impact: None — <why>` for a
+  tooling phase), collecting the numbers — the overseer harness blocks a PR body without one; then write the real bodies (they need the numbers)
   and apply them with `gh pr edit <n> --body-file`.
 - Every body carries a **Stack** section: "Phase k of n. Based on #prev; merge that one first."
   plus the numbered list of all PRs with **this PR** marked, and a line saying the stack splits

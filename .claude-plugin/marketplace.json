@@ -77,7 +77,7 @@
       "name": "caravan",
       "source": "./development/common/plugins/caravan",
       "description": "Caravan: split one big PR into a stack of ~5-minute PRs, each branch green on its own and the top identical to the original, with chained descriptions and CI babysitting.",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "author": {
         "name": "Marius Serban"
       },

@@ -1,6 +1,6 @@
 {
   "name": "caravan",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Caravan: split one big PR into a stack of ~5-minute PRs, each branch green on its own and the top identical to the original, with chained descriptions and CI babysitting.",
   "author": {
     "name": "Marius Serban"
