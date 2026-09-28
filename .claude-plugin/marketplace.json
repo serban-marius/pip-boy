@@ -74,6 +74,32 @@
       "category": "Development Tools"
     },
     {
+      "name": "caravan",
+      "source": "./development/common/plugins/caravan",
+      "description": "Caravan: split one big PR into a stack of ~5-minute PRs, each branch green on its own and the top identical to the original, with chained descriptions and CI babysitting.",
+      "version": "1.0.1",
+      "author": {
+        "name": "Marius Serban"
+      },
+      "homepage": "https://github.com/serban-marius/pip-boy",
+      "repository": "https://github.com/serban-marius/pip-boy",
+      "keywords": ["pull-request", "stacked-prs", "code-review", "git", "github", "skill"],
+      "category": "Development Tools"
+    },
+    {
+      "name": "overseer",
+      "source": "./development/common/plugins/overseer",
+      "description": "Overseer: a very light harness that enforces spec first, red first, green commits, PRs as small as the feature allows that link their spec, and no prose comments in code, as Claude Code hooks. Zero config, no agents, no tokens.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Marius Serban"
+      },
+      "homepage": "https://github.com/serban-marius/pip-boy",
+      "repository": "https://github.com/serban-marius/pip-boy",
+      "keywords": ["hooks", "harness", "tdd", "spec-driven", "spec-kit", "openspec", "pull-request", "comments"],
+      "category": "Development Tools"
+    },
+    {
       "name": "frontend-design",
       "source": "./development/common/external_plugins/frontend-design",
       "description": "Create distinctive, production-grade frontend interfaces with high design quality. Avoids generic AI aesthetics.",
