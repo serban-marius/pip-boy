@@ -1,0 +1,19 @@
+{
+  "description": "overseer: spec -> red -> green -> small PR, enforced. See rules/overseer.md.",
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "bash", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/overseer.sh", "session"], "timeout": 10 } ] }
+    ],
+    "PreToolUse": [
+      { "matcher": "Edit|Write|MultiEdit", "hooks": [ { "type": "command", "command": "bash", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/overseer.sh", "pre-edit"], "timeout": 10 } ] },
+      { "matcher": "Bash", "hooks": [ { "type": "command", "command": "bash", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/overseer.sh", "pre-bash"], "timeout": 30 } ] }
+    ],
+    "PostToolUse": [
+      { "matcher": "Edit|Write|MultiEdit", "hooks": [ { "type": "command", "command": "bash", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/overseer.sh", "post-edit"], "timeout": 10 } ] },
+      { "matcher": "Bash", "hooks": [ { "type": "command", "command": "bash", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/overseer.sh", "post-bash"], "timeout": 10 } ] }
+    ],
+    "PostToolUseFailure": [
+      { "matcher": "Bash", "hooks": [ { "type": "command", "command": "bash", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/overseer.sh", "bash-failed"], "timeout": 10 } ] }
+    ]
+  }
+}
