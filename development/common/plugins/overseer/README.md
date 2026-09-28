@@ -36,7 +36,7 @@ Exit 0 is a silent pass. Exit 2 with a line starting `overseer:` blocks a Pre ho
 - The test-runner list is a fixed regex. Add a runner when a repo needs one.
 - Any failure of a test command counts as red, including "command not found".
 - Red is required once per branch, not once per cycle, because refactoring on green is legitimate.
-- Rule 5's cut is judged by Jev (TypeSafe AI) from the PR body, `git diff --numstat` and commit subjects, never the code. It blocks only when Jev answers `splittable` with confidence ≥ 0.7, and it can only block more: with no key, a timeout (5 s) or low confidence, rule 5 falls back to the size question. The key comes from `OVERSEER_JEV_KEY` or the macOS keychain item `jev`.
+- Rule 5's cut is judged by Jev (TypeSafe AI) from the PR body, `git diff --numstat`, commit subjects and the diff itself, cut to fit 100k characters. The code leaves the machine for TypeSafe's API. It blocks only when Jev answers `splittable` with confidence ≥ 0.7, and it can only block more: with no key, a timeout (5 s) or low confidence, rule 5 falls back to the size question. The key comes from `OVERSEER_JEV_KEY` or the macOS keychain item `jev`.
 - Rule 7 reads line comments and docblocks. Python docstrings are not detected, and a `ponytail:` marker must fit on one line (continuation lines count as prose).
 
 ## Escape hatch

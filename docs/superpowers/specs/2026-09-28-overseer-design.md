@@ -78,7 +78,8 @@ Known friction it covers: hotfixes without a spec, spikes, and carving a stack w
 - Any failure of a test command counts as red, including "command not found".
 - Red is required once per branch, not once per cycle, because refactoring on green is legitimate.
 - Rule 5 asks Jev (`jev-latest`, `POST https://api.typesafe.ai/v1/systemone`) one `choice` question, `indivisible` vs
-  `splittable`, over the PR body, `git diff --numstat` and commit subjects (no code). It blocks on `splittable` with
+  `splittable`, over the PR body, `git diff --numstat`, commit subjects and the full diff, cut so the state stays under 100k
+  characters (Jev's state limit is ~32k tokens). It blocks on `splittable` with
   confidence ≥ 0.7; no key (`OVERSEER_JEV_KEY`, else keychain item `jev`), a 5 s timeout, an error or lower confidence all
   fall back to the size ask.
 
@@ -98,6 +99,10 @@ At 0.7 the three flags are real multi-part PRs by their own descriptions: #103 "
 program page", #116 several independent review calls, #117 "the last three points of the review, one commit each". Two runs
 gave the same choices (max probability drift 0.07). About 270 ms and 700–2,500 input tokens per call. #101's miss is covered
 by the size ask. Live through the hook: a one-function PR passed (441 ms); add + sub + a UI theme was blocked (p 0.97, conf 0.95).
+
+Rerun with the diff appended (cut at 100k characters): same 13/14 caught at 0.7, and #103 drops to 0.62, correctly: its
+body describes two fixes but its diff holds only the skaffold one. Stack phases flagged: #116, #117. Cost rises to 7–30k
+input tokens and 300–600 ms per call.
 - Rule 7 reads line comments and docblocks; Python docstrings are not detected, and a `ponytail:` marker must fit on one line.
 - The script and its self-check follow rule 7 themselves: no prose comments, only `ponytail:` markers on the shortcuts above.
 
