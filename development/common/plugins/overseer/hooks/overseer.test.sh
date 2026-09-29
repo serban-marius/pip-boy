@@ -91,6 +91,15 @@ mkdir -p "$R/.git/overseer" && touch "$R/.git/overseer/off"
 CLAUDE_PROJECT_DIR=$tmp/wt R=$tmp/wt check "off in the main repo covers its worktrees" 0 pre-edit "$(R=$tmp/wt edit src/New.php)"
 rm "$R/.git/overseer/off"
 CLAUDE_PROJECT_DIR=$tmp/wt R=$tmp/wt check "a worktree keeps its own log (no red yet)" 2 pre-edit "$(R=$tmp/wt edit src/New.php)" "red first"
+git -C "$R" worktree add -q "$tmp/wt2" -b feat/agent main
+mkdir -p "$tmp/wt2/openspec/changes/agent" && echo '# Agent' >"$tmp/wt2/openspec/changes/agent/proposal.md" && git -C "$tmp/wt2" add -A && git -C "$tmp/wt2" commit -qm spec
+git -C "$R" checkout -q main
+check "an edit in a worktree reads that worktree's spec" 2 pre-edit "$(R=$tmp/wt2 edit src/Agent.php)" "red first"
+fire post-edit "$(R=$tmp/wt2 edit tests/AgentTest.php)"
+fire bash-failed "$(jq -nc --arg d "$tmp/wt2" '{cwd:$d,tool_input:{command:"php artisan test"}}')"
+check "a red run in a worktree unlocks that worktree" 0 pre-edit "$(R=$tmp/wt2 edit src/Agent.php)"
+check "the main checkout keeps its own gate"    2 pre-edit "$(edit src/Agent.php)" "no spec"
+git -C "$R" checkout -q feat/castle
 git -C "$R" checkout -q --detach
 check "detached HEAD is guarded, not crashed"   2 pre-edit "$(edit src/New.php)" "red first"
 git -C "$R" checkout -q feat/castle
