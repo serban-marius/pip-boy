@@ -83,7 +83,7 @@ What the converter sends, and what Jira then shows where it was looked at.
 | `* item` with bold on the line: `* **Label:** text` | `_ __Label:_* text` | `- **Label:** text` |
 | Wiki-style `*bold*` | `_bold_`, italic | `**bold**` |
 | `__bold__`, and any `__dunder__` name | `*bold*`, `*dunder*` | `**bold**`; put dunder names in a link to the code |
-| Two `*` on one line: `2 * 3 * 4`, `*.apk and *.xapk` | `2 _ 3 _ 4`, `_.apk and _.xapk` | words, or one per line |
+| Two `*` on one line: `2 * 3 * 4`, `*.log and *.tmp` | `2 _ 3 _ 4`, `_.log and _.tmp` | words, or one per line |
 | Indented `- child` under `- parent` (2 or 4 spaces, or a tab) | rendered flat, same level as the parent | `*- child` at the start of the line |
 | `*- **Label:** child` | `_- __Label:_* child` | no bold on nested lines |
 | `** child` (wiki nesting) | `__ child` | `*- child` |
@@ -113,10 +113,10 @@ Inline code: `` `x` `` becomes `{{x}}`, and then the rest of the converter still
 
 | Inside backticks | Jira receives |
 |---|---|
-| `apk_file_name`, `my-flag`, `GET /path?x=1`, `/items/{id}/check` | unchanged, rendered fine |
+| `user_id_hash`, `my-flag`, `GET /path?x=1`, `/items/{id}/check` | unchanged, rendered fine |
 | `__init__` | `{{*init*}}` |
 | `List<String>` | `{{List[String]}}` |
-| `*.apk` and `**/*.php` on one line | `{{_.apk}}`, `{{__/_.php}}` |
+| `*.log` and `**/*.php` on one line | `{{_.log}}`, `{{__/_.php}}` |
 | `{{ .Values.x }}` | `{{{{ .Values.x }}}}` |
 
 Fenced blocks: ```` ```lang ```` + newline + content + ```` ``` ```` becomes
@@ -192,8 +192,9 @@ These pass the converter; the renderer decides.
 
 Sent as is, so write wiki markup directly: that the tools send descriptions untouched is known
 from the converter source, and a test description written through `jira_update_issue` rendered
-headings, bold, inline code, links, nested bullets and nested numbered lists as below. The DS
-project's descriptions add `{panel:bgColor=...}` and `h3. *TITLE*`, also rendered. Everything
+headings, bold, inline code, links, nested bullets and nested numbered lists as below. Real
+team descriptions checked the same way add `{panel:bgColor=...}` and `h3. *TITLE*`, also
+rendered. Everything
 in [catalogue.md](catalogue.md) marked rendered for comments works here too, written as wiki
 markup.
 

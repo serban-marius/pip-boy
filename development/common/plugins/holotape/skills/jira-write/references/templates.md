@@ -22,9 +22,9 @@ Pick the lightest one that fits. A two-line update does not need panels.
 - OPEN ITEM. Owner: NAME, or unassigned.
 ```
 
-### Status report, house style
+### Status report with panels
 
-The shape of the DS-3916 status comment: a green panel for what is live, a plain table for
+For a milestone worth a richer update: a green panel for what is live, a plain table for
 evidence, a yellow panel for what is open. Tables go between panels, never inside one.
 
 ```markdown
@@ -111,10 +111,10 @@ Colours: on track `#00875a`, at risk `#ff991f`, blocked `#de350b`, info `#0052cc
 
 ## Descriptions (wiki markup)
 
-### Story, house style
+### Story with panels
 
-The layout the DS project's stories use: blue context, purple user story, green acceptance
-criteria.
+A common layout for stories: blue context, purple user story, green acceptance criteria. If
+the project's other stories use different colours or section titles, copy theirs.
 
 ```
 {panel:bgColor=#deebff}
@@ -139,7 +139,7 @@ WHY THIS EXISTS, WHAT IT DEPENDS ON ([https://SITE.atlassian.net/browse/PROJ-1|h
 {panel}
 ```
 
-### Spike, house style
+### Spike with panels
 
 ```
 {panel:bgColor=#deebff}

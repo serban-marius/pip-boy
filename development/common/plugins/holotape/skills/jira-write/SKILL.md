@@ -9,10 +9,11 @@ Two things go wrong when an agent writes to a ticket. The format: the tool says 
 runs it through a regex converter that breaks half of it. And the content: the comment narrates
 the session instead of telling the next reader where things stand. This skill covers both.
 
-It is about **writing** through the `jira_*` tools of the mcp-atlassian server (in these sessions
-`mcp__atlassian-local__jira_*`, deferred: load them with ToolSearch). If your Jira tools come
-from another server, the format rules below do not apply to it; keep the writing and the
-guardrails, and check that server's conversion yourself.
+It is about **writing** through the `jira_*` tools of the
+[mcp-atlassian](https://github.com/sooperset/mcp-atlassian) server, whatever name it has in your
+MCP config (`mcp__<server>__jira_add_comment`; if they are deferred, load them with ToolSearch).
+If your Jira tools come from another server, the format rules below do not apply to it; keep the
+writing and the guardrails, and check that server's conversion yourself.
 
 ## What the tool does with your text
 
@@ -50,11 +51,10 @@ hides the recent ones. You are looking for:
 ### 2. Draft the text
 
 Start from a template in [references/templates.md](references/templates.md): quick status,
-house-style status report, blocker, decision record, handoff, checklist, and story, spike and
+status report with panels, blocker, decision record, handoff, checklist, and story, spike and
 bug descriptions. Each one was posted and checked rendered. See also
-[The comment](#the-comment) below. For a description, keep the structure the ticket or the
-project already uses; the DS project's stories use blue CONTEXT, purple USER STORY and green
-ACCEPTANCE CRITERIA panels.
+[The comment](#the-comment) below. For a description, keep the structure the project's other
+tickets already use: if they open with coloured panels, copy their colours and section titles.
 
 Want a specific element (a panel, a coloured label, a smart-link card, an icon, a table with a
 header column)? Look it up in [references/catalogue.md](references/catalogue.md): every element
@@ -88,21 +88,11 @@ starting with `- `, `#` or `|`, anything between `<` and `>`, `__dunder__` names
 with none of those, use a fence with a plain language tag (` ```php `, never `c++` or
 `shell-session`), and preview it.
 
-Wiki markup you can use inside a comment, untouched by the converter: `{panel:bgColor=#deebff}`
-... `{panel}`, `||Header||Header||` tables, `{quote}`, `{noformat}`, the status icons `(/)` `(x)`
-`(!)` `(?)`, and mentions. Two panel rules: a table cannot sit inside a panel (Jira splits the
-panel around it, so close the panel and put the table below), and no icon in the panel's first
-line (the panel colour adds its own icon, so it shows twice).
-
-Also rendered, typed as wiki markup inside a comment: coloured text
-`{color:#de350b}Blocked{color}` (also inside `**bold**`), a horizontal rule `---- ` (four dashes
-**and a trailing space**, which keeps the converter off it), a forced line break `\\`,
-`-strike-`, `+underline+`, `x ^2^` superscript and `H ~2~ O` subscript (a space before them),
-headings down to `######`, and `bq. line` for a one-line quote. `{status}` lozenges are not
-available: they stay literal.
-
-Traps in prose: `(i)` `(y)` `(n)` `(on)` `(x)` `(/)` `(!)` `(?)` render as icons, and `+word+`
-renders underlined. `{name}`, `[WIP]`, `-v`, `snake_case` and `:shortcode:` stay as typed.
+Anything beyond this table (panels, coloured text, icons, smart-link cards, mentions, images)
+is raw wiki markup typed inside the comment; the converter leaves it alone. The syntax for each
+element, and the stand-in for the ones only the editor can make, is in
+[references/catalogue.md](references/catalogue.md). Two traps in plain prose: `(i)` `(y)` `(x)`
+`(/)` `(!)` and friends render as icons, and `+word+` renders underlined.
 
 Descriptions are wiki markup from the first character: `h2. Title`, `*bold*`, `* item`,
 `** nested`, `# numbered`, `{{code}}`, `[text|https://...]`. Markdown there is not converted,
@@ -145,7 +135,13 @@ Changing the status, the assignee or any field is a separate action: do it only 
 ### 6. Post
 
 One comment per update. Do not split a status into several comments, and do not post a second
-one to fix the first without asking.
+one to fix the first without asking. The calls look like this (`fields` is an object, not a
+JSON string):
+
+```
+jira_add_comment(issue_key="PROJ-123", comment="<the Markdown draft>")
+jira_update_issue(issue_key="PROJ-123", fields={"description": "<the wiki markup>"})
+```
 
 If the call hangs or times out, **the comment has probably been posted**: do not post it again.
 Tell the user, and check the ticket once the MCP answers again (or ask them to look).
@@ -160,8 +156,8 @@ Read the ticket back (`fields: "comment"`, `comment_limit: 100`, `update_history
 compare the stored body of the last comment with your preview.
 
 - **Do not judge from the response of `jira_add_comment`.** It converts the stored text back to
-  Markdown and shows damage that is not there (`apk_signature_provider` comes back as
-  `apk*signature*provider`).
+  Markdown and shows damage that is not there (`order_status_code` comes back as
+  `order*status*code`).
 - `expand: "renderedFields"` does not return rendered HTML through this tool. The read-back
   proves what was stored, not how it looks. Give the user the link to the ticket so they can
   glance at it.
@@ -179,7 +175,7 @@ Written for someone who was not in the session and opens the ticket next week.
   they are.
 - **What is pending and who has it.** Each open item with its owner, or "unassigned". If
   nothing is pending, say so.
-- **Dates and numbers, absolute.** "30/09", "version 1.137.0", "48 of 7.9M packages". Not
+- **Dates and numbers, absolute.** "2026-09-30", "version 1.137.0", "48 of 7.9M rows". Not
   "today", "the latest", "most".
 
 Leave out:
@@ -194,15 +190,15 @@ Leave out:
 A comment that follows this, as you would type it:
 
 ```markdown
-**Done: the signature check is live in production (30/09)**
+**Done: the new checkout flow is live in production (2026-09-30)**
 
-- Endpoint `GET /signatures/PACKAGE/check` deployed in version 1.137.0 ([PR #39](https://github.com/acme/signatures/pull/39)).
-- Checked in production: valid, invalid and unknown packages each answer as expected.
+- Deployed in version 1.137.0 ([PR #39](https://github.com/acme/shop/pull/39)).
+- Checked in production: card, wallet and gift-card payments each complete as expected.
 
 **Still open**
 
-- [PR #40](https://github.com/acme/signatures/pull/40) raises Redis memory. Without it the next import fails. Owner: Ana, waiting for review.
-- The end-to-end test with OAuth has not been run. Owner: unassigned.
+- [PR #40](https://github.com/acme/shop/pull/40) raises the payment timeout. Without it slow banks fail. Owner: Sam, waiting for review.
+- The end-to-end test with 3-D Secure has not been run. Owner: unassigned.
 ```
 
 ## Referring to things
