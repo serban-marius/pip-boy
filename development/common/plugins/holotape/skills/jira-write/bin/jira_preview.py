@@ -114,7 +114,7 @@ def lint_comment(text):
 
         if "??" in line:
             error(n, "double-question")
-        if re.search(r"<[^\n]*?>", line):
+        if re.search(r"<[^>\n]+>", line):
             error(n, "angle-brackets")
         if re.search(r"__[^_\s][^_]*?__", line):
             error(n, "dunder")

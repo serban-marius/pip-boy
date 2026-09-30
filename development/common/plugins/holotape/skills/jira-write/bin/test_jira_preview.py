@@ -1,5 +1,6 @@
 import io
 import os
+import re
 import sys
 import unittest
 
@@ -148,6 +149,23 @@ class CommentClean(unittest.TestCase):
             "Blocked by PROJ-123, rated 5* by users.",
         ])
         self.assertEqual(jp.lint_comment(text), [])
+
+    def test_empty_angle_pair_is_left_alone(self):
+        self.assertEqual(jp.lint_comment("choose <> or not"), [])
+
+    def test_templates_have_no_errors(self):
+        templates = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "references", "templates.md")
+        with open(templates, encoding="utf-8") as f:
+            content = f.read()
+        comments, descriptions = content.split("## Descriptions")
+        comment_blocks = re.findall(r"### (.+?)\n.*?" + FENCE + r"markdown\n(.*?)" + FENCE, comments, re.S)
+        description_blocks = re.findall(r"### (.+?)\n.*?" + FENCE + r"\n(.*?)" + FENCE, descriptions, re.S)
+        self.assertGreaterEqual(len(comment_blocks), 5)
+        self.assertGreaterEqual(len(description_blocks), 3)
+        for name, body in comment_blocks:
+            self.assertEqual(errors(jp.lint_comment(body)), [], name)
+        for name, body in description_blocks:
+            self.assertEqual(jp.lint_description(body), [], name)
 
     def test_skill_example_is_clean(self):
         skill = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "SKILL.md")
