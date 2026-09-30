@@ -170,13 +170,54 @@ class CommentClean(unittest.TestCase):
         for name, body in description_blocks:
             self.assertEqual(jp.lint_description(body), [], name)
 
-    def test_skill_example_is_clean(self):
+    def skill_examples(self):
         skill = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "SKILL.md")
         with open(skill, encoding="utf-8") as f:
             content = f.read()
-        start = content.index(FENCE + "markdown\n") + len(FENCE + "markdown\n")
-        example = content[start:content.index("\n" + FENCE, start)]
-        self.assertEqual(jp.lint_comment(example), [])
+        return re.findall(FENCE + r"markdown\n(.*?)" + FENCE, content, re.S)
+
+    def test_skill_good_example_is_clean(self):
+        too_long, good = self.skill_examples()[:2]
+        self.assertEqual(jp.lint_comment(good), [])
+
+    def test_skill_too_long_example_is_noted(self):
+        too_long, good = self.skill_examples()[:2]
+        found = {w.code for w in jp.lint_comment(too_long)}
+        self.assertIn("long-headline", found)
+        self.assertIn("long-bullet", found)
+        self.assertEqual(errors(jp.lint_comment(too_long)), [])
+
+
+class Length(unittest.TestCase):
+    def test_long_bullet_is_a_note(self):
+        warnings = jp.lint_comment("- " + "word " * 30)
+        self.assertEqual(codes(warnings), {(1, "long-bullet")})
+        self.assertEqual(errors(warnings), [])
+
+    def test_bullet_at_the_limit_is_fine(self):
+        self.assertEqual(jp.lint_comment("- " + "x" * 118), [])
+
+    def test_long_bold_headline_is_a_note(self):
+        warnings = jp.lint_comment("**" + "a very long headline that keeps going " * 3 + "**\n\n- ok")
+        self.assertIn((1, "long-headline"), codes(warnings))
+        self.assertEqual(errors(warnings), [])
+
+    def test_short_headline_and_plain_first_line_are_fine(self):
+        self.assertEqual(jp.lint_comment("**In production (v2.4.0), ready to test**"), [])
+        self.assertEqual(jp.lint_comment("A plain first line that is rather long but not a bold headline at all, fine."), [])
+
+    def test_list_of_five_is_a_note_on_its_fifth_item(self):
+        text = "intro\n" + "\n".join(f"- item {i}" for i in range(1, 6))
+        self.assertEqual(codes(jp.lint_comment(text)), {(6, "long-list")})
+
+    def test_list_of_four_and_separate_lists_are_fine(self):
+        self.assertEqual(jp.lint_comment("\n".join(f"- item {i}" for i in range(1, 5))), [])
+        two_lists = "- a\n- b\n- c\n\n**Next**\n- d\n- e"
+        self.assertEqual(jp.lint_comment(two_lists), [])
+
+    def test_thumbnail_image_is_a_note(self):
+        self.assertEqual(codes(jp.lint_comment("!shot.png|thumbnail!")), {(1, "thumbnail-image")})
+        self.assertEqual(jp.lint_comment("!shot.png|width=800!"), [])
 
 
 class Description(unittest.TestCase):

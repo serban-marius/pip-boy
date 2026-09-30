@@ -171,20 +171,31 @@ byte.
 
 ## The comment
 
-Written for someone who was not in the session and opens the ticket next week.
+Written for whoever opens the ticket next: a PM, a tester, the next developer. They want to know
+in ten seconds where things stand and what happens next. They do not want to know how it was
+built; that is what the PR is for. The most common failure is a comment that restates the spec
+or the PR description in dense bullets: accurate, complete, and unread.
 
-- **Outcome first.** The first line says where the ticket stands: done, blocked, deployed,
-  needs a decision. Not what you did to get there.
-- **Short.** It fits on one screen. Five to twelve lines is typical. Details live in the PR.
-- **Links to the evidence.** The PRs, the dashboard, the document. With text that says what
-  they are.
-- **What is pending and who has it.** Each open item with its owner, or "unassigned". If
-  nothing is pending, say so.
-- **Dates and numbers, absolute.** "2026-09-30", "version 1.137.0", "48 of 7.9M rows". Not
-  "today", "the latest", "most".
+- **A headline, not a sentence.** One bold line of a few words: `**In production (v2.4.0),
+  ready to test**`. The ticket's title already says what the work is.
+- **At most three bullets, one line each.** What the reader can now see or do. If a bullet
+  explains mechanics (how requests are split, what is cached, which service is read, which
+  fields exist), it belongs in the PR: link it instead.
+- **How to try it**, when there is something to try: where to click, or the URL.
+- **Evidence in one line of links:** the PRs, the spec, the dashboard.
+- **What happens next, and who does it**, as something a person can act on: "Product: test the
+  version switch on a product with several versions", not "testing pending".
+- **Absolute dates and numbers.** "2026-09-30", "v2.4.0", "48 of 7.9M rows". Not "today",
+  "the latest", "most".
+
+When the user asks for something short, the whole comment is five to eight short lines, plus
+screenshots. Before showing it, read only the bold lines and the first words of each bullet: if
+that does not tell the story, cut until it does.
 
 Leave out:
 
+- The spec or the acceptance criteria, restated. Link them.
+- Implementation details, even correct ones.
 - Agent narration: "I ran", "in this session", "as requested", "the agent found".
 - How you got there: the commands, the dead ends, the debugging story.
 - Raw logs and stack traces. Quote the one line that matters and link the rest.
@@ -192,19 +203,55 @@ Leave out:
   strings, personal data. A ticket is read, exported and mailed far beyond the team.
 - Anything you did not verify, stated as fact.
 
-A comment that follows this, as you would type it:
+Too long, although every word is true:
 
 ```markdown
-**Done: the new checkout flow is live in production (2026-09-30)**
+**Done: the read-only product page is live in production in version 2.4.0 (2026-09-30), ready for testing**
 
-- Deployed in version 1.137.0 ([PR #39](https://github.com/acme/shop/pull/39)).
-- Checked in production: card, wallet and gift-card payments each complete as expected.
+- Reads the product from the catalog API across product, market and language, with market, language and version selectors. A switch reloads only the part of the page it changes, and the selection stays in the URL so it can be shared.
+- Shows the read-only fields: SKU, category, alias, supplier, the review per market and the file of each version with its download link.
+- Values that a language overrides are marked; the mark lists each override next to the base value.
 
-**Still open**
-
-- [PR #40](https://github.com/acme/shop/pull/40) raises the payment timeout. Without it slow banks fail. Owner: Sam, waiting for review.
-- The end-to-end test with 3-D Secure has not been run. Owner: unassigned.
+**Pending:** testing in production. Owner: product.
 ```
+
+The same news, as it should read:
+
+```markdown
+**In production (v2.4.0), ready to test**
+
+Open any product from Search to see the new read-only page.
+- Switch market, language and version; the URL keeps your choice.
+- Language overrides are flagged next to the base value.
+- Nothing is editable yet: Save is disabled.
+
+!product-page.png|width=800!
+_The product page with the market and language selectors._
+
+[Spec](https://github.com/acme/shop/tree/main/specs/12-product-page) · [PR #103](https://github.com/acme/shop/pull/103) to [PR #117](https://github.com/acme/shop/pull/117)
+
+**Next:** product tests the version switch on a product with several versions. Owner: Sam.
+```
+
+### Screenshots
+
+A screenshot earns its place when it shows what words cannot: a new screen, a before and after,
+the bug itself. Done badly, it is a thumbnail of a whole browser window where nothing can be
+read.
+
+- **Crop to what matters:** the panel, the dialog, the row. A full window shrinks the part you
+  care about to a few pixels.
+- **Show it big enough to read:** `!name.png|width=800!`. Not `|thumbnail`, which renders a
+  tiny preview.
+- **One or two.** More belong in the PR.
+- **A one-line caption under each**, in italics: what to look at.
+- **Next to what it shows**, right after the summary or the bullet it illustrates, not wedged
+  between the links and the next steps.
+
+This MCP cannot upload files: it runs in Docker, without your files. An image has to be attached
+to the ticket first, by the user dragging it into Jira, and is then embedded by its file name.
+Do not upload through another route, such as calling Jira's REST API with credentials taken
+from a config file, unless the user explicitly says so.
 
 ## Referring to things
 

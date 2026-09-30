@@ -12,14 +12,33 @@ Pick the lightest one that fits. A two-line update does not need panels.
 ### Quick status
 
 ```markdown
-**DONE / BLOCKED / IN REVIEW: ONE-LINE OUTCOME (DD/MM)**
+**DONE / BLOCKED / IN REVIEW: A FEW WORDS**
 
-- WHAT CHANGED, with the evidence ([PR #NN](https://github.com/ORG/REPO/pull/NN)).
-- WHAT WAS CHECKED, and where.
+- WHAT CHANGED FOR THE READER, in one line ([PR #NN](https://github.com/ORG/REPO/pull/NN)).
+- WHAT WAS CHECKED, and where, in one line.
 
-**Still open**
+**Next:** THE ACTION, BY WHOM. Owner: NAME, or unassigned.
+```
 
-- OPEN ITEM. Owner: NAME, or unassigned.
+### Shipped, ready to test
+
+For a feature that is live and needs eyes. Bullets say what the tester can now do, never how it
+works; the screenshot is cropped to the new part and shown at a readable width.
+
+```markdown
+**In production (vX.Y.Z), ready to test**
+
+WHERE TO FIND IT: the menu, the button, or the URL.
+- WHAT THEY CAN DO NOW, in one line.
+- WHAT THEY CAN DO NOW, in one line.
+- WHAT IS NOT THERE YET, in one line.
+
+!SCREENSHOT.png|width=800!
+_WHAT TO LOOK AT IN THE SCREENSHOT._
+
+[Spec](https://SPEC-URL) · [PR #NN](https://github.com/ORG/REPO/pull/NN)
+
+**Next:** WHO TESTS WHAT, on which case. Owner: NAME.
 ```
 
 ### Status report with panels

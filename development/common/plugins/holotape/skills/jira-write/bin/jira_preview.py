@@ -51,6 +51,10 @@ NOTES = {
     "underline": "+word+ renders underlined",
     "at-mention": "@name is not a mention -> plain name, or [~accountid:ID] to notify",
     "shortcode": ":shortcode: stays literal -> use the emoji character or nothing",
+    "long-bullet": "bullet longer than one line -> say what the reader can do in one line, link the detail",
+    "long-headline": "headline longer than a few words -> say where it stands, the ticket already says what the work is",
+    "thumbnail-image": "'thumbnail' renders a tiny unreadable preview -> crop the image and use |width=800",
+    "long-list": "a list of five or more items -> keep the two or three the reader needs, link the rest",
 }
 
 DESCRIPTION_ERRORS = {
@@ -99,6 +103,8 @@ def lint_comment(text):
 
     in_fence = False
     fence_first = False
+    seen_content = False
+    list_items = 0
     for n, raw in enumerate(text.split("\n"), start=1):
         line = raw.rstrip("\r")
         fence = FENCE_RE.match(line)
@@ -152,6 +158,19 @@ def lint_comment(text):
                 error(n, "table-no-pipes")
         if re.match(r"^\s*[-*] \[[ xX]\]", line):
             error(n, "task-box")
+
+        if line.strip() and not seen_content:
+            seen_content = True
+            stripped = line.strip()
+            if stripped.startswith("**") and stripped.endswith("**") and len(stripped) > 60:
+                note(n, "long-headline")
+        if re.match(r"^\s*([-*+]|\*[-#]|\d+\.)\s", line) and len(line) > 120:
+            note(n, "long-bullet")
+        list_items = list_items + 1 if re.match(r"^([-*+]|\d+\.)\s", line) else 0
+        if list_items == 5:
+            note(n, "long-list")
+        if re.search(r"![^!\n]*\|[^!\n]*thumbnail[^!\n]*!", line):
+            note(n, "thumbnail-image")
 
         prose = _without_code(line)
         if ICON_RE.search(prose):
