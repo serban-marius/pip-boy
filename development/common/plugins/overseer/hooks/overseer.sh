@@ -2,8 +2,15 @@
 
 set -u
 input=$(cat)
-cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null || exit 0
-git rev-parse --git-dir >/dev/null 2>&1 || exit 0
+workdir() {
+  command -v jq >/dev/null || return
+  local f d; f=$(jq -r '.tool_input.file_path // empty' <<<"$input" 2>/dev/null)
+  [ "${f#/}" = "$f" ] && { jq -r '.cwd // empty' <<<"$input" 2>/dev/null; return; }
+  d=${f%/*}; while [ -n "$d" ] && [ ! -d "$d" ]; do d=${d%/*}; done; echo "${d:-/}"
+}
+wd=$(workdir)
+{ [ -n "$wd" ] && cd "$wd" 2>/dev/null; } || cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null || exit 0
+up=$(git rev-parse --show-cdup 2>/dev/null) && cd "./$up" || exit 0
 command -v jq >/dev/null || { echo "overseer: jq not found, rules are OFF" >&2; exit 1; }
 [ -f "$(git rev-parse --git-common-dir)/overseer/off" ] && exit 0
 
