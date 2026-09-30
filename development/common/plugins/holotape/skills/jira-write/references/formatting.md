@@ -43,6 +43,15 @@ What the tools give back:
 - `jira_get_issue` returns the first `comment_limit` comments, oldest first.
 - There is no tool to edit or delete a comment.
 
+**`??` hangs the server.** The replies of `jira_add_comment` and `jira_add_worklog`, and the
+worklogs `jira_get_worklog` returns, go through `jira_to_markdown`, whose citation regex
+`\?\?((?:.[^?]|[^?].)+)\?\?` backtracks exponentially. Measured offline: an unclosed `??` followed
+by 40 characters takes 0.07 s, by 80 characters more than 6 s and grows from there, and `??`
+inside `{{code}}` is no safer. Seen live on 2026-09-30: the comment was stored, the MCP process
+stayed at 100% CPU, and every later call of the session queued behind it until the container was
+stopped and the server reconnected. `jira_get_issue` and `jira_search` return raw bodies and are
+not affected.
+
 ## Comments: Markdown that works
 
 | Markdown | Sent to Jira | Known from |
@@ -80,7 +89,7 @@ What the converter sends, and what Jira then shows where it was looked at.
 | `** child` (wiki nesting) | `__ child` | `*- child` |
 | Indented `1. a` | `## a`: rendered as an empty "1." item with a, b under it; an indented `2. b` stays plain text | `1.` at the start of the line |
 | `# item` (wiki numbered list) | `h1. item` | `1.` lines, or `*#` under a bullet |
-| `---`, `***`, `===`, `----` on a line of their own | the line above becomes `h2.` or `h1.`; after a blank line, an empty `h2. ` | a heading, or nothing |
+| `---`, `***`, `===`, `----` on a line of their own | the line above becomes `h2.` or `h1.`; after a blank line, an empty `h2. ` | `---- ` with a trailing space for a rule (rendered), or a heading |
 | A line starting with `#` and no space: `#39 is merged`, `#deploy` | `h1.39 is merged`, `h1.deploy` | do not start a line with `#` |
 | `a < b and c > d`, `List<String>`, `<br>`, `<details>` | `a [ b and c ] d`, `List[String]`, `[br]`, `[details]` | words; no HTML |
 | `<https://url>`, `<me@example.com>` | `[https://url]`, `[me@example.com]` | the bare URL, or `[text](url)` |
@@ -145,10 +154,20 @@ The converter leaves these alone, so they can be typed as is in a comment.
 | `{quote}` ... `{quote}` | rendered as a quote block |
 | `{noformat}` ... `{noformat}` | rendered as a code block |
 | `[~accountid:ID]` | rendered as a mention, and notifies that person |
+| `---- ` on its own line: four dashes and a trailing space | rendered as a horizontal rule. Without the space the converter turns the line above into a heading |
+| `line one\\line two` | rendered as a forced line break |
+| `{color:#de350b}text{color}`, `{color:green}text{color}` | rendered in that colour; also inside `**bold**` |
+| `-strike-`, `+underline+` | rendered |
+| `E = mc ^2^`, `H ~2~ O`, with a space before the marker | rendered as superscript and subscript. Glued to the word (`x^2^`) stays literal |
+| `#### T`, `##### T`, `###### T` | rendered as h4 to h6 |
+| `bq. line` | rendered as a quote |
+| `{status:colour=Green\|title=Done}` | stays literal: no status lozenges in wiki markup |
+| `??citation??` | rendered as "— citation", but **never use it**: `??` hangs the MCP (see above) |
 | `[text\|https://url]`, `{{code}}`, `h2. Title` | converter |
 | `{color:red}text{color}` | converter |
 
-Not usable: wiki `*bold*` (becomes `_bold_`), `** nested`, `# numbered`, `----`.
+Not usable: wiki `*bold*` (becomes `_bold_`), `** nested`, `# numbered`, `----` without the
+trailing space, `??citation??`.
 
 ## Characters Jira reads as markup
 
@@ -164,7 +183,10 @@ These pass the converter; the renderer decides.
 | `-v or -x` | as typed |
 | `a_b and c_d` | as typed |
 | `x^2^` | as typed |
-| `:)` `;)` `(off)` `(*)`, `-word-`, `^word^`, `~word~`, `??word??`, `!word!` | not checked: may become icons, strikethrough, superscript, subscript, a citation or an embedded image |
+| `-word-`, ` ^word^`, ` ~word~` | strikethrough, superscript, subscript (rendered) |
+| `??` anything | hangs the MCP after posting: never |
+| A line made only of icons, or icons at the end of a line (`D2 icons: (y) (n) (i)`) | rendered as nothing: the icons vanished. Icons followed by a word render |
+| `!word!` | not checked: may become an embedded image |
 
 ## Descriptions: wiki markup
 

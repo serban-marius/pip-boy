@@ -28,6 +28,11 @@ The converter does not parse Markdown. It is a list of regex replacements run ov
 text, **code blocks included**, and it leaves most wiki markup untouched. So a comment is
 written in a small Markdown subset, plus raw wiki markup for what Markdown lacks.
 
+**Never write `??` in a comment or a worklog**, not even inside code. The post goes through, but
+the server then converts the stored text back for its reply, and on `??` that regex backtracks
+forever: the MCP sits at 100% CPU and every later Jira call in the session hangs until the user
+reconnects it (`/mcp`). One unclosed `??` followed by some 80 characters is enough.
+
 ## Steps
 
 ### 1. Read the ticket first
@@ -63,7 +68,7 @@ Comments, in Markdown:
 | Link | `[PR #39](https://...)` | `<https://...>`, URLs containing `)` or `__`, link text containing `]` |
 | Heading | `### Title` (with the space) | a line starting with `#39` or `#channel` (becomes `h1.`) |
 | Table | outer pipes on every row and a separator row of dashes only | alignment colons `:---`, rows without outer pipes |
-| Separator between sections | a heading or a blank line | `---`, `***`, `===`, `----` (the line above turns into a heading) |
+| Separator between sections | `---- ` with a trailing space (a real rule), a heading, or a blank line | `---`, `***`, `===`, `----` (the line above turns into a heading) |
 | Quote | `{quote}` ... `{quote}` | `> text` (stays a literal `>`) |
 | Comparison, generic, HTML | words: "less than", "a list of strings" | `a < b`, `List<String>`, `<br>`: every `<x>` becomes `[x]` |
 | Code | a link to the PR or the file | a pasted block, see below |
@@ -79,6 +84,13 @@ Wiki markup you can use inside a comment, untouched by the converter: `{panel:bg
 `(!)` `(?)`, and mentions. Two panel rules: a table cannot sit inside a panel (Jira splits the
 panel around it, so close the panel and put the table below), and no icon in the panel's first
 line (the panel colour adds its own icon, so it shows twice).
+
+Also rendered, typed as wiki markup inside a comment: coloured text
+`{color:#de350b}Blocked{color}` (also inside `**bold**`), a horizontal rule `---- ` (four dashes
+**and a trailing space**, which keeps the converter off it), a forced line break `\\`,
+`-strike-`, `+underline+`, `x ^2^` superscript and `H ~2~ O` subscript (a space before them),
+headings down to `######`, and `bq. line` for a one-line quote. `{status}` lozenges are not
+available: they stay literal.
 
 Traps in prose: `(i)` `(y)` `(n)` `(on)` `(x)` `(/)` `(!)` `(?)` render as icons, and `+word+`
 renders underlined. `{name}`, `[WIP]`, `-v`, `snake_case` and `:shortcode:` stay as typed.
@@ -125,6 +137,9 @@ Changing the status, the assignee or any field is a separate action: do it only 
 
 One comment per update. Do not split a status into several comments, and do not post a second
 one to fix the first without asking.
+
+If the call hangs or times out, **the comment has probably been posted**: do not post it again.
+Tell the user, and check the ticket once the MCP answers again (or ask them to look).
 
 Updating a description replaces the whole field. Read the current one, keep a copy in your
 reply so it can be restored, change only what you were asked to change, and send the complete
