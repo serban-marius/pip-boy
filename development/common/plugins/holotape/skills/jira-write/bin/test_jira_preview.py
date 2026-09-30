@@ -59,7 +59,7 @@ class CommentErrors(unittest.TestCase):
 
     def test_stray_stars(self):
         self.assertFlags("2 * 3 * 4", 1, "stray-stars")
-        self.assertFlags("matches *.apk and *.xapk", 1, "stray-stars")
+        self.assertFlags("matches *.log and *.tmp", 1, "stray-stars")
 
     def test_markdown_quote(self):
         self.assertFlags("> quoted", 1, "md-quote")
@@ -109,7 +109,7 @@ class CommentNotes(unittest.TestCase):
         self.assertEqual(errors(warnings), [])
 
     def test_underline_mention_shortcode_are_notes(self):
-        warnings = jp.lint_comment("a +b+ c\ncc @marius\n:white_check_mark: done")
+        warnings = jp.lint_comment("a +b+ c\ncc @sam\n:white_check_mark: done")
         self.assertEqual(codes(warnings), {(1, "underline"), (2, "at-mention"), (3, "shortcode")})
         self.assertEqual(errors(warnings), [])
 
