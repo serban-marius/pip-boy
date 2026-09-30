@@ -44,6 +44,10 @@ class CommentErrors(unittest.TestCase):
         for rule in ("---", "***", "===", "----", "___"):
             self.assertFlags(f"above\n\n{rule}\n\nbelow", 3, "rule-line")
 
+    def test_rule_with_trailing_space_is_the_way(self):
+        self.assertEqual(jp.lint_comment("above\n---- \nbelow"), [])
+        self.assertIn("'---- '", jp.lint_comment("above\n----\nbelow")[0].message)
+
     def test_angle_brackets(self):
         self.assertFlags("returns List<String> today", 1, "angle-brackets")
         self.assertFlags("if a < b and c > d", 1, "angle-brackets")
@@ -86,6 +90,15 @@ class CommentErrors(unittest.TestCase):
 
     def test_task_box(self):
         self.assertFlags("- [ ] todo", 1, "task-box")
+
+    def test_double_question_hangs_the_mcp(self):
+        self.assertFlags("why?? because", 1, "double-question")
+        self.assertFlags("quoted ??Some Author??", 1, "double-question")
+        self.assertFlags("run `a??b`", 1, "double-question")
+        self.assertFlags(f"{FENCE}\nx = a ?? b\n{FENCE}", 2, "double-question")
+
+    def test_single_question_marks_are_fine(self):
+        self.assertEqual(jp.lint_comment("is it done? yes? (?) maybe"), [w for w in jp.lint_comment("is it done? yes? (?) maybe") if w.code == "icon"])
 
 
 class CommentNotes(unittest.TestCase):

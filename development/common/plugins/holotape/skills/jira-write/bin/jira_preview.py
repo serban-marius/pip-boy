@@ -31,7 +31,7 @@ ERRORS = {
     "nested-bold": "bold on a '*-' / '*#' line comes out garbled -> drop the bold on nested lines",
     "indented-number": "indented '1.' renders an empty item -> write '1.' at the start of the line",
     "hash-no-space": "a line starting with '#' becomes an h1 heading -> reword so it does not start with '#'",
-    "rule-line": "a line of only -, *, _ or = turns the line above into a heading -> use a heading or a blank line",
+    "rule-line": "a line of only -, *, _ or = turns the line above into a heading -> for a horizontal rule write '---- ' (four dashes and a trailing space)",
     "angle-brackets": "every <x> becomes [x], in code too -> use words, a bare URL or [text](url)",
     "dunder": "__word__ becomes bold, in code too -> link to the code instead",
     "stray-stars": "single * characters pair up and become _ -> reword, or one per line",
@@ -43,6 +43,7 @@ ERRORS = {
     "bad-fence": "this fence is not recognised (language not a single word, ~~~, or CRLF) -> ```lang with LF line endings",
     "fence-content": "inside a code block this line is rewritten like prose (list, heading or table) -> link the code instead",
     "task-box": "'[ ]' task boxes stay literal brackets -> plain bullets",
+    "double-question": "'??' makes the MCP spin forever after posting (its reply converter backtracks), and every later Jira call hangs -> never write '??', even in code",
 }
 
 NOTES = {
@@ -111,6 +112,8 @@ def lint_comment(text):
                 in_fence = False
             continue
 
+        if "??" in line:
+            error(n, "double-question")
         if re.search(r"<[^\n]*?>", line):
             error(n, "angle-brackets")
         if re.search(r"__[^_\s][^_]*?__", line):
@@ -134,7 +137,7 @@ def lint_comment(text):
             error(n, "indented-number")
         if re.match(r"^#+[^#\s]", line):
             error(n, "hash-no-space")
-        if RULE_RE.match(line):
+        if RULE_RE.match(line) and not re.fullmatch(r"----[ \t]+", line):
             error(n, "rule-line")
         if re.match(r"^\s*>", line):
             error(n, "md-quote")
