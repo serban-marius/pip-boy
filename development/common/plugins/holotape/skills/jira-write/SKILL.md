@@ -171,26 +171,40 @@ byte.
 
 ## The comment
 
-Written for whoever opens the ticket next: a PM, a tester, the next developer. They want to know
-in ten seconds where things stand and what happens next. They do not want to know how it was
-built; that is what the PR is for. The most common failure is a comment that restates the spec
-or the PR description in dense bullets: accurate, complete, and unread.
+Written for whoever opens the ticket next: a PM, a tester, the next developer. They scan it in
+ten seconds to learn where things stand and what happens next. Two failures to avoid: a wall of
+dense bullets that restates the spec, and a plain block of text that says the right things but
+looks like every other comment. Jira can show state at a glance; use it.
 
-- **A headline, not a sentence.** One bold line of a few words: `**In production (v2.4.0),
-  ready to test**`. The ticket's title already says what the work is.
-- **At most three bullets, one line each.** What the reader can now see or do. If a bullet
-  explains mechanics (how requests are split, what is cached, which service is read, which
-  fields exist), it belongs in the PR: link it instead.
+**Make the state visible.** Everything below rendered through this MCP (see the
+[catalogue](references/catalogue.md)):
+
+- **A status line on top:** `**Status:** **{color:#00875a}IN PRODUCTION{color}** · v2.4.0 ·
+  2026-09-30`. Green `#00875a` done or on track, orange `#ff991f` at risk, red `#de350b`
+  blocked.
+- **The main news in a titled panel:** `{panel:title=Ready to test|bgColor=#e3fcef}`. Green
+  `#e3fcef` shipped or ready, yellow `#fffae6` open or at risk, red `#ffebe6` blocked, blue
+  `#deebff` information. The title is the state in two or three words.
+- **Icons for state on the bullets:** `(/)` done, `(!)` needs attention, `(x)` failing,
+  `(i)` good to know.
+- **The key PR as a card**, which shows its title and whether it is merged:
+  `[https://github.com/org/repo/pull/42|https://github.com/org/repo/pull/42|smart-link]`.
+- **A table** when there is something to compare: cases and results, before and after, or two
+  screenshots side by side.
+
+**Keep it short.** The elements frame the news; they are not a licence to say more.
+
+- **At most three bullets, one line each**, about what the reader can now see or do. A bullet
+  that explains mechanics (how requests are split, what is cached, which fields exist) belongs
+  in the PR: link it instead.
 - **How to try it**, when there is something to try: where to click, or the URL.
-- **Evidence in one line of links:** the PRs, the spec, the dashboard.
-- **What happens next, and who does it**, as something a person can act on: "Product: test the
-  version switch on a product with several versions", not "testing pending".
+- **What happens next, and who does it**, as something a person can act on.
 - **Absolute dates and numbers.** "2026-09-30", "v2.4.0", "48 of 7.9M rows". Not "today",
   "the latest", "most".
 
-When the user asks for something short, the whole comment is five to eight short lines, plus
-screenshots. Before showing it, read only the bold lines and the first words of each bullet: if
-that does not tell the story, cut until it does.
+Keep it plain only for a one-line update; anything that reports a state change gets the status
+line and a panel. Before showing it, read only the status line, the panel title and the first
+words of each bullet: if that does not tell the story, cut until it does.
 
 Leave out:
 
@@ -203,7 +217,7 @@ Leave out:
   strings, personal data. A ticket is read, exported and mailed far beyond the team.
 - Anything you did not verify, stated as fact.
 
-Too long, although every word is true:
+Too long and too plain, although every word is true:
 
 ```markdown
 **Done: the read-only product page is live in production in version 2.4.0 (2026-09-30), ready for testing**
@@ -218,35 +232,37 @@ Too long, although every word is true:
 The same news, as it should read:
 
 ```markdown
-**In production (v2.4.0), ready to test**
+**Status:** **{color:#00875a}IN PRODUCTION{color}** · v2.4.0 · 2026-09-30
 
-Open any product from Search to see the new read-only page.
-- Switch market, language and version; the URL keeps your choice.
-- Language overrides are flagged next to the base value.
-- Nothing is editable yet: Save is disabled.
+{panel:title=Ready to test|bgColor=#e3fcef}
+Open any product from **Search**.
+- (/) Switch market, language and version: the URL keeps your choice.
+- (/) Language overrides are flagged next to the base value.
+- (i) Read-only for now: Save is disabled.
+{panel}
 
-!product-page.png|width=800!
-_The product page with the market and language selectors._
+||The top of the page, with the selectors||The versions section||
+|!product-page-top.png!|!product-page-versions.png!|
 
-[Spec](https://github.com/acme/shop/tree/main/specs/12-product-page) · [PR #103](https://github.com/acme/shop/pull/103) to [PR #117](https://github.com/acme/shop/pull/117)
+**Code:** [https://github.com/acme/shop/pull/117|https://github.com/acme/shop/pull/117|smart-link], the last of 13 stacked PRs · [Spec](https://github.com/acme/shop/tree/main/specs/12-product-page)
 
-**Next:** product tests the version switch on a product with several versions. Owner: Sam.
+**Next:** product checks it in production against the acceptance criteria above. Owner: Sam.
 ```
 
 ### Screenshots
 
 A screenshot earns its place when it shows what words cannot: a new screen, a before and after,
-the bug itself. Done badly, it is a thumbnail of a whole browser window where nothing can be
-read.
+the bug itself. Use the captures you are given as they are.
 
-- **Crop to what matters:** the panel, the dialog, the row. A full window shrinks the part you
-  care about to a few pixels.
-- **Show it big enough to read:** `!name.png|width=800!`. Not `|thumbnail`, which renders a
-  tiny preview.
+- **Two go side by side in a table**, with the captions as the header row:
+  `||What the first shows||What the second shows||` then `|!first.png!|!second.png!|`. Do not
+  add `|width=` inside a table: the pipe splits the cell.
+- **One on its own gets a width:** `!name.png|width=800!` and a caption in italics under it.
+  Without the width, or with `|thumbnail`, it renders as a small preview.
+- Jira shows a comment image at most about 250 px tall, so a tall full-page capture stays small
+  either way. That is fine: the reader clicks it to open it full size. Say in the caption what
+  to look at.
 - **One or two.** More belong in the PR.
-- **A one-line caption under each**, in italics: what to look at.
-- **Next to what it shows**, right after the summary or the bullet it illustrates, not wedged
-  between the links and the next steps.
 
 This MCP cannot upload files: it runs in Docker, without your files. An image has to be attached
 to the ticket first, by the user dragging it into Jira, and is then embedded by its file name.

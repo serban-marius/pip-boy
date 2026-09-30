@@ -178,7 +178,7 @@ class CommentClean(unittest.TestCase):
 
     def test_skill_good_example_is_clean(self):
         too_long, good = self.skill_examples()[:2]
-        self.assertEqual(jp.lint_comment(good), [])
+        self.assertEqual({w.code for w in jp.lint_comment(good)} - {"icon"}, set())
 
     def test_skill_too_long_example_is_noted(self):
         too_long, good = self.skill_examples()[:2]

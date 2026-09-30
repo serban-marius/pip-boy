@@ -22,23 +22,26 @@ Pick the lightest one that fits. A two-line update does not need panels.
 
 ### Shipped, ready to test
 
-For a feature that is live and needs eyes. Bullets say what the tester can now do, never how it
-works; the screenshot is cropped to the new part and shown at a readable width.
+For a feature that is live and needs eyes: a coloured status line, the news in a green panel with
+state icons, screenshots side by side, the key PR as a card. Bullets say what the tester can now
+do, never how it works.
 
 ```markdown
-**In production (vX.Y.Z), ready to test**
+**Status:** **{color:#00875a}IN PRODUCTION{color}** · vX.Y.Z · YYYY-MM-DD
 
+{panel:title=Ready to test|bgColor=#e3fcef}
 WHERE TO FIND IT: the menu, the button, or the URL.
-- WHAT THEY CAN DO NOW, in one line.
-- WHAT THEY CAN DO NOW, in one line.
-- WHAT IS NOT THERE YET, in one line.
+- (/) WHAT THEY CAN DO NOW, in one line.
+- (/) WHAT THEY CAN DO NOW, in one line.
+- (i) WHAT IS NOT THERE YET, in one line.
+{panel}
 
-!SCREENSHOT.png|width=800!
-_WHAT TO LOOK AT IN THE SCREENSHOT._
+||WHAT THE FIRST SCREENSHOT SHOWS||WHAT THE SECOND SHOWS||
+|!FIRST.png!|!SECOND.png!|
 
-[Spec](https://SPEC-URL) · [PR #NN](https://github.com/ORG/REPO/pull/NN)
+**Code:** [https://github.com/ORG/REPO/pull/NN|https://github.com/ORG/REPO/pull/NN|smart-link] · [Spec](https://SPEC-URL)
 
-**Next:** WHO TESTS WHAT, on which case. Owner: NAME.
+**Next:** WHO TESTS WHAT. Owner: NAME.
 ```
 
 ### Status report with panels
