@@ -38,8 +38,8 @@ reconnects it (`/mcp`). One unclosed `??` followed by some 80 characters is enou
 
 ### 1. Read the ticket first
 
-`jira_get_issue` with `fields: "summary,status,description,comment"`, `comment_limit: 100`,
-`update_history: false`. The tool returns the *first* N comments, oldest first, so a low limit
+`jira_get_issue` with `fields: "summary,status,description,comment,attachment"`,
+`comment_limit: 100`, `update_history: false`. The tool returns the *first* N comments, oldest first, so a low limit
 hides the recent ones. You are looking for:
 
 - **Language.** Write in the language of the description and the latest comments, not the
@@ -47,6 +47,9 @@ hides the recent ones. You are looking for:
 - **House style.** If the ticket uses panels, headings or status icons, match them. If comments
   are plain paragraphs, stay plain.
 - **What is already said.** Do not repeat the description or the last comment. Add what changed.
+- **What is attached.** Screenshots are embedded by their exact file name, so take the names
+  from `attachments`. If the user wants screenshots that are not attached yet, ask them to drag
+  the files into the ticket first.
 
 ### 2. Draft the text
 
@@ -147,6 +150,11 @@ jira_add_comment(issue_key="PROJ-123", comment="<the Markdown draft>")
 jira_update_issue(issue_key="PROJ-123", fields={"description": "<the wiki markup>"})
 ```
 
+To "update" or "fix" a comment already posted: this MCP cannot edit or delete one. Post the
+new version, then ask the user to delete the old one in Jira (⋯ → Delete). Editing it in place
+through Jira's REST API with credentials from a config file is only for when the user
+explicitly asks for that.
+
 If the call hangs or times out, **the comment has probably been posted**: do not post it again.
 Tell the user, and check the ticket once the MCP answers again (or ask them to look).
 
@@ -171,20 +179,45 @@ byte.
 
 ## The comment
 
-Written for someone who was not in the session and opens the ticket next week.
+Written for whoever opens the ticket next: a PM, a tester, the next developer. They scan it in
+ten seconds to learn where things stand and what happens next. Two failures to avoid: a wall of
+dense bullets that restates the spec, and a plain block of text that says the right things but
+looks like every other comment. Jira can show state at a glance; use it.
 
-- **Outcome first.** The first line says where the ticket stands: done, blocked, deployed,
-  needs a decision. Not what you did to get there.
-- **Short.** It fits on one screen. Five to twelve lines is typical. Details live in the PR.
-- **Links to the evidence.** The PRs, the dashboard, the document. With text that says what
-  they are.
-- **What is pending and who has it.** Each open item with its owner, or "unassigned". If
-  nothing is pending, say so.
-- **Dates and numbers, absolute.** "2026-09-30", "version 1.137.0", "48 of 7.9M rows". Not
-  "today", "the latest", "most".
+**Make the state visible.** Everything below rendered through this MCP (see the
+[catalogue](references/catalogue.md)):
+
+- **A status line on top:** `**Status:** **{color:#00875a}IN PRODUCTION{color}** · v2.4.0 ·
+  2026-09-30`. Green `#00875a` done or on track, orange `#ff991f` at risk, red `#de350b`
+  blocked.
+- **The main news in a titled panel:** `{panel:title=Ready to test|bgColor=#e3fcef}`. Green
+  `#e3fcef` shipped or ready, yellow `#fffae6` open or at risk, red `#ffebe6` blocked, blue
+  `#deebff` information. The title is the state in two or three words.
+- **Icons for state on the bullets:** `(/)` done, `(!)` needs attention, `(x)` failing,
+  `(i)` good to know.
+- **The key PR as a card**, which shows its title and whether it is merged:
+  `[https://github.com/org/repo/pull/42|https://github.com/org/repo/pull/42|smart-link]`.
+- **A table** when there is something to compare: cases and results, before and after, or two
+  screenshots side by side.
+
+**Keep it short.** The elements frame the news; they are not a licence to say more.
+
+- **At most three bullets, one line each**, about what the reader can now see or do. A bullet
+  that explains mechanics (how requests are split, what is cached, which fields exist) belongs
+  in the PR: link it instead.
+- **How to try it**, when there is something to try: where to click, or the URL.
+- **What happens next, and who does it**, as something a person can act on.
+- **Absolute dates and numbers.** "2026-09-30", "v2.4.0", "48 of 7.9M rows". Not "today",
+  "the latest", "most".
+
+Keep it plain only for a one-line update; anything that reports a state change gets the status
+line and a panel. Before showing it, read only the status line, the panel title and the first
+words of each bullet: if that does not tell the story, cut until it does.
 
 Leave out:
 
+- The spec or the acceptance criteria, restated. Link them.
+- Implementation details, even correct ones.
 - Agent narration: "I ran", "in this session", "as requested", "the agent found".
 - How you got there: the commands, the dead ends, the debugging story.
 - Raw logs and stack traces. Quote the one line that matters and link the rest.
@@ -192,19 +225,58 @@ Leave out:
   strings, personal data. A ticket is read, exported and mailed far beyond the team.
 - Anything you did not verify, stated as fact.
 
-A comment that follows this, as you would type it:
+Too long and too plain, although every word is true:
 
 ```markdown
-**Done: the new checkout flow is live in production (2026-09-30)**
+**Done: the read-only product page is live in production in version 2.4.0 (2026-09-30), ready for testing**
 
-- Deployed in version 1.137.0 ([PR #39](https://github.com/acme/shop/pull/39)).
-- Checked in production: card, wallet and gift-card payments each complete as expected.
+- Reads the product from the catalog API across product, market and language, with market, language and version selectors. A switch reloads only the part of the page it changes, and the selection stays in the URL so it can be shared.
+- Shows the read-only fields: SKU, category, alias, supplier, the review per market and the file of each version with its download link.
+- Values that a language overrides are marked; the mark lists each override next to the base value.
 
-**Still open**
-
-- [PR #40](https://github.com/acme/shop/pull/40) raises the payment timeout. Without it slow banks fail. Owner: Sam, waiting for review.
-- The end-to-end test with 3-D Secure has not been run. Owner: unassigned.
+**Pending:** testing in production. Owner: product.
 ```
+
+The same news, as it should read:
+
+```markdown
+**Status:** **{color:#00875a}IN PRODUCTION{color}** · v2.4.0 · 2026-09-30
+
+{panel:title=Ready to test|bgColor=#e3fcef}
+Open any product from **Search**.
+- (/) Switch market, language and version: the URL keeps your choice.
+- (/) Language overrides are flagged next to the base value.
+- (i) Read-only for now: Save is disabled.
+{panel}
+
+||The top of the page, with the selectors||The versions section||
+|!product-page-top.png|width=500!|!product-page-versions.png|width=500!|
+
+**Code:** [https://github.com/acme/shop/pull/117|https://github.com/acme/shop/pull/117|smart-link], the last of 13 stacked PRs · [Spec](https://github.com/acme/shop/tree/main/specs/12-product-page)
+
+**Next:** product checks it in production against the acceptance criteria above. Owner: Sam.
+```
+
+### Screenshots
+
+A screenshot earns its place when it shows what words cannot: a new screen, a before and after,
+the bug itself. Use the captures you are given as they are.
+
+- **Two go side by side in a table**, with the captions as the header row:
+  `||What the first shows||What the second shows||` then
+  `|!first.png|width=500!|!second.png|width=500!|`. The width works inside a cell; without it
+  each image is a small preview.
+- **One on its own gets a width:** `!name.png|width=800!` and a caption in italics under it.
+  Without the width, or with `|thumbnail`, it renders as a small preview.
+- Jira shows a comment image at most about 250 px tall, so a tall full-page capture stays small
+  either way. That is fine: the reader clicks it to open it full size. Say in the caption what
+  to look at.
+- **One or two.** More belong in the PR.
+
+This MCP cannot upload files: it runs in Docker, without your files. An image has to be attached
+to the ticket first, by the user dragging it into Jira, and is then embedded by its file name.
+Do not upload through another route, such as calling Jira's REST API with credentials taken
+from a config file, unless the user explicitly says so.
 
 ## Referring to things
 

@@ -99,6 +99,8 @@ literal text). Details and failure cases are in [formatting.md](formatting.md).
 | Email | `[mailto:me@example.com]` | same | rendered |
 | Anchor | `{anchor:name}` and `[text](#name)` | same | rendered |
 | Image already attached to the ticket | `!file.png!`, `!file.png\|thumbnail!`, `!file.png\|width=200!`, `!file.png\|align=center,width=150!` | same | rendered |
+| Image at a readable size | `!file.png\|width=800!`. Comment images show at most about 250 px tall; a wide image then fills the column, a tall capture stays small and opens full size on click. No width, or `\|thumbnail`, renders a small preview | same | rendered |
+| Two images side by side | a table: `\|\|caption\|\|caption\|\|` then `\|!a.png\|width=500!\|!b.png\|width=500!\|`. The width works inside a cell; without it each image is a small preview | same | rendered |
 | Attachment as a file card | `[^file.png]` | same | rendered |
 | External image | `!https://…/image.png!` (renders large) | same | rendered |
 | Upload a new file | not possible: the MCP runs in Docker without the host's files mounted, so `attachments` paths do not exist for it | | seen: `Permission denied: '/private'` |
