@@ -69,7 +69,7 @@ MENTION_RE = re.compile(r"(?<![\w.@/])@[A-Za-z][\w.-]*")
 SHORTCODE_RE = re.compile(r"(?<![\w:/]):[a-z0-9_+-]+:(?![\w/])")
 RULE_RE = re.compile(r"^\s*([-*_=])(\s*\1){2,}\s*$")
 SEPARATOR_RE = re.compile(r"^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$")
-LINK_RE = re.compile(r"\[((?:[^\[\]]|\[[^\]]*\])*)\]\(([^)\n]*\)?[^)\n]*)\)")
+LINK_RE = re.compile(r"\[((?:[^\[\]]|\[[^\]]*\])*)\]\(([^)\n]*)\)")
 
 
 def _without_code(line):

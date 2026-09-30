@@ -150,6 +150,9 @@ class CommentClean(unittest.TestCase):
         ])
         self.assertEqual(jp.lint_comment(text), [])
 
+    def test_parenthesis_after_a_link_is_not_part_of_it(self):
+        self.assertEqual(jp.lint_comment("- [PR #215](https://github.com/o/r/pull/215) (purge endpoint) waits"), [])
+
     def test_empty_angle_pair_is_left_alone(self):
         self.assertEqual(jp.lint_comment("choose <> or not"), [])
 
