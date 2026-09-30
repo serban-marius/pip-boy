@@ -185,15 +185,17 @@ These pass the converter; the renderer decides.
 | `x^2^` | as typed |
 | `-word-`, ` ^word^`, ` ~word~` | strikethrough, superscript, subscript (rendered) |
 | `??` anything | hangs the MCP after posting: never |
-| A line made only of icons, or icons at the end of a line (`D2 icons: (y) (n) (i)`) | rendered as nothing: the icons vanished. Icons followed by a word render |
+| Every icon: `(y) (n) (i) (/) (x) (!) (+) (-) (?) (on) (off) (flag) (flagoff) (*) (*r) (*g) (*b) (*y) :) :( :P :D ;)` | rendered, anywhere in a line, alone or adjacent |
 | `!word!` | not checked: may become an embedded image |
 
 ## Descriptions: wiki markup
 
 Sent as is, so write wiki markup directly: that the tools send descriptions untouched is known
-from the converter source. The descriptions looked at in Jira Cloud use `{panel:bgColor=...}`,
-`h3. *TITLE*`, `*bold*` and `* item`, all rendered. The rest of this table is standard wiki
-markup, not checked through a description.
+from the converter source, and a test description written through `jira_update_issue` rendered
+headings, bold, inline code, links, nested bullets and nested numbered lists as below. The DS
+project's descriptions add `{panel:bgColor=...}` and `h3. *TITLE*`, also rendered. Everything
+in [catalogue.md](catalogue.md) marked rendered for comments works here too, written as wiki
+markup.
 
 | Want | Write |
 |---|---|
@@ -212,6 +214,6 @@ markup, not checked through a description.
 | Mention | `[~accountid:ID]` |
 | Ticket | `PROJ-123` |
 
-Markdown in a description is not converted, so it is read as wiki markup (not checked):
-`## Title` would be a nested numbered item, `**bold**` and backticks show as typed,
-`[text](url)` is not a link.
+Markdown in a description is not converted, and rendered like this: `## Title` became an empty
+numbered item with the heading, and the line after it, as its sub-item; `**bold**`, backticks
+and `[text](url)` showed as typed; `- item` did render as a bullet.

@@ -49,8 +49,17 @@ hides the recent ones. You are looking for:
 
 ### 2. Draft the text
 
-See [The comment](#the-comment) below. For a description, keep the structure the ticket or the
-project already uses.
+Start from a template in [references/templates.md](references/templates.md): quick status,
+house-style status report, blocker, decision record, handoff, checklist, and story, spike and
+bug descriptions. Each one was posted and checked rendered. See also
+[The comment](#the-comment) below. For a description, keep the structure the ticket or the
+project already uses; the DS project's stories use blue CONTEXT, purple USER STORY and green
+ACCEPTANCE CRITERIA panels.
+
+Want a specific element (a panel, a coloured label, a smart-link card, an icon, a table with a
+header column)? Look it up in [references/catalogue.md](references/catalogue.md): every element
+Jira's editor offers, with the syntax that works through this MCP or, for the editor-only ones
+(action items, decisions, status lozenges, dates, expand, layouts), the closest stand-in.
 
 ### 3. Format it
 
