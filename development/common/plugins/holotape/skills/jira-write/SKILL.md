@@ -86,7 +86,7 @@ Comments, in Markdown:
 starting with `- `, `#` or `|`, anything between `<` and `>`, `__dunder__` names, pairs of `*`,
 `[a](b)`. Link the PR or the file line instead. If a snippet is essential, keep it to lines
 with none of those, use a fence with a plain language tag (` ```php `, never `c++` or
-`shell-session`), and preview it.
+`shell-session`), and let the preview script check it.
 
 Anything beyond this table (panels, coloured text, icons, smart-link cards, mentions, images)
 is raw wiki markup typed inside the comment; the converter leaves it alone. The syntax for each
@@ -103,22 +103,26 @@ The full list, with what was checked and how, is in
 [references/formatting.md](references/formatting.md). Read it when the text has anything beyond
 bold, bullets, inline code and links.
 
-### 4. Preview what will be sent
+### 4. Preview and lint what will be sent
 
-The converter runs offline, with no credentials, from the same image the MCP runs:
+Write the draft to a file and run the script next to this skill (`bin/` in the skill's base
+directory):
 
 ```bash
-docker run --rm -i --entrypoint /app/.venv/bin/python cloudutil/mcp-atlassian:latest -c \
-  'import sys; from mcp_atlassian.preprocessing.jira import JiraPreprocessor as P; print(P().markdown_to_jira(sys.stdin.read()))' \
-  < draft.md
+python3 <skill-dir>/bin/jira_preview.py draft.md                   # a comment, in Markdown
+python3 <skill-dir>/bin/jira_preview.py --description draft.wiki   # a description, in wiki markup
 ```
 
-What it prints is what Jira receives. Look for an `h1.` or `h2.` you did not write, `[` `]`
-where you wrote `<` `>`, a stray `_` or `*`, list lines that do not start with `* `. Use the
-image named in your own MCP configuration if it is a different one. Without Docker, stay
-strictly inside the table above.
+- **stdout** is what Jira will receive: the draft run through the converter of the MCP's own
+  image, offline, with no credentials. It needs Docker; set `JIRA_MCP_IMAGE` if your MCP runs
+  another image. Without Docker it says so and still lints.
+- **stderr** lists each problem as `line N: error|note: what goes wrong -> what to write`.
+  Errors are things the converter will break: fix every one. Notes are things Jira will
+  interpret, such as `(i)` becoming an icon: keep them only if you meant it.
+- **Exit code** 1 means there are errors.
 
-Skip the preview only for plain paragraphs with bold, `- ` bullets, inline code and links.
+Every check comes from a case in `references/formatting.md`, so a clean run means none of the
+known traps is in the draft. Run it on every draft; it takes a few seconds.
 
 ### 5. Show it and get a yes
 
@@ -153,7 +157,8 @@ text back in wiki markup.
 ### 7. Verify
 
 Read the ticket back (`fields: "comment"`, `comment_limit: 100`, `update_history: false`) and
-compare the stored body of the last comment with your preview.
+compare the stored body of the last comment with the script's stdout: Jira stores it byte for
+byte.
 
 - **Do not judge from the response of `jira_add_comment`.** It converts the stored text back to
   Markdown and shows damage that is not there (`order_status_code` comes back as
