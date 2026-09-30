@@ -37,7 +37,7 @@ WHERE TO FIND IT: the menu, the button, or the URL.
 {panel}
 
 ||WHAT THE FIRST SCREENSHOT SHOWS||WHAT THE SECOND SHOWS||
-|!FIRST.png!|!SECOND.png!|
+|!FIRST.png|width=500!|!SECOND.png|width=500!|
 
 **Code:** [https://github.com/ORG/REPO/pull/NN|https://github.com/ORG/REPO/pull/NN|smart-link] · [Spec](https://SPEC-URL)
 

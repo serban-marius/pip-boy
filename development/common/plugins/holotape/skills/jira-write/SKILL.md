@@ -38,8 +38,8 @@ reconnects it (`/mcp`). One unclosed `??` followed by some 80 characters is enou
 
 ### 1. Read the ticket first
 
-`jira_get_issue` with `fields: "summary,status,description,comment"`, `comment_limit: 100`,
-`update_history: false`. The tool returns the *first* N comments, oldest first, so a low limit
+`jira_get_issue` with `fields: "summary,status,description,comment,attachment"`,
+`comment_limit: 100`, `update_history: false`. The tool returns the *first* N comments, oldest first, so a low limit
 hides the recent ones. You are looking for:
 
 - **Language.** Write in the language of the description and the latest comments, not the
@@ -47,6 +47,9 @@ hides the recent ones. You are looking for:
 - **House style.** If the ticket uses panels, headings or status icons, match them. If comments
   are plain paragraphs, stay plain.
 - **What is already said.** Do not repeat the description or the last comment. Add what changed.
+- **What is attached.** Screenshots are embedded by their exact file name, so take the names
+  from `attachments`. If the user wants screenshots that are not attached yet, ask them to drag
+  the files into the ticket first.
 
 ### 2. Draft the text
 
@@ -147,6 +150,11 @@ jira_add_comment(issue_key="PROJ-123", comment="<the Markdown draft>")
 jira_update_issue(issue_key="PROJ-123", fields={"description": "<the wiki markup>"})
 ```
 
+To "update" or "fix" a comment already posted: this MCP cannot edit or delete one. Post the
+new version, then ask the user to delete the old one in Jira (⋯ → Delete). Editing it in place
+through Jira's REST API with credentials from a config file is only for when the user
+explicitly asks for that.
+
 If the call hangs or times out, **the comment has probably been posted**: do not post it again.
 Tell the user, and check the ticket once the MCP answers again (or ask them to look).
 
@@ -242,7 +250,7 @@ Open any product from **Search**.
 {panel}
 
 ||The top of the page, with the selectors||The versions section||
-|!product-page-top.png!|!product-page-versions.png!|
+|!product-page-top.png|width=500!|!product-page-versions.png|width=500!|
 
 **Code:** [https://github.com/acme/shop/pull/117|https://github.com/acme/shop/pull/117|smart-link], the last of 13 stacked PRs · [Spec](https://github.com/acme/shop/tree/main/specs/12-product-page)
 
@@ -255,8 +263,9 @@ A screenshot earns its place when it shows what words cannot: a new screen, a be
 the bug itself. Use the captures you are given as they are.
 
 - **Two go side by side in a table**, with the captions as the header row:
-  `||What the first shows||What the second shows||` then `|!first.png!|!second.png!|`. Do not
-  add `|width=` inside a table: the pipe splits the cell.
+  `||What the first shows||What the second shows||` then
+  `|!first.png|width=500!|!second.png|width=500!|`. The width works inside a cell; without it
+  each image is a small preview.
 - **One on its own gets a width:** `!name.png|width=800!` and a caption in italics under it.
   Without the width, or with `|thumbnail`, it renders as a small preview.
 - Jira shows a comment image at most about 250 px tall, so a tall full-page capture stays small

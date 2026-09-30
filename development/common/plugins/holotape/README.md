@@ -110,14 +110,32 @@ A test checks that every template still lints clean.
 
 ## Comments that read well
 
-Formatting is half the job. The skill also sets how a ticket comment reads:
+Formatting is half the job. The skill also sets how a ticket comment reads, for whoever opens
+the ticket next and scans it in ten seconds:
 
-- **Outcome first:** done, blocked, deployed, needs a decision.
-- **Short:** one screen. The details live in the PR.
-- **Links to the evidence:** PRs, dashboards, docs.
-- **What's pending, and who has it:** or "unassigned".
-- **Absolute dates and numbers**, never "today" or "the latest".
-- **Left out:** agent narration, debugging stories, raw logs, secrets, and anything not verified.
+- **State at a glance:** a coloured status line, the news in a titled panel, ✅ ⚠️ ❌ icons on
+  the bullets, the key PR as a card showing whether it's merged.
+- **Short:** at most three one-line bullets on what the reader can now do, where to find it,
+  and who does what next. The details live in the PR.
+- **Screenshots side by side** in a table, captions as headers.
+- **Left out:** the spec restated, implementation details, agent narration, raw logs, secrets,
+  and anything not verified.
+
+```
+Status: IN PRODUCTION · v2.4.0 · 2026-09-30
+
+┌ ✅ Ready to test ─────────────────────────────── green panel ┐
+│ Open any product from Search.                                 │
+│ • ✅ Switch market, language and version: the URL keeps it.   │
+│ • ✅ Language overrides are flagged next to the base value.   │
+│ • ℹ️ Read-only for now: Save is disabled.                     │
+└───────────────────────────────────────────────────────────────┘
+| The top of the page       | The versions section      |
+| [screenshot]              | [screenshot]              |
+
+Code: [PR #117 · Merged] · Spec
+Next: product checks it against the acceptance criteria. Owner: Sam.
+```
 
 ## Checked, not assumed
 
