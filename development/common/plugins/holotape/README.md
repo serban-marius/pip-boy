@@ -8,7 +8,7 @@ A Claude Code skill that makes agents write Jira comments and descriptions that 
 first time and read like a teammate wrote them.
 
 ![Claude Code skill](https://img.shields.io/badge/Claude_Code-skill-D97757)
-![version](https://img.shields.io/badge/version-1.2.0-blue)
+![version](https://img.shields.io/badge/version-1.2.1-blue)
 ![tests](https://img.shields.io/badge/tests-45_passing-brightgreen)
 ![license](https://img.shields.io/badge/license-MIT-lightgrey)
 
@@ -113,13 +113,15 @@ A test checks that every template still lints clean.
 Formatting is half the job. The skill also sets how a ticket comment reads, for whoever opens
 the ticket next and scans it in ten seconds:
 
-- **State at a glance:** a coloured status line, the news in a titled panel, ✅ ⚠️ ❌ icons on
-  the bullets, the key PR as a card showing whether it's merged.
-- **Short:** at most three one-line bullets on what the reader can now do, where to find it,
-  and who does what next. The details live in the PR.
-- **Screenshots side by side** in a table, captions as headers.
+- **A shape that fits the news:** a release gets a coloured status line, a panel and
+  screenshots; a blocker a red panel and a mention; QA results a table with coloured PASS/FAIL;
+  a question just the mention and the question. No fixed template.
+- **Short:** one screen, one-line bullets about what the reader can now do, and who does what
+  next. The details live in the PR.
 - **Left out:** the spec restated, implementation details, agent narration, raw logs, secrets,
   and anything not verified.
+
+One release, for example:
 
 ```
 Status: IN PRODUCTION · v2.4.0 · 2026-09-30
