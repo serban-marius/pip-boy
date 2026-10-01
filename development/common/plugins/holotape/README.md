@@ -8,7 +8,7 @@ A Claude Code skill that makes agents write Jira comments and descriptions that 
 first time and read like a teammate wrote them.
 
 ![Claude Code skill](https://img.shields.io/badge/Claude_Code-skill-D97757)
-![version](https://img.shields.io/badge/version-1.2.1-blue)
+![version](https://img.shields.io/badge/version-1.2.2-blue)
 ![tests](https://img.shields.io/badge/tests-45_passing-brightgreen)
 ![license](https://img.shields.io/badge/license-MIT-lightgrey)
 
