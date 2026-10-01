@@ -1,7 +1,7 @@
 {
   "name": "holotape",
   "description": "Holotape: write to Jira so it renders and reads well. Which format each field of the mcp-atlassian tools really takes, what the Markdown converter breaks, a catalogue of every Jira element and how to get it through the MCP, verified comment and description templates, comments shaped for their news (status, panels, icons, smart-link cards, screenshots), a linter that previews what Jira will receive, and the read-first / confirm / verify steps around posting.",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "author": {
     "name": "Marius Serban"
   },
