@@ -180,39 +180,44 @@ byte.
 ## The comment
 
 Written for whoever opens the ticket next: a PM, a tester, the next developer. They scan it in
-ten seconds to learn where things stand and what happens next. Two failures to avoid: a wall of
-dense bullets that restates the spec, and a plain block of text that says the right things but
-looks like every other comment. Jira can show state at a glance; use it.
+ten seconds to learn what they need: where things stand, the answer, what is asked of them. Two
+failures to avoid: a wall of dense bullets that restates the spec, and a block of text that
+says the right things but makes the reader dig for them.
 
-**Make the state visible.** Everything below rendered through this MCP (see the
-[catalogue](references/catalogue.md)):
+**Pick the shape for the news.** There is no single format. Decide what the reader most needs to
+see, then reach for the elements that show it best; [the catalogue](references/catalogue.md)
+has every one that renders through this MCP. Pairings that work:
 
-- **A status line on top:** `**Status:** **{color:#00875a}IN PRODUCTION{color}** · v2.4.0 ·
-  2026-09-30`. Green `#00875a` done or on track, orange `#ff991f` at risk, red `#de350b`
-  blocked.
-- **The main news in a titled panel:** `{panel:title=Ready to test|bgColor=#e3fcef}`. Green
-  `#e3fcef` shipped or ready, yellow `#fffae6` open or at risk, red `#ffebe6` blocked, blue
-  `#deebff` information. The title is the state in two or three words.
-- **Icons for state on the bullets:** `(/)` done, `(!)` needs attention, `(x)` failing,
-  `(i)` good to know.
-- **The key PR as a card**, which shows its title and whether it is merged:
-  `[https://github.com/org/repo/pull/42|https://github.com/org/repo/pull/42|smart-link]`.
-- **A table** when there is something to compare: cases and results, before and after, or two
-  screenshots side by side.
+| The news | Elements that carry it |
+|---|---|
+| Shipped, ready to test | a coloured status line, a green titled panel, `(/)` icons, screenshots side by side, the PR as a card |
+| Blocked or at risk | a red or yellow titled panel: what is stuck, what would unblock it, a mention of who can |
+| Root cause of a bug | the cause in one line up front, a few lines of code or a link to the line, the fix PR as a card |
+| Test or QA results | a table of cases with a coloured PASS or FAIL per row |
+| A decision | a `(/)` line with the decision, a table of the options for and against |
+| A question for someone | a mention and the question, nothing else |
+| A small update or a reply | one or two plain lines |
 
-**Keep it short.** The elements frame the news; they are not a licence to say more.
+Mix them as the content asks: a release may want a panel and a table, a reply wants neither.
+Do not force a status line onto a question, or a panel around two lines. Colours that mean
+something: green `#00875a` / panel `#e3fcef` for done, orange `#ff991f` / `#fffae6` for at risk,
+red `#de350b` / `#ffebe6` for blocked, blue `#deebff` for information. Icons: `(/)` done, `(!)`
+needs attention, `(x)` failing, `(i)` good to know.
 
-- **At most three bullets, one line each**, about what the reader can now see or do. A bullet
-  that explains mechanics (how requests are split, what is cached, which fields exist) belongs
-  in the PR: link it instead.
-- **How to try it**, when there is something to try: where to click, or the URL.
-- **What happens next, and who does it**, as something a person can act on.
+**Whatever the shape:**
+
+- **Lead with what matters most to the reader**: the state, the answer, the decision, or the
+  ask.
+- **Short.** It fits on one screen and each bullet fits on one line. Before listing a fifth
+  thing, ask whether the reader needs each one; the rest lives in the PR.
+- **What the reader can see or do**, not how it works. Mechanics (how requests are split, what
+  is cached, which fields exist) belong in the PR: link it.
+- **What happens next, and who does it**, when something does happen next.
 - **Absolute dates and numbers.** "2026-09-30", "v2.4.0", "48 of 7.9M rows". Not "today",
   "the latest", "most".
 
-Keep it plain only for a one-line update; anything that reports a state change gets the status
-line and a panel. Before showing it, read only the status line, the panel title and the first
-words of each bullet: if that does not tell the story, cut until it does.
+Before showing it, skim it the way the reader will: the first line, any bold or panel title,
+the first words of each bullet. If that does not tell the story, cut or rearrange until it does.
 
 Leave out:
 
@@ -237,7 +242,7 @@ Too long and too plain, although every word is true:
 **Pending:** testing in production. Owner: product.
 ```
 
-The same news, as it should read:
+The same news, in the shape that fits a release:
 
 ```markdown
 **Status:** **{color:#00875a}IN PRODUCTION{color}** · v2.4.0 · 2026-09-30
@@ -255,6 +260,24 @@ Open any product from **Search**.
 **Code:** [https://github.com/acme/shop/pull/117|https://github.com/acme/shop/pull/117|smart-link], the last of 13 stacked PRs · [Spec](https://github.com/acme/shop/tree/main/specs/12-product-page)
 
 **Next:** product checks it in production against the acceptance criteria above. Owner: Sam.
+```
+
+Other news, other shapes. A root cause:
+
+```markdown
+**Root cause:** an empty screenshot list came back as `None` and the cache warmer looped over it. Fixed in [https://github.com/acme/shop/pull/97|https://github.com/acme/shop/pull/97|smart-link].
+
+{code:python}
+self.urls = {p.id: p.screenshots or [] for p in programs}
+{code}
+
+[~accountid:ACCOUNT_ID] you wrote the original: any idea why it never failed before 2026-09-28?
+```
+
+A question, which needs nothing around it:
+
+```markdown
+[~accountid:ACCOUNT_ID] can product test the version switch this week? It is live in v2.4.0.
 ```
 
 ### Screenshots
