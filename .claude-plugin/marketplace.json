@@ -90,7 +90,7 @@
       "name": "overseer",
       "source": "./development/common/plugins/overseer",
       "description": "Overseer: a very light harness that enforces spec first, red first, green commits, PRs as small as the feature allows that link their spec, and no prose comments in code, as Claude Code hooks. Zero config, no agents, no tokens.",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "author": {
         "name": "Marius Serban"
       },
