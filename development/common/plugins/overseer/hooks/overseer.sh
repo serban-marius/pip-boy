@@ -19,7 +19,7 @@ dir="$(git rev-parse --git-dir)/overseer"
 log="$dir/${branch//\//-}.log"
 ASK_PR_LINES=400 # ponytail: size only decides when to send a PR to split-pr-stack; the skill judges the cut
 NO_SPEC='Spec impact: *None *(—|–|-|:) *[^ ]'
-TESTS='\b(phpunit|pest|artisan test|pytest|vitest|jest|go test|cargo test|(npm|pnpm) (run )?test|yarn test|bun test|rspec|mix test|gradle test|mvn test)\b' # ponytail: fixed list; add a runner when a repo needs one
+TESTS='\b(phpunit|pest|artisan test|pytest|vitest|jest|go test|cargo test|(npm|pnpm) (run )?test|yarn test|bun test|deno (task )?test|rspec|mix test|gradle test|mvn test)\b' # ponytail: fixed list; add a runner when a repo needs one
 COMMIT='\bgit\b[^;&|]*\bcommit\b'
 PR_CREATE='\bgh\s+pr\s+create\b'
 
