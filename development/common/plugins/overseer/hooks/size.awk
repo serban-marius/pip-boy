@@ -16,7 +16,7 @@ python { python_line($0); next }
 
 END {
   if (python && in_fn) end_python_fn()
-  if (lines > MAX_FILE) print "file: " lines " lines (max " MAX_FILE ")"
+  if (functions && lines > MAX_FILE) print "file: " lines " lines (max " MAX_FILE ")"
 }
 
 function brace_line(raw,   code, i, c) {
@@ -110,7 +110,7 @@ function remember_class(h) {
 }
 
 function start_fn(h, line) {
-  in_fn = 1; fn_depth = depth; fn_line = line; body = 0; nest = 0; max_nest = 0; sp = 0
+  in_fn = 1; functions++; fn_depth = depth; fn_line = line; body = 0; nest = 0; max_nest = 0; sp = 0
   fn_name = name_of(h); fn_params = param_count(h, name_end)
 }
 
@@ -181,7 +181,7 @@ function python_line(raw,   code, indent) {
 }
 
 function start_python_fn(code, indent) {
-  in_fn = 1; fn_indent = indent; fn_line = FNR; body = 0; nest = 0; max_nest = 0; sp = 0
+  in_fn = 1; functions++; fn_indent = indent; fn_line = FNR; body = 0; nest = 0; max_nest = 0; sp = 0
   head = ""; in_signature = 1; continue_signature(code)
 }
 

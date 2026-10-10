@@ -11,7 +11,7 @@ A very light harness: Claude Code hooks that make an agent follow **spec → red
 | 5 | Each PR is the smallest piece that builds, passes its tests and is reviewable alone. A PR against the default branch with over ~400 prod lines goes through `split-pr-stack` (caravan) or says `Why not smaller: …`; stacked PRs are trusted | `gh pr create` | block |
 | 6 | The PR body names the spec path, or `Spec impact: None — <why>` | `gh pr create` | block |
 | 7 | Names explain the code: no prose comments in code or config. Bare type annotations (`@param list<Item> $items`, `@return array{0: int}`), tool directives, attributes, bare markers (`@deprecated`) and one-line `ponytail:` shortcut markers are fine; an annotation with text after it, `@see` or `@todo` is prose. The why goes in the PR as a review comment, and after `gh pr create` the hook lists the files whose comments were stripped | after each edit, after `gh pr create` / `git commit` | reminder / block |
-| 8 | Small functions, small files: in production code every function an edit touches has at most 15 body lines, nesting 2 and 4 parameters (constructors exempt), and the file at most 200 code lines. Blank and comment lines do not count; tests are exempt | after each edit / `git commit` | reminder / block |
+| 8 | Small functions, small files: in production code every function an edit touches has at most 15 body lines, nesting 2 and 4 parameters (constructors exempt), and a file that defines functions at most 200 code lines (data-only files are free). Blank and comment lines do not count; tests are exempt | after each edit / `git commit` | reminder / block |
 
 ## How it knows
 

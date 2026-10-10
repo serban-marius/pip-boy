@@ -155,7 +155,7 @@ size "a 201-line file is too long"             src/Big3.php "$(printf '<?php\ncl
 size "a 200-line file passes"                  src/Big3.php "$(printf '<?php\nclass Big3\n{\n'; for i in $(seq 1 49); do printf '    public function f%d()\n    {\n        return %d;\n    }\n' "$i" "$i"; done; printf '}')" 0
 mkdir -p "$R/config" && seq 1 20000 | awk 'BEGIN { print "<?php"; print "return [" } { print "    \"k" $1 "\" => " $1 "," } END { print "];" }' >"$R/config/big.php"
 out=$(edit config/big.php | perl -e 'alarm 5; exec @ARGV' bash "$S" post-edit 2>&1); code=$?
-[ "$code" -eq 2 ] && grep -q 'file: 20003 lines' <<<"$out" && echo "ok   a huge data file is measured in seconds" || { echo "FAIL a huge data file is measured in seconds (exit $code)"; fails=$((fails + 1)); }
+[ "$code" -eq 0 ] && echo "ok   a huge data file is read in seconds and left alone" || { echo "FAIL a huge data file is read in seconds and left alone (exit $code) $out"; fails=$((fails + 1)); }
 rm -rf "$R/config"
 size "tests are exempt"                       tests/LongTest.php "$(php_fn LongTest testLong '$a, $b, $c, $d, $e' 30)" 0
 
