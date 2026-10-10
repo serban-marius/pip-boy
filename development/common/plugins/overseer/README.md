@@ -10,7 +10,7 @@ A very light harness: Claude Code hooks that make an agent follow **spec → red
 | 4 | A commit that changes production code also changes a test | after `git commit` | reminder |
 | 5 | Each PR is the smallest piece that builds, passes its tests and is reviewable alone. A PR against the default branch with over ~400 prod lines goes through `split-pr-stack` (caravan) or says `Why not smaller: …`; stacked PRs are trusted | `gh pr create` | block |
 | 6 | The PR body names the spec path, or `Spec impact: None — <why>` | `gh pr create` | block |
-| 7 | An edit adds no prose comments to code or config (annotations, tool directives and one-line `ponytail:` shortcut markers are fine); the why goes in the PR as a review comment, and after `gh pr create` the hook lists the files whose comments were stripped | after each edit, after `gh pr create` | reminder |
+| 7 | Names explain the code: no prose comments in code or config. Bare type annotations (`@param list<Item> $items`, `@return array{0: int}`), tool directives, attributes, bare markers (`@deprecated`) and one-line `ponytail:` shortcut markers are fine; an annotation with text after it, `@see` or `@todo` is prose. The why goes in the PR as a review comment, and after `gh pr create` the hook lists the files whose comments were stripped | after each edit, after `gh pr create` / `git commit` | reminder / block |
 
 ## How it knows
 
@@ -25,7 +25,7 @@ Production code = a code file (`php js ts py go rs rb java kt swift c cs vue sve
 | `SessionStart` | `session`: prints `rules/overseer.md` |
 | `PreToolUse` Edit/Write/MultiEdit | `pre-edit`: rules 1, 2 |
 | `PostToolUse` Edit/Write/MultiEdit | `post-edit`: logs the edit, rule 7 |
-| `PreToolUse` Bash | `pre-bash`: rules 3, 5, 6 |
+| `PreToolUse` Bash | `pre-bash`: rules 3, 5, 6, 7 (commit) |
 | `PostToolUse` Bash | `post-bash`: logs a green run, rules 4 and 7 (the why-comments reminder) |
 | `PostToolUseFailure` Bash | `bash-failed`: logs a red run |
 
@@ -38,7 +38,7 @@ Exit 0 is a silent pass. Exit 2 with a line starting `overseer:` blocks a Pre ho
 - Red is required once per branch, not once per cycle, because refactoring on green is legitimate.
 - Rule 5 cannot judge whether a cut makes sense. It sends big PRs to `split-pr-stack`, whose judgment it trusts, and does not measure PRs based on another branch. `--head` is measured when given.
 - A new branch inherits the log of the closest local branch it grew from, so work carried on in a child branch does not have to see red again. Detached HEAD inherits nothing.
-- Rule 7 reads line comments and docblocks. Python docstrings are not detected, and a `ponytail:` marker must fit on one line (continuation lines count as prose).
+- Rule 7 reads line comments and docblocks, in `hooks/prose.awk`. Python docstrings are not detected, a `ponytail:` marker must fit on one line, and so must an annotation: a type split over several lines counts as prose.
 
 ## Escape hatch
 
@@ -50,7 +50,7 @@ Exit 0 is a silent pass. Exit 2 with a line starting `overseer:` blocks a Pre ho
 - A wall against an agent writing production files through Bash. The rules forbid it; the hooks do not police it.
 - Model-judged checks. A Jev judge for rule 5 was built, benchmarked on the toucan stack and dropped in favour of `split-pr-stack`; see the design doc.
 
-Needs `bash`, `git`, `jq`. Design: `docs/superpowers/specs/2026-09-28-overseer-design.md`.
+Needs `bash`, `git`, `jq`, `awk`. Design: `docs/superpowers/specs/2026-09-28-overseer-design.md`, rework: `specs/003-overseer-rework/spec.md`.
 
 ## Development
 
