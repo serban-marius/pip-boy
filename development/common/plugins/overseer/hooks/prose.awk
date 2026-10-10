@@ -1,10 +1,10 @@
 BEGIN {
   COMMENT = "^[[:space:]]*(//|#|/\\*|\\*|\\{\\{--|<!--)"
-  STRUCTURAL = "^[[:space:]]*(#!|#\\[)"
-  DIRECTIVE = "^(phpcs:|phpstan-|psalm-|eslint-|prettier-ignore|@ts-|noqa|type: ?ignore|pylint:|nolint|NOSONAR|go:|#?(end)?region|istanbul|c8 ignore|-\\*-|shellcheck|yamllint|ponytail:|\\{@inheritDoc\\})"
+  STRUCTURAL = "^[[:space:]]*(#!|#\\[|\\*+[A-Za-z_$(&])"
+  DIRECTIVE = "^(phpcs:|phpstan-|psalm-|eslint-|prettier-ignore|@ts-|noqa|type: ?ignore|pylint:|nolint|NOSONAR|go:|#?(end)?region|istanbul|c8 ignore|-\\*-|shellcheck|yamllint|ponytail:|\\{@inheritDoc\\}|deno-(lint|fmt)-ignore|biome-ignore|fmt: ?(off|on|skip)|isort:|mypy:|pyright:|ruff:|rubocop:|jshint|global |<reference |<amd-module|syntax=|escape=|check=|yaml-language-server:|cspell:|webpackChunkName|@vite-ignore|@jsx)"
   TYPED = "^(param|return|returns|var|throws|extends|implements|mixin|type|typedef|property|property-read|property-write|(phpstan|psalm)-(param|return|var|extends|implements|property|property-read|property-write|assert|assert-if-true|assert-if-false|self-out|this-out))$"
   NAMED = "^(param|var|property|property-read|property-write|typedef|(phpstan|psalm)-(param|var|property|property-read|property-write|assert|assert-if-true|assert-if-false))$"
-  WHOLE = "^(phpstan-|psalm-|ts-|template|method|dataProvider|covers|uses|group|test|depends|before|after|runInSeparateProcess|runTestsInSeparateProcesses|preserveGlobalState|requires|testWith|codeCoverageIgnore|inheritDoc|jest-environment|vitest-environment|jsx|flow)"
+  WHOLE = "^(phpstan-|psalm-|ts-|template|method|dataProvider|covers|uses|group|test|depends|before|after|runInSeparateProcess|runTestsInSeparateProcesses|preserveGlobalState|requires|testWith|codeCoverageIgnore|inheritDoc|jest-environment|vitest-environment|jsx|flow|deno-types)"
 }
 
 {
