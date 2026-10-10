@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 set -u
+export LC_ALL=C
 here=$(cd "$(dirname "$0")" && pwd)
 input=$(cat)
 workdir() {
@@ -21,6 +22,7 @@ log="$dir/${branch//\//-}.log"
 ASK_PR_LINES=400 # ponytail: size only decides when to send a PR to split-pr-stack; the skill judges the cut
 NO_SPEC='Spec impact: *None *(—|–|-|:) *[^ ]'
 TESTS='\b(phpunit|pest|artisan test|pytest|vitest|jest|go test|cargo test|(npm|pnpm) (run )?test|yarn test|bun test|deno (task )?test|rspec|mix test|gradle test|mvn test)\b' # ponytail: fixed list; add a runner when a repo needs one
+LIMITS='15 body lines per function, nesting 2, 4 parameters, 200 lines per file' # ponytail: fixed in size.awk; per-repo limits if a codebase ever needs others
 COMMIT='\bgit\b[^;&|]*\bcommit\b'
 PR_CREATE='\bgh\s+pr\s+create\b'
 
@@ -73,13 +75,18 @@ added_lines() {
     grep -n '' -- "$1"
   fi
 }
-prose_comments() { added_lines "$1" | awk -f "$here/prose.awk"; }
+prose_comments() { is_commented "$1" && added_lines "$1" | awk -f "$here/prose.awk"; }
+oversized() { is_prod "$1" && awk -v changed="$(added_lines "$1" | cut -d: -f1 | tr '\n' ' ')" -f "$here/size.awk" "$1"; }
 cmd() { jq -r '.tool_input.command // ""' <<<"$input"; }
 dirty_files() { git status --porcelain --untracked-files=all | cut -c4-; }
-dirty_prose() {
+each_dirty() {
   local f; while read -r f; do
-    [ -f "$f" ] && is_commented "$f" && prose_comments "$f" | sed "s|^|$f:|"
+    [ -f "$f" ] && "$1" "$f" | sed "s|^|$f:|"
   done < <(dirty_files)
+}
+report() {
+  [ -z "$2" ] || printf '%s Delete them; names explain the code, the why goes in the PR as a review comment on that line:\n%s\n' "$1 adds prose comments." "$2"
+  [ -z "$3" ] || printf '%s Name each step as a function of its own and split the file by responsibility (max %s):\n%s\n' "$1 has code to split." "$LIMITS" "$3"
 }
 
 inherit
@@ -96,15 +103,16 @@ case "${1:-}" in
   post-edit)
     f=$(rel_file); [ -n "$f" ] || exit 0
     if is_prod "$f"; then note prod-edit; elif is_code_test "$f"; then note test-edit; fi
-    [ -f "$f" ] && is_commented "$f" || exit 0
-    p=$(prose_comments "$f" | head -n 10)
-    [ -z "$p" ] || { note "prose $f"; block "$(printf 'prose comments added to %s. Delete them; the why of a change goes in the PR as a review comment on that line:\n%s' "$f" "$p")"; }
+    [ -f "$f" ] || exit 0
+    p=$(prose_comments "$f" | head -n 10); s=$(oversized "$f" | head -n 10)
+    [ -z "$p" ] || note "prose $f"
+    [ -z "$p$s" ] || block "$(report "$f" "$p" "$s")"
     ;;
   pre-bash)
     c=$(cmd)
     if matches "$COMMIT"; then
-      p=$(dirty_prose | head -n 10)
-      [ -z "$p" ] || block "$(printf 'this commit adds prose comments. Delete them; names explain the code, the why goes in the PR as a review comment on that line:\n%s' "$p")"
+      p=$(each_dirty prose_comments | head -n 10); s=$(each_dirty oversized | head -n 10)
+      [ -z "$p$s" ] || block "$(report "this commit" "$p" "$s")"
       dirty_files | any is_code || exit 0
       matches "$TESTS" && block "run the tests in their own command, then commit in another; overseer only trusts a run it has seen finish."
       seen '$2~/^(test-edit|prod-edit|red|green)$/{l=$2} END{exit l!="green"}' ||

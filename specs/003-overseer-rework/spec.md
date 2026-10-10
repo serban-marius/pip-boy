@@ -58,4 +58,5 @@ brace matching, Python by `def` and indentation.
 - Limits as proposed: 15 body lines, nesting 2, 4 parameters, 200 lines per file.
 - A change inside a long legacy function makes it subject to R2: touch it, split it.
 - R2 measures production code only; tests are exempt.
+- The file limit applies only to files that define functions: config, routes and translation arrays are data, with nothing to split. The user found the limit too restrictive on those.
 - Python docstrings stay out of R1 for now.

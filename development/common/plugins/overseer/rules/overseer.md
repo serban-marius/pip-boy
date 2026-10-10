@@ -1,6 +1,6 @@
 ---
 name: overseer
-description: The delivery cycle overseer enforces with hooks - spec, red, green, commit, small PR, no prose comments - and how to clear each block
+description: The delivery cycle overseer enforces with hooks - spec, red, green, commit, small PR, no prose comments, small functions - and how to clear each block
 ---
 
 # overseer is on in this repo
@@ -15,6 +15,7 @@ Hooks enforce this cycle. When one blocks you, fix the cause it names and retry.
 6. **PRs link their spec.** The PR body names the `specs/...` or `openspec/changes/...` path, or says `Spec impact: None — <why>`. That includes a placeholder body you mean to replace later.
 7. **No prose comments.** Names explain the code: code and config carry no comments that explain. Bare type annotations stay (`@param list<Item> $items`, `@return array{0: int}`, `@var`, `@throws`), with nothing after the type or the variable: `@param list<Item> $items the items to keep` is prose. Tool directives (`phpcs:`, `eslint-`, `noqa`, `@ts-`, `@dataProvider`), attributes and bare markers (`@deprecated`, `@internal`) stay; `@see`, `@todo` or any tag followed by text is prose. A commit that adds prose comments is blocked. The why of a change goes in the PR, as a review comment on the line it explains, once the PR is open. After `gh pr create` the hook lists the files you had to strip, so none is forgotten.
    The one exception is a deliberate shortcut: mark it with a one-line `ponytail:` comment naming what it skips, where it stops holding, and the upgrade path (`# ponytail: global lock, per-account locks if throughput matters`).
+8. **Small functions, small files.** A function reads as the list of steps it calls, each step a function whose name says what it does. Production code stays within: **15 lines per function body**, **nesting 2** (loops, conditions and closures inside a function), **4 parameters** (constructors exempt), **200 code lines per file** that defines functions (data files such as config, routes or translations are free). Blank and comment lines do not count. Any function an edit touches must fit, legacy ones too: touch it, split it. Too many parameters means a missing object; a file over 200 lines holds more than one responsibility. A commit with code over these limits is blocked. Tests are exempt.
 
 How to write the code:
 
