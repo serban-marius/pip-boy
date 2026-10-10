@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 set -u
+here=$(cd "$(dirname "$0")" && pwd)
 input=$(cat)
 workdir() {
   command -v jq >/dev/null || return
@@ -72,19 +73,19 @@ added_lines() {
     grep -n '' -- "$1"
   fi
 }
-prose_comments() {
-  added_lines "$1" |
-    grep -E '^[0-9]+:[[:space:]]*(//|#|/\*|\*|\{\{--|<!--)' |
-    grep -vE '^[0-9]+:[[:space:]]*(#!|#\[|(//|#|/\*+|\*/?|\{\{--|<!--|-->|--\}\})[[:space:]]*$)' |
-    grep -vE '@[A-Za-z]|phpcs:|phpstan-|psalm-|eslint-|prettier-ignore|@ts-|noqa|type: ?ignore|pylint:|nolint|NOSONAR|//go:|(end)?region|istanbul|c8 ignore|-\*-|shellcheck|yamllint|ponytail:'
-}
+prose_comments() { added_lines "$1" | awk -f "$here/prose.awk"; }
 cmd() { jq -r '.tool_input.command // ""' <<<"$input"; }
 dirty_files() { git status --porcelain --untracked-files=all | cut -c4-; }
+dirty_prose() {
+  local f; while read -r f; do
+    [ -f "$f" ] && is_commented "$f" && prose_comments "$f" | sed "s|^|$f:|"
+  done < <(dirty_files)
+}
 
 inherit
 case "${1:-}" in
   session)
-    cat "${0%/*}/../rules/overseer.md"
+    cat "$here/../rules/overseer.md"
     ;;
   pre-edit)
     f=$(rel_file); [ -n "$f" ] && is_prod "$f" || exit 0
@@ -102,6 +103,8 @@ case "${1:-}" in
   pre-bash)
     c=$(cmd)
     if matches "$COMMIT"; then
+      p=$(dirty_prose | head -n 10)
+      [ -z "$p" ] || block "$(printf 'this commit adds prose comments. Delete them; names explain the code, the why goes in the PR as a review comment on that line:\n%s' "$p")"
       dirty_files | any is_code || exit 0
       matches "$TESTS" && block "run the tests in their own command, then commit in another; overseer only trusts a run it has seen finish."
       seen '$2~/^(test-edit|prod-edit|red|green)$/{l=$2} END{exit l!="green"}' ||

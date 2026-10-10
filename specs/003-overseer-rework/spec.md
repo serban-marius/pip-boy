@@ -34,11 +34,11 @@ Changes from today:
 A function says what happens through the names of the functions it calls. Measured on the functions an
 edit touches (legacy functions nobody touches are left alone):
 
-| Metric | Limit (proposed) | Trinity today |
+| Metric | Limit | Trinity today |
 |---|---|---|
 | Lines in a function body (no blanks, no comments) | 15 | `__invoke` 85, `build` 29, `verify` 24, `context` 21, `identityGate` 18 |
 | Nesting depth inside a function | 2 | `verify` 3, `supportingSources` 3 |
-| Parameters (constructors exempt) | 4 | `__invoke` 10, `build` 7, `finish` 4 |
+| Parameters (constructors exempt) | 4 | `__invoke` 10, `build` 7 |
 | Lines in a file / class | 200 | `ContextBuilder.php` 326, `GenerateTrinityReview.php` 244 |
 
 Effect: reminder after the edit naming the function and the metric, block at `git commit`.
@@ -54,7 +54,9 @@ brace matching, Python by `def` and indentation.
 - `GenerateTrinityReview::__invoke`, `ContextBuilder::verify` and `ContextBuilder.php` are reported with their metric; a commit with them is blocked;
 - a long legacy function in a file that is edited elsewhere is not reported.
 
-## Open
+## Decided
 
-- Limits above are proposals.
-- Whether a one-line change inside a long legacy function forces splitting it (proposed: yes) or only new functions count.
+- Limits as proposed: 15 body lines, nesting 2, 4 parameters, 200 lines per file.
+- A change inside a long legacy function makes it subject to R2: touch it, split it.
+- R2 measures production code only; tests are exempt.
+- Python docstrings stay out of R1 for now.
