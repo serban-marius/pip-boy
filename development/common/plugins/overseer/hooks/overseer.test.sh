@@ -125,6 +125,45 @@ printf 'x = 1  # type: ignore[attr]\n// eslint-disable-next-line no-console -- n
 check "directives with reasons pass"            0 post-edit "$(edit src/doc.ts)"
 rm -f "$R/src/Doc.php" "$R/src/doc.ts"
 
+stmts() { local i; for i in $(seq 1 "$1"); do printf '%s$x%d = %d;\n' "$2" "$i" "$i"; done; }
+php_fn() { printf '<?php\nclass %s\n{\n    public function %s(%s)\n    {\n%s\n    }\n}\n' "$1" "$2" "$3" "$(stmts "$4" '        ')"; }
+size() { printf '%s\n' "$3" >"$R/$2"; check "$1" "$4" post-edit "$(edit "$2")" "${5:-}"; rm -f "$R/$2"; }
+size "a 16-line function is too long"          src/Long.php "$(php_fn Long longFn '' 16)" 2 "longFn: 16 body lines (max 15)"
+size "a 15-line function passes"               src/Long.php "$(php_fn Long longFn '' 15)" 0
+size "5 parameters are too many"               src/Wide.php "$(php_fn Wide wide '$a, $b, $c, $d, $e' 1)" 2 "wide: 5 parameters (max 4)"
+size "4 parameters pass"                       src/Wide.php "$(php_fn Wide wide 'array $a, ?int $b = null, string ...$c, &$d' 1)" 0
+size "a constructor takes what it needs"       src/Wired.php "$(php_fn Wired __construct 'private A $a, private B $b, private C $c, private D $d, private E $e' 0)" 0
+size "nesting 3 is too deep"                   src/Deep.php "$(printf '<?php\nfunction deep($xs) {\n    foreach ($xs as $x) {\n        if ($x) {\n            while ($x--) {\n                echo 1;\n            }\n        }\n    }\n}')" 2 "deep: nesting 3 (max 2)"
+size "nesting 2 passes"                        src/Deep.php "$(printf '<?php\nfunction deep($xs) {\n    foreach ($xs as $x) {\n        if ($x) {\n            echo 1;\n        } else {\n            echo 2;\n        }\n    }\n}')" 0
+size "a closure inside a loop is nesting"      src/Deep.php "$(printf '<?php\nfunction deep($xs) {\n    foreach ($xs as $x) {\n        array_map(function ($y) {\n            if ($y) { echo 1; }\n        }, $x);\n    }\n}')" 2 "nesting 3"
+size "braces in strings and comments are not code" src/Str.php "$(printf '<?php\nfunction str() {\n    $a = "{{{";\n    $b = '"'"'}'"'"';\n    $c = 1; /* { */\n    return $a . $b;\n}\nfunction next1($a, $b, $c, $d, $e) {}')" 2 "next1: 5 parameters"
+size "js object literals are not nesting"      src/cfg.ts "$(printf 'export function cfg() {\n  return { a: { b: { c: 1 } } };\n}')" 0
+size "a js class method is measured"           src/view.ts "$(printf 'export class View {\n  render(a: Map<string, number>) {\n%s\n  }\n}' "$(stmts 16 '    ')")" 2 "render: 16 body lines"
+size "a js arrow function is measured"         src/build.js "$(printf 'export const build = async (a, b) => {\n%s\n};' "$(stmts 16 '  ')")" 2 "build: 16 body lines"
+size "destructured params do not hide a function" src/post.ts "$(printf 'export const POST: APIRoute = async ({ locals, request }) => {\n%s\n};' "$(stmts 16 '  ')")" 2 "POST: 16 body lines"
+size "a component owns its hooks"              src/Page.tsx "$(printf 'export default function Page({ items }: { items: string[] }) {\n  useEffect(() => {\n    if (a) {\n      if (b) {\n        load()\n      }\n    }\n  }, [])\n  return <ul>{items.map((i) => <li>{i}</li>)}</ul>\n}')" 2 "Page: nesting 3"
+size "no semicolons, a statement is not a header" src/limits.ts "$(printf 'foo()\nif (ready) {\n%s\n}' "$(stmts 16 '  ')")" 0
+size "object literals in calls are not blocks" src/calls.ts "$(printf 'export function run(xs) {\n  for (const x of xs) {\n    if (x) {\n      xs.forEach((y) => send({ a: { b: y } }))\n    }\n  }\n}')" 0
+size "invalid utf-8 does not break the check"  src/bytes.ts "$(printf 'export const s = "\377"\nexport function wide(a, b, c, d, e) {}')" 2 "wide: 5 parameters"
+size "a go method is measured"                src/server.go "$(printf 'package x\n\ntype Server struct {\n\tdb DB\n}\n\nfunc (s *Server) Handle(w Writer, r *Request) {\n%s\n}' "$(stmts 16 '	')")" 2 "Handle: 16 body lines"
+size "a python def is measured"                src/load.py "$(printf 'class Loader:\n    def load(self, path):\n%s\n\n    def ok(self):\n        return 1' "$(for i in $(seq 1 16); do echo "        x$i = $i"; done)")" 2 "load: 16 body lines"
+size "python self and cls are not parameters"  src/load.py "$(printf 'class Loader:\n    def load(self, a, b, c, d):\n        return a\n')" 0
+size "python parameters are counted"           src/load.py "$(printf 'def load(a, b,\n         c, d, e):\n    return a\n')" 2 "load: 5 parameters"
+size "python nesting is measured"              src/load.py "$(printf 'def load(xs):\n    for x in xs:\n        if x:\n            with open(x) as f:\n                f.read()\n')" 2 "load: nesting 3"
+size "python elif and else do not nest"        src/load.py "$(printf 'def load(x):\n    if x:\n        if x > 1:\n            return 1\n        elif x:\n            return 2\n        else:\n            return 3\n')" 0
+size "a 201-line file is too long"             src/Big3.php "$(printf '<?php\nclass Big3\n{\n    private $p = 1;\n'; for i in $(seq 1 49); do printf '    public function f%d()\n    {\n        return %d;\n    }\n' "$i" "$i"; done; printf '}')" 2 "file: 201 lines (max 200)"
+size "a 200-line file passes"                  src/Big3.php "$(printf '<?php\nclass Big3\n{\n'; for i in $(seq 1 49); do printf '    public function f%d()\n    {\n        return %d;\n    }\n' "$i" "$i"; done; printf '}')" 0
+size "tests are exempt"                        tests/LongTest.php "$(php_fn LongTest testLong '$a, $b, $c, $d, $e' 30)" 0
+
+printf '%s\n' "$(php_fn Legacy2 legacyLong '' 20 | sed '$d')" '    public function short()' '    {' '        return 1;' '    }' '}' >"$R/src/Legacy2.php"
+git -C "$R" add -A && git -C "$R" commit -qm legacy2
+sed -i.bak 's/return 1;/return 2;/' "$R/src/Legacy2.php" && rm "$R/src/Legacy2.php.bak"
+check "an untouched long legacy function is left alone" 0 post-edit "$(edit src/Legacy2.php)"
+sed -i.bak 's/\$x3 = 3;/$x3 = 4;/' "$R/src/Legacy2.php" && rm "$R/src/Legacy2.php.bak"
+check "touching a long legacy function: split it" 2 post-edit "$(edit src/Legacy2.php)" "legacyLong: 20 body lines"
+check "a commit with a long function: blocked"  2 pre-bash "$(bash_ 'git commit -am legacy')" "legacyLong"
+git -C "$R" checkout -q -- src/Legacy2.php
+
 mkdir -p "$R/src/my dir" && touch "$R/src/my dir/Spaced.php"
 check "a path with spaces is still prod code"   0 post-edit "$(edit 'src/my dir/Spaced.php')"
 grep -q prod-edit "$R/.git/overseer/feat-castle.log" && tail -1 "$R/.git/overseer/feat-castle.log" | grep -q prod-edit || { echo "FAIL spaced path not logged"; fails=$((fails + 1)); }
