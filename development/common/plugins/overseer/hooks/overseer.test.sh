@@ -153,7 +153,11 @@ size "python nesting is measured"              src/load.py "$(printf 'def load(x
 size "python elif and else do not nest"        src/load.py "$(printf 'def load(x):\n    if x:\n        if x > 1:\n            return 1\n        elif x:\n            return 2\n        else:\n            return 3\n')" 0
 size "a 201-line file is too long"             src/Big3.php "$(printf '<?php\nclass Big3\n{\n    private $p = 1;\n'; for i in $(seq 1 49); do printf '    public function f%d()\n    {\n        return %d;\n    }\n' "$i" "$i"; done; printf '}')" 2 "file: 201 lines (max 200)"
 size "a 200-line file passes"                  src/Big3.php "$(printf '<?php\nclass Big3\n{\n'; for i in $(seq 1 49); do printf '    public function f%d()\n    {\n        return %d;\n    }\n' "$i" "$i"; done; printf '}')" 0
-size "tests are exempt"                        tests/LongTest.php "$(php_fn LongTest testLong '$a, $b, $c, $d, $e' 30)" 0
+mkdir -p "$R/config" && seq 1 20000 | awk 'BEGIN { print "<?php"; print "return [" } { print "    \"k" $1 "\" => " $1 "," } END { print "];" }' >"$R/config/big.php"
+out=$(edit config/big.php | perl -e 'alarm 5; exec @ARGV' bash "$S" post-edit 2>&1); code=$?
+[ "$code" -eq 2 ] && grep -q 'file: 20003 lines' <<<"$out" && echo "ok   a huge data file is measured in seconds" || { echo "FAIL a huge data file is measured in seconds (exit $code)"; fails=$((fails + 1)); }
+rm -rf "$R/config"
+size "tests are exempt"                       tests/LongTest.php "$(php_fn LongTest testLong '$a, $b, $c, $d, $e' 30)" 0
 
 printf '%s\n' "$(php_fn Legacy2 legacyLong '' 20 | sed '$d')" '    public function short()' '    {' '        return 1;' '    }' '}' >"$R/src/Legacy2.php"
 git -C "$R" add -A && git -C "$R" commit -qm legacy2

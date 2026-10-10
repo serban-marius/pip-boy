@@ -1,5 +1,6 @@
 BEGIN {
   MAX_BODY = 15; MAX_NEST = 2; MAX_PARAMS = 4; MAX_FILE = 200
+  MAX_HEAD = 2000 # ponytail: a header longer than this is data, not a signature; raise it if a real signature ever is
   WORD = "[A-Za-z_$][A-Za-z0-9_$]*"
   NESTS = "(^|[^A-Za-z0-9_$])(if|else|elseif|for|foreach|while|do|switch|try|catch|finally|match|select|loop|when|unless|guard|function|fn|func|fun)([^A-Za-z0-9_$]|$)|=>"
   STATEMENT = "^[[:space:]]*(if|else|elseif|for|foreach|while|do|switch|try|catch|finally|match|select|loop|when|unless|guard|with)([^A-Za-z0-9_$]|$)"
@@ -47,6 +48,7 @@ function count_line(code) {
 }
 
 function extend_head(c) {
+  if (length(head) > MAX_HEAD) reset_head()
   if (head == "" && c ~ /[[:space:]]/) return
   if (head == "") head_line = FNR
   head = head c
