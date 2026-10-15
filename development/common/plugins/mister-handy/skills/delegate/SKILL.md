@@ -1,11 +1,12 @@
 ---
 name: delegate
-description: "Keep this session as HQ: send substantive work (investigations, fixes, features, PRs, reviews) out as written briefs, one agent each, to Orca worktrees when running in Orca or to background Claude Code subagents in their own git worktrees otherwise, instead of doing it here; workers report through a STATUS file (and their Orca card), never by messaging this session; then answer 'how is it going', pass follow-ups and approvals to a worker, and clean up finished worktrees, all without pulling transcripts back into this context. Use when the user says 'open/spool/boot/spin up an orca worktree for this', 'launch some orca worktrees', 'lanza un orca worktree', 'lánzate unos worktrees y a currar', 'monta unos worktrees', 'hazlo en otro worktree', 'give the task to the X orca session', 'mándaselo a la sesión del worktree', 'do a cleanup of worktrees', 'close the worktree if we're done', 'bring the summary here', 'keep this session clean', or '/delegate'. Also the DEFAULT for any substantive task, worded or not, whenever the mister-handy SessionStart note says this session is HQ."
+description: "Keep this session as HQ: send substantive work (investigations, fixes, features, PRs, reviews) out as written briefs, one agent each, to Orca worktrees when running in Orca or to background Claude Code subagents in their own git worktrees otherwise, instead of doing it here; HQ then watches them in the background and acts when they finish, fail, ask or go quiet (review, merge on standing orders, launch chained tasks, close worktrees); workers report through a STATUS file (and their Orca card), never by messaging this session; then answer 'how is it going', pass follow-ups and approvals to a worker, and clean up finished worktrees, all without pulling transcripts back into this context. Use when the user says 'open/spool/boot/spin up an orca worktree for this', 'launch some orca worktrees', 'lanza un orca worktree', 'lánzate unos worktrees y a currar', 'monta unos worktrees', 'hazlo en otro worktree', 'give the task to the X orca session', 'mándaselo a la sesión del worktree', 'quédate vigilándolos', 'ves chapando worktrees si han terminado', 'do a cleanup of worktrees', 'close the worktree if we're done', 'bring the summary here', 'keep this session clean', or '/delegate'. Also the DEFAULT for any substantive task, worded or not, whenever the mister-handy SessionStart note says this session is HQ."
 ---
 
 # Delegate to worktrees, keep HQ clean
 
-This session is HQ. Its context is for what the user cares about: decisions, briefs, short
+This session is HQ, and it orchestrates: it launches workers, watches them, and acts when they
+finish or get stuck. Its context is for what the user cares about: decisions, briefs, short
 status, approvals. The digging, the diffs, the test runs and the PR babysitting happen in
 worktrees, each with its own agent. Everything in this skill serves one rule:
 
@@ -51,7 +52,7 @@ One folder per repo, next to its worktrees, outside every git checkout:
   reports/<slug>.md    long findings, when a task asks for a written report
   reviews/<slug>.md    reviewer verdicts
   STATUS.md            append-only, one line per event, all workers
-  SESSIONS.md          slug, worktree path, terminal handle, agent, started
+  SESSIONS.md          slug, worktree path, terminal handle, agent, started, on-done, after
 ```
 
 With the subagents backend there is no workspaces folder: use `~/.claude/hq/<repo name>/`
@@ -96,7 +97,7 @@ Create `_hq/` on first use, with `STATUS.md` starting `# append-only: HH:MM <slu
 
    ## Reporting (the only channel back to HQ)
    - Append lines to <abs path>/_hq/STATUS.md: `HH:MM <slug> <STATE> <text>`, STATE one of
-     START, MILESTONE, ANSWER, BLOCKED, DONE. DONE carries the PR link, commit sha or
+     START, MILESTONE, ANSWER, BLOCKED, REVISED, DONE, FAILED (gave up, with why). DONE carries the PR link, commit sha or
      `no-code`, plus the report path if any.
    - Keep your Orca card current: `orca worktree set --worktree active --comment "<state>" --json`.
    - Blocked on a human decision: write a BLOCKED line with the exact question, run
@@ -124,10 +125,15 @@ Create `_hq/` on first use, with `STATUS.md` starting `# append-only: HH:MM <slu
    - The agent handle is `result.agentTerminalHandle` (older runtimes:
      `result.startupTerminal.handle`); if neither is there, take it from
      `orca terminal list --worktree id:<full worktree id> --json`.
-5. **Record** a line in `SESSIONS.md` (`<slug>  <worktree path>  <handle>  <agent>  <HH:MM>`)
-   and append `HH:MM hq DISPATCHED <slug>` to `STATUS.md`.
-6. **Report and stop.** One line to the user: slug, worktree, what it will deliver. Do not wait
-   for it, read its terminal, or check on it unless the user asks.
+5. **Record** a line in `SESSIONS.md`
+   (`<slug>  <worktree path>  <handle>  <agent>  <HH:MM>  on-done: <order>  after: <slug|->`)
+   and append `HH:MM hq DISPATCHED <slug>` to `STATUS.md`. `on-done` is the user's standing
+   order for when it finishes ("review it", "merge if green", "close the worktree"); default
+   `report`. `after` names a task this one waits for (Mode 2 chains); such a task is recorded
+   but not launched yet.
+6. **Report and watch.** One line to the user: slug, worktree, what it will deliver. Then arm the
+   watcher (Mode 6) if it is not already running, and end the turn. Never sit waiting in a
+   foreground command.
 
 ### Model and effort
 
@@ -159,12 +165,13 @@ PR only; `orca worktree ps --json` shows remote cards. For anything beyond this,
 
 1. Split the work into tasks that can run at the same time. **Give every file one owner.**
    Two workers editing the same files end in conflicting PRs; merge such tasks into one worker
-   or chain them (second brief starts after the first PR merges).
+   or chain them: write both briefs, launch the first, record the second with `after: <first>`;
+   the watcher launches it when the first is DONE and merged.
 2. Tell the user the split in one line per task, then go without waiting for approval unless a
    task writes to production or the split is a real judgement call.
 3. Write all briefs, then launch all worktrees in one message (parallel tool calls). Each brief
    names the other workers and what they own.
-4. Report the table (slug, delivers, worktree) and stop.
+4. Report the table (slug, delivers, worktree, on-done) and arm the watcher (Mode 6).
 
 ## Mode 3: status ("¿cómo va?", "bring the summary here")
 
@@ -197,7 +204,8 @@ orca session": find its terminal with `orca terminal list --json` and send.
 Reviews go out too. A reviewer is a worker whose brief is "review <PR or branch> against
 <brief path>; write PASS or REVISE with numbered items to `_hq/reviews/<slug>.md`; append a
 STATUS line". On REVISE, send the author: "Reviewer verdict: REVISE. Read <review path> and fix
-every item, then append a REVISED line."
+every item, then append a REVISED line." and append `HH:MM hq REOPENED <slug>`. Any follow-up
+that gives a DONE worker new work is a REOPENED line too, so the watcher tracks it again.
 
 ## Mode 5: cleanup ("close the worktree if we're done", "do a cleanup")
 
@@ -216,6 +224,37 @@ Report one table (closed / kept and why) and, when asked for "the knowledge", a 
 built from the DONE lines and reports. Removing worktrees the user did not ask to close needs
 their OK first.
 
+## Mode 6: watch what you launched
+
+HQ keeps an eye on every worker it started, without reading their transcripts. The watcher is
+a background command that sleeps until `STATUS.md` says something HQ must act on, prints only
+that, and exits; the exit wakes HQ.
+
+```text
+bash <skill dir>/bin/watch.sh <abs path>/_hq [quiet minutes, default 20]
+```
+
+`<skill dir>` is the base directory shown when this skill loads.
+
+Run it with the Bash tool's `run_in_background: true` and `timeout: 7200000`. It keeps its own
+read offset in `_hq/.watch-offset` and refuses to run twice (`ALREADY-WATCHING`: do nothing).
+When it wakes HQ, handle what it printed, then arm it again unless it said `ALL-SETTLED`:
+
+| Output | HQ does |
+|--------|---------|
+| `DONE` | Check the claim cheaply: `gh pr view <n> --json state,mergeable` and `gh pr checks <n>` for one line of CI truth. Then carry out the slug's `on-done` order (launch a reviewer, close it with Mode 5, merge only if the user ordered it and checks are green). Launch every task whose `after` is this slug once its condition holds. Tell the user one line. |
+| `FAILED` | One line with the reason; ask whether to relaunch with a better brief. |
+| `ANSWER` | Relay the answer in one line. |
+| `BLOCKED` | Put the worker's exact question to the user. Forward the reply (Mode 4). |
+| `REVISED` | Launch the re-review, or report if no reviewer is involved. |
+| `QUIET <m> <slugs>` | No line from those workers in m minutes. Orca: `orca worktree ps --json` for their cards, then at most `orca terminal read --terminal <handle> --limit 40 --json` to tell busy from stuck from dead. Busy: re-arm silently. Stuck: one nudge ("append a STATUS line with where you are"). Dead (terminal exited): tell the user and offer a relaunch. Subagents: nudge with `SendMessage`. |
+| `CHECKPOINT` | Nothing happened for ~2 hours; re-arm silently. |
+| `ALL-SETTLED` | Every dispatched task is DONE, FAILED or CLOSED. One summary line per task and stop watching. |
+
+Say nothing to the user for checkpoints and busy workers: silence is the point. If the user is
+in the middle of something else when the watcher wakes HQ, keep the event to one line and go
+back to what they were doing.
+
 ## Without Orca (subagents backend)
 
 Same HQ files, same briefs, same STATUS lines. What changes:
@@ -233,6 +272,8 @@ Same HQ files, same briefs, same STATUS lines. What changes:
 - **Blocked** workers cannot reach the user: they write the BLOCKED line and end with the
   question. HQ asks the user, then sends the answer with `SendMessage` to that agent.
 - **Status**: `STATUS.md` tail and `gh` for PRs. Never read a subagent's output file.
+- **Watching**: the same watcher; a subagent's completion notice also wakes HQ, handle it like
+  its DONE or FAILED line.
 - **Follow-ups and reviews**: `SendMessage` to the agent by name or ID; a reviewer is one more
   background subagent.
 - **Cleanup**: worktrees without changes are removed automatically. For the rest, apply the
@@ -242,6 +283,7 @@ Same HQ files, same briefs, same STATUS lines. What changes:
 ## Never
 
 - Never do the delegated work in HQ "quickly first".
+- Never launch and forget: every dispatch leaves the watcher armed until all tasks settle.
 - Never use supervised orchestration (`orchestration worker-start`, `dispatch`, `send`,
   `check --wait`) or ask workers to message HQ.
 - Never read whole worker transcripts or diffs into HQ to answer a status question.

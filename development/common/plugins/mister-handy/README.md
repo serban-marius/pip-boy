@@ -1,6 +1,6 @@
 # Mister Handy
 
-Keep the main Claude session as HQ: small, responsive, holding only the context you care
+Keep the main Claude session as HQ, the orchestrator: small, responsive, holding only the context you care
 about. Substantive work goes out with a written brief, one agent each: to Orca worktrees when
 you run inside Orca, to background Claude Code subagents in their own git worktrees otherwise.
 Workers report through a shared `STATUS.md` (and their Orca card), never by messaging HQ, so
@@ -30,6 +30,7 @@ worktrees", "mándaselo a la sesión del worktree", "¿cómo va?", "do a cleanup
 |------|--------------|
 | Delegate | Writes `_hq/briefs/<slug>.md`, `orca worktree create --agent claude --prompt "<read the brief>"`, records it, reports one line and stops |
 | Fan out | Splits the work with one owner per file, writes every brief, launches all worktrees in parallel |
+| Watch | A background watcher on `STATUS.md` wakes HQ only on DONE, FAILED, ANSWER, BLOCKED, REVISED or a quiet worker; HQ verifies the PR, runs the task's standing order (review, merge if green, close), launches chained tasks, and stays silent otherwise |
 | Status | Reads the `STATUS.md` tail, `orca worktree ps` and the PRs; never worker transcripts |
 | Follow-up | `orca terminal send` to the worker's handle; approvals, revisions, reviewer verdicts |
 | Cleanup | Removes worktrees that are DONE, merged and clean; lists the rest with what is missing |
