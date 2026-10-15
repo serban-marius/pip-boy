@@ -1,7 +1,7 @@
 {
   "name": "mister-handy",
-  "version": "1.0.0",
-  "description": "Mister Handy: keep the main session as HQ. Substantive work goes out to Orca worktrees as written briefs; workers report through a STATUS file and their Orca card, never into this session; status, follow-ups and cleanup without pulling transcripts back in.",
+  "version": "1.1.0",
+  "description": "Mister Handy: the main session is HQ by default. A SessionStart hook marks HQ vs worker; HQ sends every substantive task out as a written brief to Orca worktrees, or to background subagents in git worktrees without Orca. Workers report through a STATUS file, never into HQ; status, follow-ups and cleanup without pulling transcripts back in.",
   "author": {
     "name": "Marius Serban"
   },
