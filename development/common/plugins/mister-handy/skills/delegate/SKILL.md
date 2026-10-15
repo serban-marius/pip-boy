@@ -97,8 +97,12 @@ Create `_hq/` on first use, with `STATUS.md` starting `# append-only: HH:MM <slu
 
    ## Reporting (the only channel back to HQ)
    - Append lines to <abs path>/_hq/STATUS.md: `HH:MM <slug> <STATE> <text>`, STATE one of
-     START, MILESTONE, ANSWER, BLOCKED, REVISED, DONE, FAILED (gave up, with why). DONE carries the PR link, commit sha or
-     `no-code`, plus the report path if any.
+     START, MILESTONE, ANSWER, BLOCKED, HANDOFF, REVISED, DONE-STEP, DONE, FAILED (gave up, with why).
+   - DONE means the whole task is over, and carries the full PR URL
+     (`https://github.com/<owner>/<repo>/pull/<n>`), a commit sha or `no-code`, plus the report
+     path if any. A follow-up from HQ finished while the main job goes on is `DONE-STEP`.
+   - Another worker needs something from you (a go, a URL, a service up): write
+     `HANDOFF <their slug> <what>`; HQ forwards it.
    - Keep your Orca card current: `orca worktree set --worktree active --comment "<state>" --json`.
    - Blocked on a human decision: write a BLOCKED line with the exact question, run
      `orca worktree set --worktree active --unread --json`, and wait in your own terminal.
@@ -128,8 +132,9 @@ Create `_hq/` on first use, with `STATUS.md` starting `# append-only: HH:MM <slu
 5. **Record** a line in `SESSIONS.md`
    (`<slug>  <worktree path>  <handle>  <agent>  <HH:MM>  on-done: <order>  after: <slug|->`)
    and append `HH:MM hq DISPATCHED <slug>` to `STATUS.md`. `on-done` is the user's standing
-   order for when it finishes ("review it", "merge if green", "close the worktree"); default
-   `report`. `after` names a task this one waits for (Mode 2 chains); such a task is recorded
+   order for when it finishes ("review it", "merge if green"), and ends in closing the worktree
+   (Mode 5) unless it says `keep`. Default `close`: a `no-code` task closes at its DONE, a PR
+   task once its PR is merged or closed. Use `keep` for workers HQ will send more work to. `after` names a task this one waits for (Mode 2 chains); such a task is recorded
    but not launched yet.
 6. **Report and watch.** One line to the user: slug, worktree, what it will deliver. Then arm the
    watcher (Mode 6) if it is not already running, and end the turn. Never sit waiting in a
@@ -166,7 +171,8 @@ PR only; `orca worktree ps --json` shows remote cards. For anything beyond this,
 1. Split the work into tasks that can run at the same time. **Give every file one owner.**
    Two workers editing the same files end in conflicting PRs; merge such tasks into one worker
    or chain them: write both briefs, launch the first, record the second with `after: <first>`;
-   the watcher launches it when the first is DONE and merged.
+   the watcher launches it when the first is DONE and merged. When a worker must signal another
+   mid-task (a go, a URL, a service up), its brief says to write a `HANDOFF` line for it.
 2. Tell the user the split in one line per task, then go without waiting for approval unless a
    task writes to production or the split is a real judgement call.
 3. Write all briefs, then launch all worktrees in one message (parallel tool calls). Each brief
@@ -199,7 +205,9 @@ Take the handle from `SESSIONS.md`; on `terminal_handle_stale` or after an Orca 
 `orca terminal list --worktree path:<worktree path> --json` and update `SESSIONS.md`. Check the
 receipt's `accepted`; never resend on silence. Long messages go in a file
 (`_hq/briefs/<slug>-2.md`) and the send points at it. The same applies to "give this to the X
-orca session": find its terminal with `orca terminal list --json` and send.
+orca session": find its terminal with `orca terminal list --json` and send. A follow-up to a
+worker still on its main job ends with: "When this is done, append a DONE-STEP line; DONE stays
+for the whole task."
 
 Reviews go out too. A reviewer is a worker whose brief is "review <PR or branch> against
 <brief path>; write PASS or REVISE with numbered items to `_hq/reviews/<slug>.md`; append a
@@ -212,17 +220,18 @@ that gives a DONE worker new work is a REOPENED line too, so the watcher tracks 
 For each task in `SESSIONS.md` (or each worktree the user named):
 
 1. Done means: a DONE line, and its PR merged or closed (or `no-code`), and
-   `git -C <path> status --porcelain` empty, and no commits missing from the remote
-   (`git -C <path> log @{u}.. --oneline` empty, or the branch was merged).
+   `bash <skill dir>/bin/closable.sh <path>` prints `CLOSABLE`: a clean tree, and every commit on
+   a remote branch or the head of a merged PR.
 2. Done → copy anything worth keeping out of the worktree first (reports already live in
-   `_hq/`), then `orca worktree rm --worktree path:<path> --json`, and append
-   `HH:MM hq CLOSED <slug>`. Add `--force` only after step 1 proved there is nothing to lose.
-3. Not done → do not remove it. List it with what is missing (uncommitted files, open PR,
-   no DONE line).
+   `_hq/`), then `orca worktree rm --worktree path:<path> --force --json`, and append
+   `HH:MM hq CLOSED <slug>`. `--force` is safe only after `CLOSABLE`.
+3. Not done → do not remove it. List it with what is missing (`KEEP <why>`, open PR, no DONE
+   line). A task you meant to close but cannot gets `HH:MM hq KEPT <slug> <why>`.
 
-Report one table (closed / kept and why) and, when asked for "the knowledge", a short summary
-built from the DONE lines and reports. Removing worktrees the user did not ask to close needs
-their OK first.
+HQ runs this on its own, when the watcher wakes it, for every task whose `on-done` ends in close.
+When the user asks, report one table (closed / kept and why) and, when asked for "the
+knowledge", a short summary built from the DONE lines and reports. Removing a worktree whose
+`on-done` is `keep`, or one HQ did not launch, needs the user's OK first.
 
 ## Mode 6: watch what you launched
 
@@ -242,14 +251,17 @@ When it wakes HQ, handle what it printed, then arm it again unless it said `ALL-
 
 | Output | HQ does |
 |--------|---------|
-| `DONE` | Check the claim cheaply: `gh pr view <n> --json state,mergeable` and `gh pr checks <n>` for one line of CI truth. Then carry out the slug's `on-done` order (launch a reviewer, close it with Mode 5, merge only if the user ordered it and checks are green). Launch every task whose `after` is this slug once its condition holds. Tell the user one line. |
+| `DONE` | Check the claim cheaply: `gh pr view <url> --json state,mergeable` and `gh pr checks <url>` for one line of CI truth. Then carry out the slug's `on-done` order (launch a reviewer, merge only if the user ordered it and checks are green). `no-code` → close it now (Mode 5); with a PR the watcher reports the merge later; `keep` → append `hq KEPT <slug> on-done keep`. Launch every task whose `after` is this slug once its condition holds. Tell the user one line. |
+| `DONE-STEP` | A follow-up is finished, the main job goes on. Relay it in one line. |
+| `HANDOFF <slug> <what>` | Forward it to that worker (Mode 4) without asking the user; launch it instead if it was waiting with `after`. |
+| `PR-MERGED` / `PR-CLOSED <slug> <url>` | The PR left review. Close the worktree (Mode 5), or append `hq KEPT <slug> <why>` when its `on-done` is `keep` or `closable.sh` says `KEEP` (tell the user why). Launch tasks waiting `after` it. |
 | `FAILED` | One line with the reason; ask whether to relaunch with a better brief. |
 | `ANSWER` | Relay the answer in one line. |
 | `BLOCKED` | Put the worker's exact question to the user. Forward the reply (Mode 4). |
 | `REVISED` | Launch the re-review, or report if no reviewer is involved. |
 | `QUIET <m> <slugs>` | No line from those workers in m minutes. Orca: `orca worktree ps --json` for their cards, then at most `orca terminal read --terminal <handle> --limit 40 --json` to tell busy from stuck from dead. Busy: re-arm silently. Stuck: one nudge ("append a STATUS line with where you are"). Dead (terminal exited): tell the user and offer a relaunch. Subagents: nudge with `SendMessage`. |
-| `CHECKPOINT` | Nothing happened for ~2 hours; re-arm silently. |
-| `ALL-SETTLED` | Every dispatched task is DONE, FAILED or CLOSED. One summary line per task and stop watching. |
+| `CHECKPOINT` | Nothing happened for ~2 hours; re-arm silently. The watcher stays armed this way while PRs wait for review. |
+| `ALL-SETTLED` | Every dispatched task is FAILED, CLOSED or KEPT, or DONE with no PR waiting for a merge. One summary line per task and stop watching. |
 
 Say nothing to the user for checkpoints and busy workers: silence is the point. If the user is
 in the middle of something else when the watcher wakes HQ, keep the event to one line and go
@@ -277,7 +289,8 @@ Same HQ files, same briefs, same STATUS lines. What changes:
 - **Follow-ups and reviews**: `SendMessage` to the agent by name or ID; a reviewer is one more
   background subagent.
 - **Cleanup**: worktrees without changes are removed automatically. For the rest, apply the
-  Mode 5 checks, then `git worktree remove <path>` (and `git branch -d <branch>` once merged).
+  Mode 5 checks, then `git worktree remove --force <path>` after `CLOSABLE` (and
+  `git branch -D <branch>` once merged).
 - No remote hosts and no Orca cards; skip those parts.
 
 ## Never
@@ -288,4 +301,4 @@ Same HQ files, same briefs, same STATUS lines. What changes:
   `check --wait`) or ask workers to message HQ.
 - Never read whole worker transcripts or diffs into HQ to answer a status question.
 - Never put secret values in briefs, STATUS or SESSIONS; point at where they live.
-- Never remove a worktree with uncommitted or unpushed work.
+- Never remove a worktree before `closable.sh` says `CLOSABLE`.

@@ -1,8 +1,8 @@
 #!/bin/bash
 # watch.sh <hq dir> [quiet minutes, default 20]
 # Blocks until _hq/STATUS.md has something HQ must act on, prints it, exits.
-# Exit lines: event lines (ANSWER|BLOCKED|DONE|FAILED|REVISED), QUIET <min>m <slugs>, CHECKPOINT,
-# ALL-SETTLED, ALREADY-WATCHING. Remembers its read offset in <hq>/.watch-offset.
+# Exit lines: event lines (ANSWER|BLOCKED|HANDOFF|DONE|DONE-STEP|FAILED|REVISED),
+# PR-MERGED|PR-CLOSED <slug> <url>, QUIET <min>m <slugs>, CHECKPOINT, ALL-SETTLED, ALREADY-WATCHING. Remembers its read offset in <hq>/.watch-offset.
 
 hq=${1:?usage: watch.sh <hq dir> [quiet minutes]}
 quiet=$((${2:-20} * 60))
@@ -19,6 +19,7 @@ lines() { wc -l <"$status" | tr -d ' '; }
 n=$(cat "$offf" 2>/dev/null || lines)
 quiet_since=$SECONDS
 deadline=$((SECONDS + 110 * 60))
+next_poll=0
 
 # slugs dispatched or reopened by HQ and not yet DONE/FAILED/CLOSED; blocked ones listed apart
 state() {
@@ -31,18 +32,39 @@ state() {
   ' "$status"
 }
 
+awaiting_merge() {
+  awk '
+    $2 == "hq" && ($3 == "CLOSED" || $3 == "KEPT" || $3 == "REOPENED") { delete pr[$4] }
+    $2 != "hq" && $3 == "DONE" && match($0, /https:\/\/github\.com\/[^ ]+\/pull\/[0-9]+/) { pr[$2] = substr($0, RSTART, RLENGTH) }
+    END { for (s in pr) print s, pr[s] }
+  ' "$status"
+}
+
+ended_prs() {
+  local slug url state
+  while read -r slug url; do
+    state=$(gh pr view "$url" --json state -q .state 2>/dev/null)
+    case $state in MERGED | CLOSED) echo "PR-$state $slug $url" ;; esac
+  done < <(awaiting_merge)
+}
+
 finish() { echo "$n" >"$offf"; exit 0; }
 
 while :; do
   cur=$(lines)
   if [ "$cur" -gt "$n" ]; then
-    events=$(sed -n "$((n + 1)),${cur}p" "$status" | grep -E '^[0-9:]+ [^ ]+ (ANSWER|BLOCKED|DONE|FAILED|REVISED)( |$)')
+    events=$(sed -n "$((n + 1)),${cur}p" "$status" | grep -E '^[0-9:]+ [^ ]+ (ANSWER|BLOCKED|HANDOFF|DONE|DONE-STEP|FAILED|REVISED)( |$)')
     n=$cur
     quiet_since=$SECONDS
     [ -n "$events" ] && { printf '%s\n' "$events"; finish; }
   fi
+  if [ "$SECONDS" -ge "$next_poll" ]; then
+    next_poll=$((SECONDS + 300))
+    ended=$(ended_prs)
+    [ -n "$ended" ] && { printf '%s\n' "$ended"; finish; }
+  fi
   live=$(state)
-  [ -z "$live" ] && { echo ALL-SETTLED; finish; }
+  [ -z "$live" ] && [ -z "$(awaiting_merge)" ] && { echo ALL-SETTLED; finish; }
   running=$(tr ' ' '\n' <<<"$live" | grep -v ':blocked$' | grep . | tr '\n' ' ')
   if [ -n "$running" ] && [ $((SECONDS - quiet_since)) -ge "$quiet" ]; then
     echo "QUIET $((quiet / 60))m $running"

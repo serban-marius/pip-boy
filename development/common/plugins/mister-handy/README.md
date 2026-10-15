@@ -30,18 +30,18 @@ worktrees", "mándaselo a la sesión del worktree", "¿cómo va?", "do a cleanup
 |------|--------------|
 | Delegate | Writes `_hq/briefs/<slug>.md`, `orca worktree create --agent claude --prompt "<read the brief>"`, records it, reports one line and stops |
 | Fan out | Splits the work with one owner per file, writes every brief, launches all worktrees in parallel |
-| Watch | A background watcher on `STATUS.md` wakes HQ only on DONE, FAILED, ANSWER, BLOCKED, REVISED or a quiet worker; HQ verifies the PR, runs the task's standing order (review, merge if green, close), launches chained tasks, and stays silent otherwise |
+| Watch | A background watcher on `STATUS.md` wakes HQ only on DONE, DONE-STEP, FAILED, ANSWER, BLOCKED, HANDOFF, REVISED, a merged or closed PR, or a quiet worker; HQ verifies the PR, runs the task's standing order (review, merge if green), passes hand-offs between workers, launches chained tasks, and stays silent otherwise |
 | Status | Reads the `STATUS.md` tail, `orca worktree ps` and the PRs; never worker transcripts |
 | Follow-up | `orca terminal send` to the worker's handle; approvals, revisions, reviewer verdicts |
-| Cleanup | Removes worktrees that are DONE, merged and clean; lists the rest with what is missing |
+| Cleanup | Automatic by default: a `no-code` task closes at DONE, a PR task once its PR merges (`on-done: keep` opts out). `bin/closable.sh` proves a worktree holds nothing unique before `orca worktree rm --force`; on demand it lists the rest with what is missing |
 
 HQ files live next to the repo's Orca worktrees, outside every checkout:
 
 ```
 ~/orca/workspaces/<repo>/_hq/
   briefs/  assets/  reports/  reviews/
-  STATUS.md     HH:MM <slug> START|MILESTONE|ANSWER|BLOCKED|DONE <text>
-  SESSIONS.md   slug, worktree path, terminal handle, agent
+  STATUS.md     HH:MM <slug> START|MILESTONE|ANSWER|BLOCKED|HANDOFF|DONE-STEP|DONE <text>
+  SESSIONS.md   slug, worktree path, terminal handle, agent, on-done
 ```
 
 A worker blocked on a decision writes a BLOCKED line and marks its Orca card unread, then
@@ -56,3 +56,5 @@ exists to remove. The skill uses Orca handoffs (`worktree create --agent --promp
 Without Orca the same modes run on the Agent tool (`run_in_background`, `isolation: "worktree"`, `SendMessage` for follow-ups), with HQ files in `~/.claude/hq/<repo>/`.
 
 Needs `git` and `gh`; the Orca backend needs the `orca` CLI (worktree create with `--agent`/`--prompt`).
+
+Tests: `bash skills/delegate/bin/delegate.test.sh`. Spec: [`specs/004-mister-handy-close-worktrees`](../../../../specs/004-mister-handy-close-worktrees/spec.md).
