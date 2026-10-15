@@ -87,6 +87,19 @@
       "category": "Development Tools"
     },
     {
+      "name": "mister-handy",
+      "source": "./development/common/plugins/mister-handy",
+      "description": "Mister Handy: keep the main session as HQ. Substantive work goes out to Orca worktrees as written briefs; workers report through a STATUS file and their Orca card, never into this session; status, follow-ups and cleanup without pulling transcripts back in.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Marius Serban"
+      },
+      "homepage": "https://github.com/serban-marius/pip-boy",
+      "repository": "https://github.com/serban-marius/pip-boy",
+      "keywords": ["orca", "worktree", "delegation", "orchestrator", "context", "agents", "skill"],
+      "category": "Development Tools"
+    },
+    {
       "name": "overseer",
       "source": "./development/common/plugins/overseer",
       "description": "Overseer: a very light harness that enforces spec first, red first, green commits, PRs as small as the feature allows that link their spec, and no prose comments in code, as Claude Code hooks. Zero config, no agents, no tokens.",
