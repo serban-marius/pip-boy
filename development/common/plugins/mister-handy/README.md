@@ -1,9 +1,19 @@
 # Mister Handy
 
 Keep the main Claude session as HQ: small, responsive, holding only the context you care
-about. Substantive work goes out to Orca worktrees, one agent each, with a written brief.
-Workers report through a shared `STATUS.md` and their Orca card, never by messaging HQ, so
+about. Substantive work goes out with a written brief, one agent each: to Orca worktrees when
+you run inside Orca, to background Claude Code subagents in their own git worktrees otherwise.
+Workers report through a shared `STATUS.md` (and their Orca card), never by messaging HQ, so
 nothing they do lands in your main context until you ask for it.
+
+It is the default, not something you ask for: a SessionStart hook tells every session its role.
+
+| Session | Role | Behaviour |
+|---------|------|-----------|
+| On the repo's default branch, or outside a repo | HQ | Every substantive task goes out through `delegate`, worded or not; only quick answers and one-minute chores stay |
+| On any other branch, or detached HEAD | Worker | Does the work itself, never delegates further |
+
+Override per session with `MISTER_HANDY=off|hq|worker`, or per task with "hazlo aquí".
 
 ## Install
 
@@ -24,7 +34,7 @@ worktrees", "mándaselo a la sesión del worktree", "¿cómo va?", "do a cleanup
 | Follow-up | `orca terminal send` to the worker's handle; approvals, revisions, reviewer verdicts |
 | Cleanup | Removes worktrees that are DONE, merged and clean; lists the rest with what is missing |
 
-HQ files live next to the repo's worktrees, outside every checkout:
+HQ files live next to the repo's Orca worktrees, outside every checkout:
 
 ```
 ~/orca/workspaces/<repo>/_hq/
@@ -42,13 +52,6 @@ Supervised orchestration injects every worker message into the coordinator sessi
 1 orchestration message. Run `orca orchestration check`…"), which is the noise this plugin
 exists to remove. The skill uses Orca handoffs (`worktree create --agent --prompt`) and files.
 
-## Making it the default
+Without Orca the same modes run on the Agent tool (`run_in_background`, `isolation: "worktree"`, `SendMessage` for follow-ups), with HQ files in `~/.claude/hq/<repo>/`.
 
-A skill triggers on what you say. To make HQ delegate without being asked, add a line to your
-global `~/.claude/CLAUDE.md`, for example:
-
-```
-In Orca sessions, delegate any substantive task to a worktree with the mister-handy:delegate skill; keep this session for decisions and status.
-```
-
-Needs the `orca` CLI (worktree create with `--agent`/`--prompt`) and `gh` for PR state.
+Needs `git` and `gh`; the Orca backend needs the `orca` CLI (worktree create with `--agent`/`--prompt`).

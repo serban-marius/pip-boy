@@ -1,21 +1,34 @@
 ---
 name: delegate
-description: "Keep this session as HQ: send substantive work (investigations, fixes, features, PRs, reviews) out to Orca worktrees as written briefs, one agent per worktree, instead of doing it here; workers report through a STATUS file and their Orca card, never by messaging this session; then answer 'how is it going', pass follow-ups and approvals to a worker, and clean up finished worktrees, all without pulling transcripts back into this context. Use when the user says 'open/spool/boot/spin up an orca worktree for this', 'launch some orca worktrees', 'lanza un orca worktree', 'lánzate unos worktrees y a currar', 'monta unos worktrees', 'hazlo en otro worktree', 'give the task to the X orca session', 'mándaselo a la sesión del worktree', 'do a cleanup of worktrees', 'close the worktree if we're done', 'bring the summary here', 'keep this session clean', or '/delegate', and whenever this session is acting as the orchestrator."
+description: "Keep this session as HQ: send substantive work (investigations, fixes, features, PRs, reviews) out as written briefs, one agent each, to Orca worktrees when running in Orca or to background Claude Code subagents in their own git worktrees otherwise, instead of doing it here; workers report through a STATUS file (and their Orca card), never by messaging this session; then answer 'how is it going', pass follow-ups and approvals to a worker, and clean up finished worktrees, all without pulling transcripts back into this context. Use when the user says 'open/spool/boot/spin up an orca worktree for this', 'launch some orca worktrees', 'lanza un orca worktree', 'lánzate unos worktrees y a currar', 'monta unos worktrees', 'hazlo en otro worktree', 'give the task to the X orca session', 'mándaselo a la sesión del worktree', 'do a cleanup of worktrees', 'close the worktree if we're done', 'bring the summary here', 'keep this session clean', or '/delegate'. Also the DEFAULT for any substantive task, worded or not, whenever the mister-handy SessionStart note says this session is HQ."
 ---
 
-# Delegate to Orca worktrees, keep HQ clean
+# Delegate to worktrees, keep HQ clean
 
 This session is HQ. Its context is for what the user cares about: decisions, briefs, short
-status, approvals. The digging, the diffs, the test runs and the PR babysitting happen in Orca
+status, approvals. The digging, the diffs, the test runs and the PR babysitting happen in
 worktrees, each with its own agent. Everything in this skill serves one rule:
 
 **Nothing a worker does should land in this context unless the user asks for it.**
 
-So workers never message HQ. They append one-line updates to a STATUS file and set their Orca
-card comment; HQ reads those files when the user asks. (Supervised `orca orchestration`
+So workers never message HQ. They append one-line updates to a STATUS file (and, in Orca, set
+their card comment); HQ reads those files when the user asks. (Supervised `orca orchestration`
 runs break this rule: every worker message is injected here as "You have 1 orchestration
 message. Run `orca orchestration check`…", dozens of times per run. Do not use
 `orchestration worker-start`, `dispatch`, `send` or `check --wait` from this skill.)
+
+## When this runs, and which backend
+
+The plugin's SessionStart hook prints one note per session: HQ (on the repo's default branch,
+or outside any repo) or worker (any other branch). In an HQ session this skill is the default
+for every substantive task; the user does not have to say "worktree". In a worker session never
+use it: do the work. The user can always say "hazlo aquí" to keep one task in HQ.
+
+Backend, also named in that note:
+
+- **orca** (running inside Orca): Orca worktrees, one agent per worktree. Modes 1-5 below.
+- **subagents** (plain Claude Code): background subagents, each in its own git worktree when it
+  edits files. Same briefs, same STATUS protocol; see "Without Orca" for what changes.
 
 ## What stays here and what goes out
 
@@ -40,6 +53,9 @@ One folder per repo, next to its worktrees, outside every git checkout:
   STATUS.md            append-only, one line per event, all workers
   SESSIONS.md          slug, worktree path, terminal handle, agent, started
 ```
+
+With the subagents backend there is no workspaces folder: use `~/.claude/hq/<repo name>/`
+(or `~/.claude/hq/_global/` outside a repo) with the same layout.
 
 Find `<workspaces>/<repo>` as the parent of the HQ session's own worktree
 (`orca worktree current --json` → `result.worktree.path`). If HQ is not inside a worktree of
@@ -199,6 +215,29 @@ For each task in `SESSIONS.md` (or each worktree the user named):
 Report one table (closed / kept and why) and, when asked for "the knowledge", a short summary
 built from the DONE lines and reports. Removing worktrees the user did not ask to close needs
 their OK first.
+
+## Without Orca (subagents backend)
+
+Same HQ files, same briefs, same STATUS lines. What changes:
+
+- **Launch** with the Agent tool: `description` = slug, `run_in_background: true`,
+  `isolation: "worktree"` when the task edits files (read-only investigations need none),
+  `model` only when the user names one. The prompt is the launch prompt from Mode 1 plus:
+  "Commit your work on your branch. Your final message is at most five lines: the DONE line,
+  the PR or branch, the report path, any open question. Everything longer goes to the report."
+  The final message lands in HQ on its own; that limit is what keeps HQ clean.
+- **Brief**: drop the Orca card lines (comment, unread) from the Reporting section.
+- **Fan out**: several Agent calls in one message.
+- **SESSIONS.md** gets the agent's name or ID, and later the worktree path and branch from its
+  result.
+- **Blocked** workers cannot reach the user: they write the BLOCKED line and end with the
+  question. HQ asks the user, then sends the answer with `SendMessage` to that agent.
+- **Status**: `STATUS.md` tail and `gh` for PRs. Never read a subagent's output file.
+- **Follow-ups and reviews**: `SendMessage` to the agent by name or ID; a reviewer is one more
+  background subagent.
+- **Cleanup**: worktrees without changes are removed automatically. For the rest, apply the
+  Mode 5 checks, then `git worktree remove <path>` (and `git branch -d <branch>` once merged).
+- No remote hosts and no Orca cards; skip those parts.
 
 ## Never
 

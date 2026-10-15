@@ -1,0 +1,8 @@
+{
+  "description": "mister-handy: tells every session whether it is HQ (delegate by default) or a worker. See skills/delegate/SKILL.md.",
+  "hooks": {
+    "SessionStart": [
+      { "hooks": [ { "type": "command", "command": "bash", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/role.sh"], "timeout": 10 } ] }
+    ]
+  }
+}
