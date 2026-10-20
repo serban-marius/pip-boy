@@ -16,9 +16,14 @@ case "$*" in
   "pr list"*) cat "$GH_MERGED_HEADS" ;;
 esac
 EOF
-chmod +x "$tmp/stub/gh"
-export PATH=$tmp/stub:$PATH GH_STATE=$tmp/state GH_MERGED_HEADS=$tmp/heads
+cat >"$tmp/stub/orca" <<'EOF'
+#!/bin/bash
+cat "$ORCA_PS"
+EOF
+chmod +x "$tmp/stub/gh" "$tmp/stub/orca"
+export PATH=$tmp/stub:$PATH GH_STATE=$tmp/state GH_MERGED_HEADS=$tmp/heads ORCA_PS=$tmp/ps.json
 : >"$GH_MERGED_HEADS"
+echo '{"result":{"worktrees":[]}}' >"$ORCA_PS"
 
 HQ=$tmp/_hq
 mkdir -p "$HQ" && echo '# append-only' >"$HQ/STATUS.md"
@@ -32,6 +37,8 @@ expect "DONE-STEP wakes HQ"                     "$(watch)" "10:01 a DONE-STEP PR
 expect "after DONE-STEP the task is still live" "$(watch 0)" "QUIET 0m a "
 say "10:02 a HANDOFF b tsnet ready, give b the go"
 expect "HANDOFF wakes HQ"                       "$(watch)" "10:02 a HANDOFF b tsnet ready, give b the go"
+say "10:02 a HANDOFF-FYI b touched terminal.create, keep it when you rebase"
+expect "HANDOFF-FYI does not wake HQ"           "$(watch 20 2)" ""
 say "10:03 a DONE no-code, report in _hq/reports/a.md"
 watch >/dev/null
 expect "a no-code DONE settles"                 "$(watch)" "ALL-SETTLED"
@@ -52,6 +59,20 @@ echo CLOSED >"$GH_STATE"
 expect "a PR closed unmerged wakes HQ"          "$(watch)" "PR-CLOSED d https://github.com/o/r/pull/8"
 say "12:40 hq KEPT d follow-ups coming"
 expect "kept settles too"                       "$(watch)" "ALL-SETTLED"
+
+say "13:00 hq DISPATCHED e"
+card() { echo "{\"result\":{\"worktrees\":[{\"path\":\"$tmp/$1\",\"status\":\"permission\",\"agents\":[{\"state\":\"blocked\",\"stateStartedAt\":$2,\"lastAssistantMessage\":\"Running the  e2e\\nsuite\"}]}]}}" >"$ORCA_PS"; }
+card e $(( ($(date +%s) - 10) * 1000 ))
+expect "a prompt under a minute old waits"      "$(watch 20 2)" ""
+card e 1000
+expect "a worker on a permission prompt wakes HQ" "$(watch)" "WAITING-APPROVAL e Running the e2e suite"
+expect "the same prompt wakes HQ once"          "$(watch 20 2)" ""
+card e 2000
+expect "a new prompt wakes HQ again"            "$(watch)" "WAITING-APPROVAL e Running the e2e suite"
+card other 1000
+expect "only dispatched slugs count"            "$(watch 20 2)" ""
+say "13:10 e DONE no-code"
+watch >/dev/null
 
 W=$tmp/wt
 git init -q --bare "$tmp/remote.git"

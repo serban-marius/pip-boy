@@ -28,9 +28,9 @@ worktrees", "mándaselo a la sesión del worktree", "¿cómo va?", "do a cleanup
 
 | Mode | What HQ does |
 |------|--------------|
-| Delegate | Writes `_hq/briefs/<slug>.md`, `orca worktree create --agent claude --prompt "<read the brief>"`, records it, reports one line and stops |
-| Fan out | Splits the work with one owner per file, writes every brief, launches all worktrees in parallel |
-| Watch | A background watcher on `STATUS.md` wakes HQ only on DONE, DONE-STEP, FAILED, ANSWER, BLOCKED, HANDOFF, REVISED, a merged or closed PR, or a quiet worker; HQ verifies the PR, runs the task's standing order (review, merge if green), passes hand-offs between workers, launches chained tasks, and stays silent otherwise |
+| Delegate | Checks the base (integration branch, superseded branches), writes `_hq/briefs/<slug>.md`, launches the worker in an Orca terminal (`worktree create`, `terminal create --command 'claude --permission-mode auto'`, `terminal send "<read the brief>"`), records its terminal handle, reports one line and stops |
+| Fan out | Splits by what the user will see (that slice first, with the first preview), one owner per file, writes every brief, launches all worktrees in parallel |
+| Watch | A background watcher on `STATUS.md` wakes HQ only on DONE, DONE-STEP, FAILED, ANSWER, BLOCKED, HANDOFF, REVISED, a merged or closed PR, a worker sitting on a permission prompt (from its Orca card, `WAITING-APPROVAL`), or a quiet worker; HQ verifies the PR, runs the task's standing order (review, merge if green), passes hand-offs between workers, launches chained tasks, and stays silent otherwise |
 | Status | Reads the `STATUS.md` tail, `orca worktree ps` and the PRs; never worker transcripts |
 | Follow-up | `orca terminal send` to the worker's handle; approvals, revisions, reviewer verdicts |
 | Cleanup | Automatic by default: a `no-code` task closes at DONE, a PR task once its PR merges (`on-done: keep` opts out). `bin/closable.sh` proves a worktree holds nothing unique before `orca worktree rm --force`; on demand it lists the rest with what is missing |
@@ -40,21 +40,26 @@ HQ files live next to the repo's Orca worktrees, outside every checkout:
 ```
 ~/orca/workspaces/<repo>/_hq/
   briefs/  assets/  reports/  reviews/
-  STATUS.md     HH:MM <slug> START|MILESTONE|ANSWER|BLOCKED|HANDOFF|DONE-STEP|DONE <text>
+  STATUS.md     HH:MM <slug> START|MILESTONE|ANSWER|BLOCKED|HANDOFF|HANDOFF-FYI|DONE-STEP|DONE <text>
   SESSIONS.md   slug, worktree path, terminal handle, agent, on-done
 ```
 
 A worker blocked on a decision writes a BLOCKED line and marks its Orca card unread, then
-waits in its own terminal.
+waits in its own terminal. Workers also read `STATUS.md` for lines addressed to their slug, so
+hand-offs between them do not depend on HQ forwarding them; UI tasks post a running preview URL
+(`ANSWER PREVIEW <url> <login>`) within ~20 minutes.
 
 ## Why not `orca orchestration`
 
 Supervised orchestration injects every worker message into the coordinator session ("You have
 1 orchestration message. Run `orca orchestration check`…"), which is the noise this plugin
-exists to remove. The skill uses Orca handoffs (`worktree create --agent --prompt`) and files.
+exists to remove. The skill starts each worker in a plain Orca terminal and talks to it through
+files and `terminal send`. It avoids `worktree create --agent`, which may open a chat session
+with no terminal to send follow-ups to.
 
 Without Orca the same modes run on the Agent tool (`run_in_background`, `isolation: "worktree"`, `SendMessage` for follow-ups), with HQ files in `~/.claude/hq/<repo>/`.
 
-Needs `git` and `gh`; the Orca backend needs the `orca` CLI (worktree create with `--agent`/`--prompt`).
+Needs `git` and `gh`; the Orca backend needs the `orca` CLI, and `jq` for the permission-prompt check.
 
-Tests: `bash skills/delegate/bin/delegate.test.sh`. Spec: [`specs/004-mister-handy-close-worktrees`](../../../../specs/004-mister-handy-close-worktrees/spec.md).
+Tests: `bash skills/delegate/bin/delegate.test.sh`. Specs: [`004-mister-handy-close-worktrees`](../../../../specs/004-mister-handy-close-worktrees/spec.md),
+[`005-mister-handy-reachable-workers`](../../../../specs/005-mister-handy-reachable-workers/spec.md).
