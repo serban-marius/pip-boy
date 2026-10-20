@@ -68,7 +68,16 @@ Create `_hq/` on first use, with `STATUS.md` starting `# append-only: HH:MM <slu
 1. **Name it.** A short kebab slug for the task (`bench-baseline`, `ds-3863-aurora-reviews`).
    Use the ticket key when there is one. Check `SESSIONS.md` and `orca worktree list` so it
    is unique.
-2. **Write the brief** to `_hq/briefs/<slug>.md`. It must stand on its own: the worker has
+2. **Check the base.** Find the integration branch: the base recent PRs merged into
+   (`gh pr list --state merged --limit 20 --json baseRefName -q '.[].baseRefName' | sort | uniq -c`),
+   else the repo's docs (`dev`, `develop`, `staging`), else the default branch. When the work
+   would build on another branch (stacked work, "branch from X"), `git fetch` and check it
+   against the integration branch: `git cherry origin/<integration> origin/<candidate>` (`-`
+   lines are already in under another sha) and
+   `git rev-list --left-right --count origin/<integration>...origin/<candidate>`. Nothing left
+   to bring (no `+` lines) or far behind → base on the integration branch; a mix → ask the user.
+   The brief names the base and the PR target.
+3. **Write the brief** to `_hq/briefs/<slug>.md`. It must stand on its own: the worker has
    none of this conversation. Use this shape:
 
    ```markdown
@@ -89,20 +98,32 @@ Create `_hq/` on first use, with `STATUS.md` starting `# append-only: HH:MM <slu
    - Acceptance: the test, command output or evidence that proves it is done.
 
    ## Rules
-   - You are on a fresh branch from the repo default base; rename it to the repo's branch
-     convention if it has one, and follow its commit conventions.
-   - <PR: open it / local commits only / ready-for-review or draft>. Never push to main.
+   - You are on a fresh branch from `<base>`; rename it to the repo's branch convention if it
+     has one, and follow its commit conventions.
+   - <PR: open it with `--base <base>` / local commits only / ready-for-review or draft>.
+     Never push to main.
+   - <UI task> Within ~20 min of starting, have a preview running and write
+     `ANSWER PREVIEW <url> <login>`; keep it showing your current work. Before implementing a
+     design change, put the punch list with screenshots in <abs path>/_hq/reports/<slug>.md and
+     write `ANSWER PUNCH-LIST <path>`; carry on with the clear fixes, BLOCKED on judgement calls.
+   - "Before" screenshots come from `<base>` in another checkout or the deployed app, never from
+     reverting your working tree: the preview must always show your work.
    - Secrets: read <VAR> from <path>; never print or copy secret values.
    - Never bare `git stash`.
 
    ## Reporting (the only channel back to HQ)
    - Append lines to <abs path>/_hq/STATUS.md: `HH:MM <slug> <STATE> <text>`, STATE one of
-     START, MILESTONE, ANSWER, BLOCKED, HANDOFF, REVISED, DONE-STEP, DONE, FAILED (gave up, with why).
+     START, MILESTONE, ANSWER, BLOCKED, HANDOFF, HANDOFF-FYI, REVISED, DONE-STEP, DONE, FAILED
+     (gave up, with why).
    - DONE means the whole task is over, and carries the full PR URL
      (`https://github.com/<owner>/<repo>/pull/<n>`), a commit sha or `no-code`, plus the report
      path if any. A follow-up from HQ finished while the main job goes on is `DONE-STEP`.
    - Another worker needs something from you (a go, a URL, a service up): write
-     `HANDOFF <their slug> <what>`; HQ forwards it.
+     `HANDOFF <their slug> <what>`; HQ forwards it. Information they need no action on:
+     `HANDOFF-FYI <their slug> <what>` (it does not wake HQ).
+   - Lines for you: before each MILESTONE or DONE, and when you start the next piece, run
+     `awk '$2 != "<slug>" && / <slug>([: ]|$)/' <abs path>/_hq/STATUS.md` and act on the new
+     ones (`HANDOFF <slug>`, `hq ... <slug>`). Do not wait for HQ to forward them.
    - Keep your Orca card current: `orca worktree set --worktree active --comment "<state>" --json`.
    - Blocked on a human decision: write a BLOCKED line with the exact question, run
      `orca worktree set --worktree active --unread --json`, and wait in your own terminal.
@@ -111,68 +132,63 @@ Create `_hq/` on first use, with `STATUS.md` starting `# append-only: HH:MM <slu
    ```
 
    Time-critical work: ask for an early `ANSWER` line ("within 15 min") before the full job.
-3. **Images and drops.** A worker cannot see `[Image #N]` or HQ's attachments, and Orca drop
+4. **Images and drops.** A worker cannot see `[Image #N]` or HQ's attachments, and Orca drop
    paths under `/var/folders/.../orca-drop-*` are temporary. Copy every file the task needs
    into `_hq/assets/<slug>/` and, for pasted images, describe in the brief what they show.
-4. **Launch** an independent worktree with the agent in its first terminal:
+5. **Launch** the agent in a terminal, never with `--agent`: that follows the user's Chat UI
+   setting and may start a chat session, which has no terminal handle, so HQ could never send
+   it a follow-up, an approval or a hand-off (Mode 4).
 
    ```text
-   orca worktree create --repo <selector> --name <slug> --no-parent --agent claude \
-     --comment "starting" --prompt "Your task brief is in <abs brief path>. Read it, work autonomously until DONE, and report only as it says (STATUS.md lines and your Orca card). Never message the session that launched you." --json
+   orca worktree create --repo <selector> --name <slug> --no-parent --comment "starting" --json
+   orca terminal create --worktree id:<full worktree id> --title <slug> --command 'claude --permission-mode auto' --json
+   orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 60000 --json
+   orca terminal send --terminal <handle> --text "Your task brief is in <abs brief path>. Read it, work autonomously until DONE, and report only as it says (STATUS.md lines and your Orca card). Never message the session that launched you." --enter --wait-submit 10 --json
    ```
 
-   - Omit `--base-branch` so Orca uses the repo default base. Use
-     `--parent-worktree active` and the current branch only when the user asks for stacked
-     work or "branch from current".
-   - `--agent` defaults to `claude`; use another installed agent (`codex`, `pi`, ...) when the
-     user names one.
-   - The agent handle is `result.agentTerminalHandle` (older runtimes:
-     `result.startupTerminal.handle`); if neither is there, take it from
-     `orca terminal list --worktree id:<full worktree id> --json`.
-5. **Record** a line in `SESSIONS.md`
-   (`<slug>  <worktree path>  <handle>  <agent>  <HH:MM>  on-done: <order>  after: <slug|->`)
+   - Add `--base-branch <base>` when the base check picked anything but the repo default. Use
+     `--parent-worktree active` only when the user asks for stacked work.
+   - `--permission-mode auto` keeps a worker in its isolated worktree from stalling on prompts
+     (`acceptEdits` still stops at every shell command); the user's own choice wins. Add
+     `--model <model> --effort <level>` when the user names them; another agent (`codex`,
+     `pi`, ...) goes in `--command` the same way.
+   - The launch counts only when `terminal create` returned a `term_...` handle, the wait
+     reported `satisfied: true` (retry once with a longer timeout) and the send `accepted: true`.
+     Otherwise stop: tell the user the task did not start and why, and record nothing.
+   - If the bare create opened a fallback shell, close it only after `orca terminal show`
+     confirms it is an unused shell.
+6. **Record** a line in `SESSIONS.md`
+   (`<slug>  <worktree path>  <term handle>  <agent>  <HH:MM>  on-done: <order>  after: <slug|->`)
    and append `HH:MM hq DISPATCHED <slug>` to `STATUS.md`. `on-done` is the user's standing
    order for when it finishes ("review it", "merge if green"), and ends in closing the worktree
    (Mode 5) unless it says `keep`. Default `close`: a `no-code` task closes at its DONE, a PR
-   task once its PR is merged or closed. Use `keep` for workers HQ will send more work to. `after` names a task this one waits for (Mode 2 chains); such a task is recorded
-   but not launched yet.
-6. **Report and watch.** One line to the user: slug, worktree, what it will deliver. Then arm the
+   task once its PR is merged or closed. Use `keep` for workers HQ will send more work to.
+   `after` names a task this one waits for (Mode 2 chains); such a task is recorded but not
+   launched yet.
+7. **Report and watch.** One line to the user: slug, worktree, what it will deliver. Then arm the
    watcher (Mode 6) if it is not already running, and end the turn. Never sit waiting in a
    foreground command.
-
-### Model and effort
-
-`--agent claude` uses Orca's configured launcher and takes no per-call model flags. Keep it
-unless the user names a model or effort for this task (or names a tool that picks one: use
-it). Then create without `--agent` and start Claude yourself:
-
-```text
-orca worktree create --repo <selector> --name <slug> --no-parent --json
-orca terminal create --worktree id:<full worktree id> --title <slug> --command 'claude --model <model> --effort <level>' --json
-orca terminal wait --terminal <handle> --for tui-idle --timeout-ms 60000 --json
-orca terminal send --terminal <handle> --text "<the same launch prompt>" --enter --wait-submit 10 --json
-```
-
-Send only when the wait reports `satisfied: true`; retry the wait once with a longer timeout,
-and if it still fails report the task as not started. If the bare create opened a fallback
-shell, close it only after `orca terminal show` confirms it is an unused shell.
 
 ### Another host ("en la raspberry")
 
 Find the paired server with `orca environment list --json` and create there with
 `--project <projectId> --host runtime:<environment id>` (the project must already have a host
-setup there: `orca project setups --json`). HQ files are not reachable from that host, so put
-the whole brief in `--prompt` and have the worker report through its Orca card comment and its
-PR only; `orca worktree ps --json` shows remote cards. For anything beyond this, read
-`orca skills get orca-cli --reference references/placement-and-remote.md`.
+setup there: `orca project setups --json`), then launch as in step 5 with
+`--environment <environment id>` on the terminal commands. HQ files are not reachable from
+that host, so the send carries the whole brief, and the worker reports through its Orca card
+comment and its PR only; `orca worktree ps --json` shows remote cards. For anything beyond
+this, read `orca skills get orca-cli --reference references/placement-and-remote.md`.
 
 ## Mode 2: fan out ("lánzate unos worktrees")
 
-1. Split the work into tasks that can run at the same time. **Give every file one owner.**
+1. Split by what the user will see, not by files: the slice they can look at goes first and
+   gets the first preview checkpoint; backend and plumbing slices feed it. Then split into
+   tasks that can run at the same time. **Give every file one owner.**
    Two workers editing the same files end in conflicting PRs; merge such tasks into one worker
    or chain them: write both briefs, launch the first, record the second with `after: <first>`;
    the watcher launches it when the first is DONE and merged. When a worker must signal another
-   mid-task (a go, a URL, a service up), its brief says to write a `HANDOFF` line for it.
+   mid-task (a go, a URL, a service up), its brief says to write a `HANDOFF` line for it
+   (`HANDOFF-FYI` when no action is needed).
 2. Tell the user the split in one line per task, then go without waiting for approval unless a
    task writes to production or the split is a real judgement call.
 3. Write all briefs, then launch all worktrees in one message (parallel tool calls). Each brief
@@ -205,9 +221,11 @@ Take the handle from `SESSIONS.md`; on `terminal_handle_stale` or after an Orca 
 `orca terminal list --worktree path:<worktree path> --json` and update `SESSIONS.md`. Check the
 receipt's `accepted`; never resend on silence. Long messages go in a file
 (`_hq/briefs/<slug>-2.md`) and the send points at it. The same applies to "give this to the X
-orca session": find its terminal with `orca terminal list --json` and send. A follow-up to a
-worker still on its main job ends with: "When this is done, append a DONE-STEP line; DONE stays
-for the whole task."
+orca session": find its terminal with `orca terminal list --json` and send. A worker started
+as a chat has no handle: append `HH:MM hq NOTE <slug> <message>` to `STATUS.md` (its brief
+tells it to read lines for its slug) and tell the user it cannot be reached directly. A
+follow-up to a worker still on its main job ends with: "When this is done, append a DONE-STEP
+line; DONE stays for the whole task."
 
 Reviews go out too. A reviewer is a worker whose brief is "review <PR or branch> against
 <brief path>; write PASS or REVISE with numbered items to `_hq/reviews/<slug>.md`; append a
@@ -253,10 +271,11 @@ When it wakes HQ, handle what it printed, then arm it again unless it said `ALL-
 |--------|---------|
 | `DONE` | Check the claim cheaply: `gh pr view <url> --json state,mergeable` and `gh pr checks <url>` for one line of CI truth. Then carry out the slug's `on-done` order (launch a reviewer, merge only if the user ordered it and checks are green). `no-code` → close it now (Mode 5); with a PR the watcher reports the merge later; `keep` → append `hq KEPT <slug> on-done keep`. Launch every task whose `after` is this slug once its condition holds. Tell the user one line. |
 | `DONE-STEP` | A follow-up is finished, the main job goes on. Relay it in one line. |
-| `HANDOFF <slug> <what>` | Forward it to that worker (Mode 4) without asking the user; launch it instead if it was waiting with `after`. |
+| `HANDOFF <slug> <what>` | Forward it to that worker (Mode 4) without asking the user; launch it instead if it was waiting with `after`. `HANDOFF-FYI` never wakes HQ: the addressee reads it from `STATUS.md`. |
+| `WAITING-APPROVAL <slug> <message>` | The worker's agent has sat on a permission prompt for over a minute (its Orca card). Tell the user at once, one line: slug, what it was doing, and that the prompt waits in that worktree's terminal. HQ never answers permission prompts. |
 | `PR-MERGED` / `PR-CLOSED <slug> <url>` | The PR left review. Close the worktree (Mode 5), or append `hq KEPT <slug> <why>` when its `on-done` is `keep` or `closable.sh` says `KEEP` (tell the user why). Launch tasks waiting `after` it. |
 | `FAILED` | One line with the reason; ask whether to relaunch with a better brief. |
-| `ANSWER` | Relay the answer in one line. |
+| `ANSWER` | Relay the answer in one line. `PREVIEW <url> <login>` and `PUNCH-LIST <path>` go to the user at once, with the URL and login or the screenshots. |
 | `BLOCKED` | Put the worker's exact question to the user. Forward the reply (Mode 4). |
 | `REVISED` | Launch the re-review, or report if no reviewer is involved. |
 | `QUIET <m> <slugs>` | No line from those workers in m minutes. Orca: `orca worktree ps --json` for their cards, then at most `orca terminal read --terminal <handle> --limit 40 --json` to tell busy from stuck from dead. Busy: re-arm silently. Stuck: one nudge ("append a STATUS line with where you are"). Dead (terminal exited): tell the user and offer a relaunch. Subagents: nudge with `SendMessage`. |
@@ -277,7 +296,9 @@ Same HQ files, same briefs, same STATUS lines. What changes:
   "Commit your work on your branch. Your final message is at most five lines: the DONE line,
   the PR or branch, the report path, any open question. Everything longer goes to the report."
   The final message lands in HQ on its own; that limit is what keeps HQ clean.
-- **Brief**: drop the Orca card lines (comment, unread) from the Reporting section.
+- **Brief**: drop the Orca card lines (comment, unread) from the Reporting section. The
+  worktree starts from HQ's HEAD, so a different base goes in the brief as its first step
+  (`git switch -c <branch> origin/<base>`).
 - **Fan out**: several Agent calls in one message.
 - **SESSIONS.md** gets the agent's name or ID, and later the worktree path and branch from its
   result.
@@ -297,6 +318,8 @@ Same HQ files, same briefs, same STATUS lines. What changes:
 
 - Never do the delegated work in HQ "quickly first".
 - Never launch and forget: every dispatch leaves the watcher armed until all tasks settle.
+- Never launch a worker with `--agent`, or record one without a terminal handle.
+- Never build on a branch the base check has not cleared.
 - Never use supervised orchestration (`orchestration worker-start`, `dispatch`, `send`,
   `check --wait`) or ask workers to message HQ.
 - Never read whole worker transcripts or diffs into HQ to answer a status question.
