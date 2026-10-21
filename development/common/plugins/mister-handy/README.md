@@ -70,7 +70,7 @@ route.sh brief  ->  pi nan/glm5.3-flash 0.83 jev        foreman.sh <slug> <brief
 | `MISTER_HANDY_LADDER` | `skills/delegate/ladder`: `nan/glm5.3-flash` ×2, `nan/deepseek-v4-flash` ×1 |
 | `MISTER_HANDY_ROUTE_THRESHOLD` | 0.6 Jev confidence, below it one tier up |
 | `MISTER_HANDY_PI_TIMEOUT` / `MISTER_HANDY_CHECK_TIMEOUT` | 1800 s per attempt / 600 s per command |
-| `MISTER_HANDY_PI_FLAGS` | `-ne` (no pi extensions; their `.atl/` droppings are removed anyway) |
+| `MISTER_HANDY_PI_FLAGS` | extra pi flags; `-ne` (no pi extensions) is always on, and their `.atl/` + `.gitignore` lines are removed anyway |
 | `MISTER_HANDY_REVIEW` | off; a NAN model for one read-only review pass, REVISE gets one more round |
 | `MISTER_HANDY_HEARTBEAT` | 600 s between `MILESTONE still working` lines during an attempt |
 

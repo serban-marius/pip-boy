@@ -19,7 +19,7 @@ hq=$(cd "$hq" && pwd)
 logs=$hq/logs/$slug
 pi_timeout=${MISTER_HANDY_PI_TIMEOUT:-1800}
 check_timeout=${MISTER_HANDY_CHECK_TIMEOUT:-600}
-pi_flags=${MISTER_HANDY_PI_FLAGS:--ne}
+pi_flags="-ne ${MISTER_HANDY_PI_FLAGS:-}"
 artifacts='(^|/)(__pycache__|node_modules|venv|\.venv|dist|build|target|coverage[^/]*|\.coverage|\.pytest_cache|\.mypy_cache|\.ruff_cache|\.tox|\.DS_Store|[^/]+\.egg-info)(/|$)|\.py[co]$'
 secret_text='BEGIN [A-Z ]*PRIVATE KEY|sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{30,}|(api[_-]?key|secret|token|passw(or)?d)["'"'"']?[[:space:]]*[:=][[:space:]]*["'"'"']?[A-Za-z0-9_/+=-]{12,}'
 limit_pl='$t = shift; $p = fork; if (!$p) { setpgrp(0, 0); exec @ARGV or exit 127 } setpgrp($p, $p);
@@ -66,17 +66,34 @@ title=${title:-$slug}
 scope=$(brief_scope "$brief")
 had_atl=$([ -e .atl ] && echo 1)
 had_gi=$([ -e .gitignore ] && echo 1)
-gi_atl=$(grep -sxE '/?\.atl/?' .gitignore)
+[ -z "$had_gi" ] || cp .gitignore "$logs/gitignore.orig"
+pi_lines='/?\.atl/?|# Local Pi runtime state'
 printf '#!/bin/sh\necho "gh is disabled for cheap workers; the foreman opens the PR" >&2\nexit 1\n' >"$logs/bin/gh"
 chmod +x "$logs/bin/gh"
 
 clean_strays() {
   [ -n "$had_atl" ] || rm -rf .atl
-  if [ -f .gitignore ] && [ -z "$gi_atl" ] && grep -qxE '/?\.atl/?' .gitignore; then
-    grep -vxE '/?\.atl/?' .gitignore >.gitignore.foreman
-    mv .gitignore.foreman .gitignore
-    [ -n "$had_gi" ] || [ -s .gitignore ] || rm -f .gitignore
+  [ -f .gitignore ] && grep -qxE "$pi_lines" .gitignore || return 0
+  [ -z "$had_gi" ] || ! grep -qxE "$pi_lines" "$logs/gitignore.orig" || return 0
+  grep -vxE "$pi_lines" .gitignore >"$logs/gitignore.now"
+  if [ -n "$had_gi" ] && [ "$(grep -v '^$' "$logs/gitignore.now")" = "$(grep -v '^$' "$logs/gitignore.orig")" ]; then
+    cp "$logs/gitignore.orig" .gitignore
+  elif [ -z "$had_gi" ] && ! grep -q . "$logs/gitignore.now"; then
+    rm -f .gitignore
+  else
+    cp "$logs/gitignore.now" .gitignore
   fi
+}
+
+unrunnable() {
+  local w a rest
+  read -r w a rest <<<"$(sed -E 's/^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*//' <<<"$1")"
+  case $w in
+    */*) [ -f "$w" ] && [ -x "$w" ] || { echo "$w"; return 0; } ;;
+    bash | sh | zsh) case $a in "" | -*) ;; *) [ -f "$a" ] || { echo "$a"; return 0; } ;; esac ;;
+    *) type -t "$w" >/dev/null || { echo "$w"; return 0; } ;;
+  esac
+  return 1
 }
 
 untracked() { git -c core.quotePath=false ls-files -o --exclude-standard; }
@@ -194,9 +211,10 @@ Fix what made it fail."
     commit || end FAILED "acceptance passed but the commit failed, see $logs/commit.log" 2
     break
   fi
-  w=$(sed -E 's/^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*//; s/[[:space:]].*//' <<<"$failed_cmd")
-  [ "$failed_rc" -ne 127 ] || [ "${w#*/}" != "$w" ] || type -t "$w" >/dev/null ||
-    end FAILED "acceptance not runnable: '$w' not found (exit 127); fix the brief" 2
+  case $failed_rc in
+    126 | 127) bad=$(unrunnable "$failed_cmd") &&
+      end FAILED "acceptance not runnable: '$bad' is missing or not executable after attempt $attempt (exit $failed_rc); fix the brief or launch Claude" 2 ;;
+  esac
   [ "$failed_rc" -ne 142 ] || timed="$timed, acceptance timed out"
   printf '\n## Attempt %s/%s %s: FAIL (%ss, pi exit %s)\n`%s` exited %s:\n```\n%s\n```\n' \
     "$attempt" "$total" "$model" "$secs" "$pi_rc" "$failed_cmd" "$failed_rc" "$(tail -n 40 <<<"$failure" | redact)" >>"$summary"
@@ -226,7 +244,8 @@ Make them, keeping every Acceptance command passing."
         note=", review items applied"
       else
         git reset -q --hard "$sha"
-        untracked | sort | comm -13 "$logs/untracked.before-review" - | while IFS= read -r f; do rm -f -- "$f"; done
+        untracked | sort | comm -13 "$logs/untracked.before-review" - |
+          while IFS= read -r f; do rm -f -- "$f"; rmdir -p "$(dirname "$f")" 2>/dev/null; done
         note=", review items not applied (checks failed after them, see $logs/review-round.accept.log)"
       fi
       ;;

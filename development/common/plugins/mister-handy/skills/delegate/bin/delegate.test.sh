@@ -107,6 +107,7 @@ model=""; prev=""
 for a in "$@"; do [ "$prev" = --model ] && model=$a; prev=$a; done
 case " $* " in *" --tools "*) echo "reviewed $model" >>"$PI_CALLS"; cat "$PI_REVIEW"; exit 0 ;; esac
 echo "$model" >>"$PI_CALLS"
+case " $* " in *" -ne "*) ;; *) echo "extensions on" >>"$PI_CALLS" ;; esac
 printf '%s\n' "${@: -1}" >"$PI_LAST_PROMPT"
 n=$(( $(cat "$PI_COUNT" 2>/dev/null || echo 0) + 1 )); echo "$n" >"$PI_COUNT"
 case $(sed -n "${n}p" "$PI_PLAN") in
@@ -115,7 +116,8 @@ case $(sed -n "${n}p" "$PI_PLAN") in
   edits-test) echo ok >done.txt; echo x >ok.txt ;;
   pass-new) echo ok >done.txt; echo new >new.txt; mkdir __pycache__; echo x >__pycache__/c.pyc ;;
   broken) echo ko >done.txt ;;
-  atl) echo ok >done.txt; mkdir -p .atl; echo x >.atl/state; echo '.atl/' >>.gitignore ;;
+  atl) echo ok >done.txt; mkdir -p .atl; echo x >.atl/state; printf '# Local Pi runtime state\n.atl/\n' >>.gitignore ;;
+  atl-and-edit) echo ok >done.txt; mkdir -p .atl; printf 'logs/\n# Local Pi runtime state\n.atl/\n' >>.gitignore ;;
   revised) echo ok >done.txt; echo renamed >notes.txt ;;
   outside) echo ok >done.txt; echo x >other.txt; mkdir -p src/sub; echo y >src/sub/y.py ;;
   revert) rm -f other.txt ;;
@@ -125,7 +127,7 @@ case $(sed -n "${n}p" "$PI_PLAN") in
   slow) sleep 3; echo ok >done.txt ;;
   pushy) echo ok >done.txt; git push -q origin HEAD 2>/dev/null; gh pr create 2>/dev/null && touch gh-ran ;;
   branchy) git checkout -qb elsewhere; echo ok >done.txt ;;
-  breaks) echo ko >done.txt; echo junk >junk.txt ;;
+  breaks) echo ko >done.txt; echo junk >junk.txt; mkdir -p newdir/sub; echo j >newdir/sub/j.txt ;;
 esac
 EOF
 chmod +x "$tmp/stub/curl" "$tmp/stub/pi"
@@ -240,7 +242,7 @@ expect "a PASS-prefixed line does not reset REVISE" "$(grep -c 'MILESTONE review
 fresh "" pass breaks
 printf 'REVISE\n1. something\n' >"$PI_REVIEW"
 MISTER_HANDY_REVIEW=nan/qwen3.6 foreman >/dev/null
-expect "a failed review round is rolled back"   "$(cat "$R/done.txt") $(ls "$R" | grep -c junk) $(grep -c 'DONE.*review items not applied' "$FHQ/STATUS.md")" "ok 0 1"
+expect "a failed review round is rolled back"   "$(cat "$R/done.txt") $(ls "$R" | grep -cE 'junk|newdir') $(grep -c 'DONE.*review items not applied' "$FHQ/STATUS.md")" "ok 0 1"
 fresh "" pass
 : >"$PI_REVIEW"
 MISTER_HANDY_REVIEW=nan/qwen3.6 foreman >/dev/null
@@ -295,6 +297,27 @@ test -f not_ok.txt || true"
 fresh "" edits-test
 foreman >/dev/null
 expect "DONE names Acceptance files it changed" "$(grep -c 'changed files the Acceptance runs: done.txt ok.txt' "$FHQ/STATUS.md")" "1"
+brief "Risk: low" "$ACC"
+fresh "node_modules" atl-and-edit
+foreman >/dev/null
+expect "a worker's own .gitignore edit is kept" "$(tr '\n' ' ' <"$R/.gitignore")" "node_modules logs/ "
+fresh "" pass
+expect "pi always runs without extensions"      "$(MISTER_HANDY_PI_FLAGS=--offline foreman >/dev/null; grep -c . "$PI_CALLS")" "1"
+brief "Risk: low" "## Acceptance
+./missing.sh"
+fresh "" broken broken broken
+expect "a missing path command stops at once"   "$(foreman; grep -c "FAILED acceptance not runnable: './missing.sh'" "$FHQ/STATUS.md"; grep -c . "$PI_CALLS")" "exit 2
+1
+1"
+brief "Risk: low" "## Acceptance
+bash run.sh"
+fresh "" broken
+expect "a missing script for bash stops at once" "$(foreman >/dev/null; grep -c "FAILED acceptance not runnable: 'run.sh'" "$FHQ/STATUS.md")" "1"
+brief "Risk: low" "## Acceptance
+./run.sh"
+fresh "" broken
+printf '#!/bin/sh\nexit 0\n' >"$R/run.sh" && git -C "$R" add run.sh && git -C "$R" commit -qm run
+expect "a non-executable path command stops at once" "$(foreman >/dev/null; grep -c "FAILED acceptance not runnable: './run.sh'.*exit 126" "$FHQ/STATUS.md")" "1"
 brief "Risk: low" "$ACC"
 fresh "" pushy
 foreman >/dev/null

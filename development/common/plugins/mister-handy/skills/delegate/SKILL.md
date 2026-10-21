@@ -245,8 +245,9 @@ else the `ladder` file next to this skill, `<model> <tries>` per line):
    credential helper) or use `gh` (a failing shim, tokens unset); a worker that switches branch
    or rewrites history is `ESCALATE`. A timeout kills its whole process group. Every 10 min of an
    attempt the foreman writes `MILESTONE still working: ...`, so `QUIET` stays for real stalls.
-2. Removes `.atl/` and the `.atl/` line in `.gitignore` that pi extensions drop, when they were
-   not there before.
+2. pi always runs with `-ne` (`MISTER_HANDY_PI_FLAGS` only adds flags). If `.atl/` or the
+   `# Local Pi runtime state` / `.atl/` lines that pi extensions write into `.gitignore` still
+   appear, they are removed (`.gitignore` restored byte for byte when that was all that changed).
 3. Checks `Scope:`, then runs the Acceptance commands, stops at the first failure; one
    `MILESTONE attempt n/N <model> PASS|FAIL '<command>' exit <rc> (<s>s[, pi timed out])` line,
    never the command's output (that stays in the logs, and redacted in `summary.md`). Logs
@@ -258,7 +259,9 @@ else the `ladder` file next to this skill, `<model> <tries>` per line):
    `DONE <PR url|sha on branch>`, naming any changed file the Acceptance commands run (a test the
    worker edited deserves a look). Last attempt failed → `ESCALATE <why>`, changes left
    uncommitted, diff including new files in `worker.diff`. `FAILED` for a brief or worktree that
-   is not fit to start (no Acceptance, prose in it, a command not found, dirty tree, wrong branch).
+   is not fit to start (no Acceptance, prose in it, a command not found, dirty tree, wrong branch),
+   and at once, without climbing the ladder, when an Acceptance command exits 126/127 because the
+   command itself (`./run.sh`, `bash run.sh`, a bare name) is missing or not executable.
 
 `MISTER_HANDY_REVIEW=<nan model>` adds one read-only reviewer pass after a pass (pi with read
 tools only, `jd-judge-a` prompt, the diff against the brief): REVISE items get one more worker
