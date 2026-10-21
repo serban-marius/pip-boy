@@ -1,0 +1,3 @@
+00:01 overseer-deno claude-opus 1 exit=0
+00:01 overseer-deno claude-sonnet 1 exit=0
+00:02 overseer-worktree claude-sonnet 1 exit=0

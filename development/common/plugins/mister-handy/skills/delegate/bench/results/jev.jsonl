@@ -1,0 +1,6 @@
+{"ts":"2026-10-21T22:03:29Z","task":"overseer-deno","choice":"nan-flash","confidence":0.91,"route":"claude opus 1.00 production","raw":"pi nan/glm5.3-flash 0.91 jev","cheap_sha":"9341c0a"}
+{"ts":"2026-10-21T22:03:29Z","task":"overseer-worktree","choice":"claude-sonnet","confidence":0.43,"route":"claude opus 1.00 production","raw":"claude sonnet 0.43 jev","cheap_sha":"9341c0a"}
+{"ts":"2026-10-21T22:03:30Z","task":"jira-length","choice":"nan-flash","confidence":0.43,"route":"claude sonnet 0.48 low-confidence:nan-flash","raw":"pi nan/glm5.3-flash 0.43 jev","cheap_sha":"9341c0a"}
+{"ts":"2026-10-21T22:03:31Z","task":"close-worktrees","choice":"claude-sonnet","confidence":0.77,"route":"claude sonnet 0.72 jev","raw":"claude sonnet 0.77 jev","cheap_sha":"9341c0a"}
+{"ts":"2026-10-21T22:03:31Z","task":"reachable-workers","choice":"claude-sonnet","confidence":0.73,"route":"claude sonnet 0.70 jev","raw":"claude sonnet 0.73 jev","cheap_sha":"9341c0a"}
+{"ts":"2026-10-21T22:03:32Z","task":"jira-preview","choice":"claude-sonnet","confidence":0.56,"route":"claude opus 0.58 low-confidence:claude-sonnet","raw":"claude sonnet 0.56 jev","cheap_sha":"9341c0a"}
