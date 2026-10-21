@@ -21,7 +21,7 @@ pi_timeout=${MISTER_HANDY_PI_TIMEOUT:-1800}
 check_timeout=${MISTER_HANDY_CHECK_TIMEOUT:-600}
 pi_flags=${MISTER_HANDY_PI_FLAGS:--ne}
 artifacts='(^|/)(__pycache__|node_modules|venv|\.venv|dist|build|target|coverage[^/]*|\.coverage|\.pytest_cache|\.mypy_cache|\.ruff_cache|\.tox|\.DS_Store|[^/]+\.egg-info)(/|$)|\.py[co]$'
-secret_text='BEGIN [A-Z ]*PRIVATE KEY|sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{30,}|(api[_-]?key|secret|token|passw(or)?d)["'"'"']?[[:space:]]*[:=][[:space:]]*["'"'"']?[A-Za-z0-9_/+=.-]{12,}'
+secret_text='BEGIN [A-Z ]*PRIVATE KEY|sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{30,}|(api[_-]?key|secret|token|passw(or)?d)["'"'"']?[[:space:]]*[:=][[:space:]]*["'"'"']?[A-Za-z0-9_/+=-]{12,}'
 limit_pl='$t = shift; $p = fork; if (!$p) { setpgrp(0, 0); exec @ARGV or exit 127 } setpgrp($p, $p);
   $SIG{ALRM} = sub { kill "TERM", -$p; sleep 2; kill "KILL", -$p; exit 142 }; alarm $t;
   waitpid($p, 0); $rc = $?; alarm 0; kill "TERM", -$p; exit($rc & 127 ? 128 + ($rc & 127) : $rc >> 8)'
@@ -112,10 +112,12 @@ check() {
   local alog=$logs/$1.accept.log cmd f out=""
   : >"$alog"
   if [ -n "$scope" ]; then
+    set -f
     while IFS= read -r f; do
       for g in $scope; do case $f in $g) continue 2 ;; esac; done
       out="$out $f"
     done < <(changed)
+    set +f
     [ -z "$out" ] || {
       failed_cmd=Scope failed_rc=1
       failure="These changed files are outside the brief's Scope ($scope):$out. Revert them."
@@ -124,12 +126,14 @@ check() {
     }
   fi
   untracked | grep -vE "$artifacts" >"$logs/untracked"
+  beat "acceptance checks, $1"
   while IFS= read -r cmd; do
     echo "\$ $cmd" >>"$alog"
     limit "$check_timeout" bash -c "$cmd" >>"$alog" 2>&1 </dev/null
     failed_rc=$?
-    [ "$failed_rc" -eq 0 ] || { failed_cmd=$cmd; failure=$(tail -n 80 "$alog"); return 1; }
+    [ "$failed_rc" -eq 0 ] || { unbeat; failed_cmd=$cmd; failure=$(tail -n 80 "$alog"); return 1; }
   done < <(brief_acceptance "$brief")
+  unbeat
 }
 
 commit() {

@@ -111,12 +111,13 @@ printf '%s\n' "${@: -1}" >"$PI_LAST_PROMPT"
 n=$(( $(cat "$PI_COUNT" 2>/dev/null || echo 0) + 1 )); echo "$n" >"$PI_COUNT"
 case $(sed -n "${n}p" "$PI_PLAN") in
   pass) echo ok >done.txt ;;
+  config) echo ok >done.txt; printf 'token = os.environ.get("TOKEN")\napi_key = settings.OPENAI_KEY\n' >conf.py ;;
   edits-test) echo ok >done.txt; echo x >ok.txt ;;
   pass-new) echo ok >done.txt; echo new >new.txt; mkdir __pycache__; echo x >__pycache__/c.pyc ;;
   broken) echo ko >done.txt ;;
   atl) echo ok >done.txt; mkdir -p .atl; echo x >.atl/state; echo '.atl/' >>.gitignore ;;
   revised) echo ok >done.txt; echo renamed >notes.txt ;;
-  outside) echo ok >done.txt; echo x >other.txt ;;
+  outside) echo ok >done.txt; echo x >other.txt; mkdir -p src/sub; echo y >src/sub/y.py ;;
   revert) rm -f other.txt ;;
   secret) echo ok >done.txt; echo 'API_KEY = "abcd1234efgh5678ijkl"' >config.py ;;
   dotenv) echo ok >done.txt; echo X=1 >.env.local ;;
@@ -205,6 +206,7 @@ fresh "" broken broken broken
 expect "an exhausted ladder exits 3"            "$(foreman)" "exit 3"
 expect "an exhausted ladder ESCALATEs"          "$(states)" "START MILESTONE MILESTONE MILESTONE ESCALATE "
 expect "the ladder climbs"                      "$(tr '\n' ' ' <"$PI_CALLS")" "nan/glm5.3-flash nan/glm5.3-flash nan/deepseek-v4-flash "
+expect "worker.diff includes new files"         "$(grep -c '^+++ b/done.txt' "$FHQ/logs/t/worker.diff")" "1"
 expect "escalated work is left uncommitted"     "$(git -C "$R" log --oneline | wc -l | tr -d ' ')" "1"
 
 fresh "" atl
@@ -260,7 +262,9 @@ expect "and no worker ran"                      "$(cat "$PI_CALLS" 2>/dev/null |
 brief "Risk: low" "Scope: done.txt src/*
 $ACC"
 fresh "" outside revert
+mkdir -p "$R/src" && echo x >"$R/src/x.py" && git -C "$R" add -A && git -C "$R" commit -qm src
 foreman >/dev/null
+expect "Scope globs reach nested paths"         "$(git -C "$R" ls-files src/sub/y.py)" "src/sub/y.py"
 expect "out-of-scope files fail the attempt"    "$(states)" "START MILESTONE MILESTONE DONE "
 expect "the Scope failure names the files"      "$(grep -c "FAIL 'Scope'" "$FHQ/STATUS.md") $(grep -c 'outside the brief.s Scope (done.txt src/\*): other.txt' "$PI_LAST_PROMPT")" "1 1"
 brief "Risk: low" "$ACC"
@@ -269,6 +273,9 @@ fresh "" secret
 expect "a secret in the diff ESCALATEs"         "$(foreman; grep -c 'ESCALATE possible secret in: config.py' "$FHQ/STATUS.md")" "exit 3
 1"
 expect "the secret is not committed or shown"   "$(git -C "$R" log --oneline | wc -l | tr -d ' ') $(grep -c abcd1234 "$FHQ/STATUS.md")" "1 0"
+fresh "" config
+foreman >/dev/null
+expect "config code reading a token is not a secret" "$(states)" "START MILESTONE DONE "
 fresh "" dotenv
 foreman >/dev/null
 expect "a .env file ESCALATEs"                  "$(grep -c 'ESCALATE possible secret in: .env.local' "$FHQ/STATUS.md")" "1"
