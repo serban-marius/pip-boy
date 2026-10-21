@@ -1,7 +1,7 @@
 #!/bin/bash
 # watch.sh <hq dir> [quiet minutes, default 20]
 # Blocks until _hq/STATUS.md has something HQ must act on, prints it, exits.
-# Exit lines: event lines (ANSWER|BLOCKED|HANDOFF|DONE|DONE-STEP|FAILED|REVISED; HANDOFF-FYI does not wake),
+# Exit lines: event lines (ANSWER|BLOCKED|HANDOFF|DONE|DONE-STEP|FAILED|ESCALATE|REVISED; HANDOFF-FYI does not wake),
 # PR-MERGED|PR-CLOSED <slug> <url>, WAITING-APPROVAL <slug> <last message>, QUIET <min>m <slugs>,
 # CHECKPOINT, ALL-SETTLED, ALREADY-WATCHING. Remembers its read offset in <hq>/.watch-offset.
 
@@ -24,12 +24,12 @@ deadline=$((SECONDS + 110 * 60))
 next_poll=0
 next_ps=0
 
-# slugs dispatched or reopened by HQ and not yet DONE/FAILED/CLOSED; blocked ones listed apart
+# slugs dispatched or reopened by HQ and not yet DONE/FAILED/ESCALATE/CLOSED; blocked ones listed apart
 state() {
   awk '
     $2 == "hq" && ($3 == "DISPATCHED" || $3 == "REOPENED") { live[$4] = 1; last[$4] = "" }
     $2 == "hq" && $3 == "CLOSED" { delete live[$4] }
-    $2 != "hq" && ($3 == "DONE" || $3 == "FAILED") { delete live[$2] }
+    $2 != "hq" && ($3 == "DONE" || $3 == "FAILED" || $3 == "ESCALATE") { delete live[$2] }
     $2 != "hq" { last[$2] = $3 }
     END { for (s in live) printf "%s%s ", s, (last[s] == "BLOCKED" ? ":blocked" : "") }
   ' "$status"
@@ -78,7 +78,7 @@ finish() { echo "$n" >"$offf"; exit 0; }
 while :; do
   cur=$(lines)
   if [ "$cur" -gt "$n" ]; then
-    events=$(sed -n "$((n + 1)),${cur}p" "$status" | grep -E '^[0-9:]+ [^ ]+ (ANSWER|BLOCKED|HANDOFF|DONE|DONE-STEP|FAILED|REVISED)( |$)')
+    events=$(sed -n "$((n + 1)),${cur}p" "$status" | grep -E '^[0-9:]+ [^ ]+ (ANSWER|BLOCKED|HANDOFF|DONE|DONE-STEP|FAILED|ESCALATE|REVISED)( |$)')
     n=$cur
     quiet_since=$SECONDS
     [ -n "$events" ] && { printf '%s\n' "$events"; finish; }
