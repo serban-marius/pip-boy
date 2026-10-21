@@ -84,6 +84,7 @@ Create `_hq/` on first use, with `STATUS.md` starting `# append-only: HH:MM <slu
    # <slug>: <one-line goal>
    Risk: <low|normal|high>
    PR: <ready|draft> <base>        (optional; only for cheap workers, see "Cheap workers")
+   Scope: <globs>                  (optional; files a cheap worker may change)
 
    ## Why
    What the user wants and why, in their terms. Quote their words when they are precise.
@@ -202,16 +203,19 @@ when the brief can prove its own result. Three pieces, none of them spends Claud
 the worktree root, every one exits 0 = accepted. Write commands a stranger could run: tests that
 exist, or a test file the brief spells out. The worker sees them; weak checks let weak work through.
 `PR: ready <base>` (or `draft`) makes the foreman push and open the PR after a pass; without it
-the work stays as a local commit.
+the work stays as a local commit. `Scope: <globs>` (space-separated, e.g. `src/calc/* tests/test_calc.py`)
+fails any attempt that changes a file outside them. Acceptance lines that are prose or not valid
+shell are refused before any worker runs. `Risk:` is the real gate: the production check below
+is a word match, so mark anything touching shared or live systems `Risk: high`.
 
 **Routing** (`route.sh`):
 
 | Brief | Output |
 |-------|--------|
-| No Acceptance commands | `claude opus 1.00 no-acceptance` |
+| No Acceptance commands, or a line that is not a runnable command | `claude opus 1.00 no-acceptance` / `acceptance-not-runnable` |
 | `Risk: high`, or no `Risk:` line | `claude opus 1.00 risk-high` / `no-risk` |
 | A line naming prod/production with no negation (no, not, never, without, read-only) | `claude opus 1.00 production` |
-| Jev missing key, timeout, HTTP error, unknown answer | `claude opus 0.00 jev-<why>` |
+| Jev missing key, timeout, HTTP error, unknown answer; an empty ladder | `claude sonnet 0.00 jev-<why>` / `empty-ladder` |
 | Jev answer under `MISTER_HANDY_ROUTE_THRESHOLD` (0.6) | one tier up: `claude sonnet 0.41 low-confidence:nan-flash` |
 | Jev `nan-flash` / `claude-sonnet` / `claude-opus` | `pi <ladder head> 0.83 jev` / `claude sonnet ...` / `claude opus ...` |
 
@@ -229,27 +233,37 @@ orca terminal create --worktree id:<full worktree id> --title <slug> --command '
 Subagents: `git worktree add -b <branch> <repo>/.claude/worktrees/<slug> origin/<base>`, then the
 Bash tool with `run_in_background: true`:
 `bash <skill dir>/bin/foreman.sh <slug> <brief> <hq dir> <worktree path>`.
-Record `foreman <ladder head>` as the agent in `SESSIONS.md`.
+Record `foreman <ladder head>` as the agent in `SESSIONS.md`. The foreman starts only on a clean
+feature branch (not `main`, `master` or the `PR:` base); anything else is `FAILED`.
 
 **What the foreman does**, per attempt of the ladder (`MISTER_HANDY_LADDER="nan/glm5.3-flash 2,nan/deepseek-v4-flash 1"`,
 else the `ladder` file next to this skill, `<model> <tries>` per line):
 
-1. `pi -p -ne --model <model>` with the brief minus its Reporting section, told not to push or
-   touch `_hq/`; from the second attempt on, with the failed command and its output appended.
-   The tree keeps the previous attempt's changes.
+1. `pi -p -ne --model <model>` with the brief minus its Reporting section and `PR:` line; from
+   the second attempt on, with the failed command and its output appended. The tree keeps the
+   previous attempt's changes. The worker cannot push (`remote.origin.pushurl=/dev/null`, no
+   credential helper) or use `gh` (a failing shim, tokens unset); a worker that switches branch
+   or rewrites history is `ESCALATE`. A timeout kills its whole process group. Every 10 min of an
+   attempt the foreman writes `MILESTONE still working: ...`, so `QUIET` stays for real stalls.
 2. Removes `.atl/` and the `.atl/` line in `.gitignore` that pi extensions drop, when they were
    not there before.
-3. Runs the Acceptance commands, stops at the first failure; one `MILESTONE attempt n/N <model>
-   PASS|FAIL ...` line. Logs (prompt, pi output, acceptance output, `summary.md`) go to
-   `<hq>/logs/<slug>/`.
-4. Pass → commits what the worker changed (not build or acceptance artifacts) with the brief's
-   title, pushes and opens the PR when the brief has `PR:`, writes `DONE <PR url|sha on branch>`.
-   Last attempt failed → `ESCALATE <why>`, changes left uncommitted, diff in `worker.diff`.
-   `FAILED` only for a broken setup (no brief, no Acceptance, not a git worktree).
+3. Checks `Scope:`, then runs the Acceptance commands, stops at the first failure; one
+   `MILESTONE attempt n/N <model> PASS|FAIL '<command>' exit <rc> (<s>s[, pi timed out])` line,
+   never the command's output (that stays in the logs, and redacted in `summary.md`). Logs
+   (prompt, pi output, acceptance output, `summary.md`) go to `<hq>/logs/<slug>/`, outside the repo.
+4. Pass → scans the added lines for secrets (private keys, `sk-`, `AKIA`, `gh*_` tokens,
+   `api_key|token|secret|password = <long value>`, `.env*` files): a hit is `ESCALATE` with the
+   file names, nothing committed. Otherwise commits what the worker changed (not build or acceptance
+   artifacts) with the brief's title, pushes and opens the PR when the brief has `PR:`, and writes
+   `DONE <PR url|sha on branch>`, naming any changed file the Acceptance commands run (a test the
+   worker edited deserves a look). Last attempt failed → `ESCALATE <why>`, changes left
+   uncommitted, diff including new files in `worker.diff`. `FAILED` for a brief or worktree that
+   is not fit to start (no Acceptance, prose in it, a command not found, dirty tree, wrong branch).
 
 `MISTER_HANDY_REVIEW=<nan model>` adds one read-only reviewer pass after a pass (pi with read
 tools only, `jd-judge-a` prompt, the diff against the brief): REVISE items get one more worker
-round, kept only if the acceptance still passes. Timeouts: `MISTER_HANDY_PI_TIMEOUT` (1800 s per
+round, kept only if the acceptance still passes (otherwise rolled back, with the round's new files
+removed). A reviewer with no clear verdict is noted as `review inconclusive`, never as PASS. Timeouts: `MISTER_HANDY_PI_TIMEOUT` (1800 s per
 attempt), `MISTER_HANDY_CHECK_TIMEOUT` (600 s per command).
 
 **When the watcher wakes HQ:**
@@ -257,11 +271,14 @@ attempt), `MISTER_HANDY_CHECK_TIMEOUT` (600 s per command).
 - `DONE` with a PR URL: as any DONE. `DONE <sha> on <branch> (local)`: not `no-code`; look at
   `git -C <worktree> diff --stat <base>...` and push + open the PR yourself, or launch a reviewer.
 - `ESCALATE`: relaunch on Claude in the same worktree, as Mode 1 step 5 with
-  `--worktree path:<worktree>` and `--model <sonnet|opus>`, sending: "Your task brief is in
-  <brief>. A cheap worker tried it first and failed: read <hq>/logs/<slug>/summary.md, keep or
-  discard its uncommitted changes, then work until DONE and report as the brief says." Update
-  `SESSIONS.md` and append `hq REOPENED <slug>`. Subagents: one background Agent with that prompt,
-  told to work in that worktree path.
+  `--worktree path:<worktree>` and `--model sonnet`: one tier up from the cheap one, as the router
+  does; `opus` only when the user asks or a sonnet relaunch also fails. Send: "Your task brief is
+  in <brief>. A cheap worker tried it first and failed: read <hq>/logs/<slug>/summary.md and
+  `git status --short`, keep or discard its uncommitted changes, then work until DONE and report
+  as the brief says." Update `SESSIONS.md` and append `hq REOPENED <slug>`. ESCALATE does not
+  satisfy `after`: tasks waiting on this slug wait for the relaunch's DONE. A secret or
+  branch ESCALATE: look at the named files or branch first; tell the user before relaunching.
+  Subagents: one background Agent with that prompt, told to work in that worktree path.
 - `FAILED` from the foreman: fix the brief and relaunch it, or launch Claude.
 
 ## Mode 2: fan out ("lánzate unos worktrees")
@@ -360,7 +377,7 @@ When it wakes HQ, handle what it printed, then arm it again unless it said `ALL-
 | `WAITING-APPROVAL <slug> <message>` | The worker's agent has sat on a permission prompt for over a minute (its Orca card). Tell the user at once, one line: slug, what it was doing, and that the prompt waits in that worktree's terminal. HQ never answers permission prompts. |
 | `PR-MERGED` / `PR-CLOSED <slug> <url>` | The PR left review. Close the worktree (Mode 5), or append `hq KEPT <slug> <why>` when its `on-done` is `keep` or `closable.sh` says `KEEP` (tell the user why). Launch tasks waiting `after` it. |
 | `FAILED` | One line with the reason; ask whether to relaunch with a better brief. |
-| `ESCALATE` | The foreman ran out of cheap attempts. Relaunch on Claude in the same worktree with the foreman's summary ("Cheap workers"), without asking; tell the user one line. |
+| `ESCALATE` | The foreman ran out of cheap attempts (or stopped on a secret or a branch change). Relaunch on Claude sonnet in the same worktree with the foreman's summary ("Cheap workers"), without asking; tell the user one line. Tasks `after` it keep waiting for the relaunch's DONE. |
 | `ANSWER` | Relay the answer in one line. `PREVIEW <url> <login>` and `PUNCH-LIST <path>` go to the user at once, with the URL and login or the screenshots. |
 | `BLOCKED` | Put the worker's exact question to the user. Forward the reply (Mode 4). |
 | `REVISED` | Launch the re-review, or report if no reviewer is involved. |

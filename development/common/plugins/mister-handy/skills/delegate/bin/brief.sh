@@ -17,6 +17,23 @@ brief_acceptance() {
     NF'
 }
 
+brief_lint() {
+  local n=0 cmd w
+  while IFS= read -r cmd; do
+    n=$((n + 1))
+    w=$(sed -E 's/^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*//; s/[[:space:]].*//' <<<"$cmd")
+    if ! bash -n -c "$cmd" 2>/dev/null || ! grep -qE '^([A-Za-z0-9_./~+-]+|\[\[?|!|\(|\{)$' <<<"$w" ||
+      { [ -n "${2:-}" ] && grep -qE '^[A-Za-z0-9_.~+-]+$' <<<"$w" && ! type -t "$w" >/dev/null; }; then
+      echo "acceptance line $n is not a runnable command: $cmd"
+      return 1
+    fi
+  done < <(brief_acceptance "$1")
+}
+
+brief_scope() {
+  sed -n 's/^Scope:[[:space:]]*//p' "$1" | head -n 1
+}
+
 brief_risk() {
   sed -n 's/^Risk:[[:space:]]*\([A-Za-z]*\).*/\1/p' "$1" | head -n 1 | tr 'A-Z' 'a-z'
 }

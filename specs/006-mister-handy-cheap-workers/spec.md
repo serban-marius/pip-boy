@@ -15,15 +15,15 @@ decision of "done" moves to commands the brief carries, and the reporting moves 
 
 | Case | Today | After |
 |---|---|---|
-| Brief | free-form `Acceptance:` bullet | `Risk: low\|normal\|high` line and an `## Acceptance` section: one command per line, run from the worktree root, exit 0 = accepted; optional `PR: ready\|draft <base>` |
-| Choosing the agent | always Claude | `bin/route.sh <brief>` prints `<agent> <model> <confidence> <reason>`. Claude without asking Jev: no Acceptance, `Risk: high` or missing, a non-negated prod/production line. Then Jev (`jev-latest`, one `choice` question: `nan-flash`, `claude-sonnet`, `claude-opus`, stakes `design`, 10 s timeout); an error or an undecided answer → `claude opus`; confidence under 0.6 → one tier up |
-| Implementing | a Claude session | `pi -p -ne --model nan/<id>` in the worktree, prompted with the brief minus its Reporting section |
+| Brief | free-form `Acceptance:` bullet | `Risk: low\|normal\|high` line and an `## Acceptance` section: one command per line, run from the worktree root, exit 0 = accepted, linted (`bash -n`, first word a command); optional `PR: ready\|draft <base>` and `Scope: <globs>` |
+| Choosing the agent | always Claude | `bin/route.sh <brief>` prints `<agent> <model> <confidence> <reason>`. Claude opus without asking Jev: no runnable Acceptance, `Risk: high` or missing, a non-negated prod/production line. Then Jev (`jev-latest`, one `choice` question: `nan-flash`, `claude-sonnet`, `claude-opus`, stakes `design`, 10 s timeout); an error, an undecided answer or an empty ladder → `claude sonnet`; confidence under 0.6 → one tier up |
+| Implementing | a Claude session | `pi -p -ne --model nan/<id>` in a clean feature-branch worktree, prompted with the brief minus its Reporting section and `PR:` line; no push (`pushurl=/dev/null`, no credential helper), no `gh` (shim, tokens unset); a timeout kills the whole process group; a branch switch or history rewrite is ESCALATE |
 | Watching the worker | the worker reports itself | `bin/foreman.sh <slug> <brief> <hq dir> [worktree]`, no LLM: runs the worker, then the Acceptance commands; on failure retries with the failed command and its output appended, climbing the ladder (`MISTER_HANDY_LADDER` or `skills/delegate/ladder`, placeholder `nan/glm5.3-flash` ×2 → `nan/deepseek-v4-flash` ×1) |
-| STATUS lines | written by the agent | written by the foreman: START, one MILESTONE per attempt (`attempt n/N <model> PASS\|FAIL ...`), then DONE `<PR url\|sha on branch>`, `ESCALATE <why>` or FAILED (broken setup only) |
+| STATUS lines | written by the agent | written by the foreman: START, one MILESTONE per attempt (`attempt n/N <model> PASS\|FAIL '<cmd>' exit <rc>`, never the output), `MILESTONE still working` every 10 min, then DONE `<PR url\|sha on branch>`, `ESCALATE <why>` or FAILED (brief or worktree unfit: no or prose Acceptance, command not found, dirty tree, `main`/`master`/PR base) |
 | Worker leftovers | n/a | `.atl/` and its `.gitignore` line removed when they were not there before; build and acceptance artifacts are not committed |
-| Commit, push, PR | the agent | the foreman commits the worker's changes with the brief's title; pushes and opens the PR only with a `PR:` line |
-| Cheap model gives up | n/a | `ESCALATE` wakes HQ (watcher), which relaunches the task on Claude in the same worktree with `<hq>/logs/<slug>/summary.md`; ESCALATE settles the slug until `hq REOPENED` |
-| Review | a Claude reviewer worker | optional `MISTER_HANDY_REVIEW=<nan model>`: one read-only `pi` pass (`jd-judge-a` prompt, diff against the brief); REVISE items get one more worker round, kept only if the acceptance still passes |
+| Commit, push, PR | the agent | files outside `Scope:` fail the attempt; added lines are scanned for secrets (keys, tokens, `.env*`) → ESCALATE with file names, nothing committed; the foreman commits the worker's changes with the brief's title, names changed files the Acceptance runs in DONE, and pushes + opens the PR only with a `PR:` line |
+| Cheap model gives up | n/a | `ESCALATE` wakes HQ (watcher), which relaunches the task on Claude sonnet (opus only if asked or sonnet fails too) in the same worktree with `<hq>/logs/<slug>/summary.md` (redacted) and `worker.diff` (new files included); ESCALATE settles the slug until `hq REOPENED` and does not satisfy `after` |
+| Review | a Claude reviewer worker | optional `MISTER_HANDY_REVIEW=<nan model>`: one read-only `pi` pass (`jd-judge-a` prompt, diff against the brief); REVISE items (capped at 4 KB) get one more worker round, kept only if the acceptance still passes, else rolled back with the round's new files removed; no clear verdict is `review inconclusive` |
 | Launch | `terminal create --command 'claude ...'` + `send` | Orca: `terminal create --command 'bash <skill dir>/bin/foreman.sh ...'`; subagents: `git worktree add` + background Bash |
 
 HQ skips routing when the user names the agent or model ("hazlo con Claude"), and for
@@ -33,13 +33,21 @@ investigations, reviews and preview-driven UI work.
 
 `skills/delegate/bin/delegate.test.sh`, with `pi`, `curl`, `gh` and `orca` stubbed:
 
-- `route.sh` → Claude on no Acceptance, `Risk: high`, no Risk line, a production write, a Jev
-  timeout, HTTP error or undecided answer, one tier up under the threshold; `pi <ladder head>` on
-  a confident `nan-flash`, with the ladder head taken from `MISTER_HANDY_LADDER`;
+- `route.sh` → Claude on no Acceptance, a prose Acceptance line, `Risk: high`, no Risk line, a
+  production write, a Jev timeout, HTTP error or undecided answer, an empty ladder, one tier up
+  under the threshold; `pi <ladder head>` on a confident `nan-flash`, with the ladder head taken
+  from `MISTER_HANDY_LADDER`;
 - `foreman.sh`: a first-attempt pass is DONE with the commit sha; fail then pass is DONE and the
   retry prompt carries the failure; three failures climb glm, glm, deepseek and ESCALATE with the
   work left uncommitted; `.atl/` and its `.gitignore` line are removed; build and acceptance
-  artifacts are not committed; no Acceptance is FAILED; a reviewer REVISE gets one more round;
+  artifacts are not committed; no Acceptance, a prose Acceptance line, a dirty tree and `main`
+  are FAILED with no worker run; files outside `Scope:` fail the attempt and the retry names them;
+  a secret or a `.env` file is ESCALATE with nothing committed and no value in STATUS; a pi
+  timeout is named and kills the worker's children; a slow attempt writes a heartbeat; the
+  worker cannot push or run `gh`; only `PR:` makes the foreman push and open the PR, and the
+  worker never sees that line; a branch switch is ESCALATE; a reviewer REVISE gets one more
+  round, rolled back when it breaks the acceptance; a `PASSES ...` line does not reset REVISE;
+  a silent reviewer is inconclusive;
 - the watcher wakes on `ESCALATE` and the escalated slug settles.
 
 Live: the foreman on a throwaway repo (add `mul()` to `calc.py`, acceptance `python3 test_calc.py`)

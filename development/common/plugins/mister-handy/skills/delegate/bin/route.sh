@@ -1,7 +1,7 @@
 #!/bin/bash
 # route.sh <brief>: which agent takes this brief. Prints <agent> <model> <confidence> <reason>.
-# Claude without asking Jev: no Acceptance, Risk missing or high, a production write. Then Jev; an
-# error, or an answer under the threshold (MISTER_HANDY_ROUTE_THRESHOLD, default 0.6), goes one tier up.
+# Claude opus without asking Jev: no runnable Acceptance, Risk missing or high, a production write. Then
+# Jev; an error is claude sonnet, an answer under MISTER_HANDY_ROUTE_THRESHOLD (0.6) goes one tier up.
 # Key: TYPESAFE_API_KEY, else the keychain item "jev". Never printed.
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -12,7 +12,8 @@ threshold=${MISTER_HANDY_ROUTE_THRESHOLD:-0.6}
 
 pick() {
   case $1 in
-    0) echo "pi $(ladder | awk '{ print $1; exit }') $2 $3" ;;
+    0) head=$(ladder | awk '{ print $1; exit }')
+      [ -n "$head" ] && echo "pi $head $2 $3" || echo "claude sonnet $2 empty-ladder" ;;
     1) echo "claude sonnet $2 $3" ;;
     *) echo "claude opus $2 $3" ;;
   esac
@@ -20,6 +21,7 @@ pick() {
 }
 
 [ -n "$(brief_acceptance "$brief")" ] || pick 2 1.00 no-acceptance
+brief_lint "$brief" >/dev/null || pick 2 1.00 acceptance-not-runnable
 case $(brief_risk "$brief") in
   low | normal) ;;
   high) pick 2 1.00 risk-high ;;
@@ -28,7 +30,7 @@ esac
 [ -z "$(brief_prod "$brief")" ] || pick 2 1.00 production
 
 key=${TYPESAFE_API_KEY:-$(security find-generic-password -s jev -w 2>/dev/null)}
-[ -n "$key" ] || pick 2 0.00 jev-no-key
+[ -n "$key" ] || pick 1 0.00 jev-no-key
 
 body=$(jq -n --rawfile brief "$brief" '{
   model: "jev-latest",
@@ -49,18 +51,18 @@ reply=$(printf '%s' "$body" | curl -sS --max-time "${MISTER_HANDY_ROUTE_TIMEOUT:
   -K <(printf 'header = "authorization: Bearer %s"\n' "$key") \
   -H 'content-type: application/json' --data-binary @- https://api.typesafe.ai/v1/systemone 2>/dev/null)
 rc=$?
-[ "$rc" -eq 28 ] && pick 2 0.00 jev-timeout
-[ "$rc" -eq 0 ] || pick 2 0.00 jev-error
-[ "$(tail -n 1 <<<"$reply")" = 200 ] || pick 2 0.00 jev-http-$(tail -n 1 <<<"$reply")
+[ "$rc" -eq 28 ] && pick 1 0.00 jev-timeout
+[ "$rc" -eq 0 ] || pick 1 0.00 jev-error
+[ "$(tail -n 1 <<<"$reply")" = 200 ] || pick 1 0.00 jev-http-$(tail -n 1 <<<"$reply")
 
 read -r choice conf < <(sed '$d' <<<"$reply" | jq -r '.answers.agent | "\(.choice) \(.confidence)"' 2>/dev/null)
 case $choice in
   nan-flash) tier=0 ;;
   claude-sonnet) tier=1 ;;
   claude-opus) tier=2 ;;
-  *) pick 2 0.00 jev-undecided ;;
+  *) pick 1 0.00 jev-undecided ;;
 esac
-awk -v c="$conf" 'BEGIN { exit !(c + 0 == c && c >= 0 && c <= 1) }' || pick 2 0.00 jev-undecided
+awk -v c="$conf" 'BEGIN { exit !(c + 0 == c && c >= 0 && c <= 1) }' || pick 1 0.00 jev-undecided
 conf=$(awk -v c="$conf" 'BEGIN { printf "%.2f", c }')
 awk -v c="$conf" -v t="$threshold" 'BEGIN { exit !(c < t) }' && pick $((tier < 2 ? tier + 1 : 2)) "$conf" "low-confidence:$choice"
 pick "$tier" "$conf" jev

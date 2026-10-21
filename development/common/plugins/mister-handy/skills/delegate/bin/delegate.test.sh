@@ -14,6 +14,7 @@ cat >"$tmp/stub/gh" <<'EOF'
 case "$*" in
   "pr view"*) cat "$GH_STATE" ;;
   "pr list"*) cat "$GH_MERGED_HEADS" ;;
+  "pr create"*) cat "$GH_PR_URL" ;;
 esac
 EOF
 cat >"$tmp/stub/orca" <<'EOF'
@@ -21,7 +22,7 @@ cat >"$tmp/stub/orca" <<'EOF'
 cat "$ORCA_PS"
 EOF
 chmod +x "$tmp/stub/gh" "$tmp/stub/orca"
-export PATH=$tmp/stub:$PATH GH_STATE=$tmp/state GH_MERGED_HEADS=$tmp/heads ORCA_PS=$tmp/ps.json
+export PATH=$tmp/stub:$PATH GH_PR_URL=$tmp/pr-url GH_STATE=$tmp/state GH_MERGED_HEADS=$tmp/heads ORCA_PS=$tmp/ps.json
 : >"$GH_MERGED_HEADS"
 echo '{"result":{"worktrees":[]}}' >"$ORCA_PS"
 
@@ -110,15 +111,25 @@ printf '%s\n' "${@: -1}" >"$PI_LAST_PROMPT"
 n=$(( $(cat "$PI_COUNT" 2>/dev/null || echo 0) + 1 )); echo "$n" >"$PI_COUNT"
 case $(sed -n "${n}p" "$PI_PLAN") in
   pass) echo ok >done.txt ;;
+  edits-test) echo ok >done.txt; echo x >ok.txt ;;
   pass-new) echo ok >done.txt; echo new >new.txt; mkdir __pycache__; echo x >__pycache__/c.pyc ;;
   broken) echo ko >done.txt ;;
   atl) echo ok >done.txt; mkdir -p .atl; echo x >.atl/state; echo '.atl/' >>.gitignore ;;
   revised) echo ok >done.txt; echo renamed >notes.txt ;;
+  outside) echo ok >done.txt; echo x >other.txt ;;
+  revert) rm -f other.txt ;;
+  secret) echo ok >done.txt; echo 'API_KEY = "abcd1234efgh5678ijkl"' >config.py ;;
+  dotenv) echo ok >done.txt; echo X=1 >.env.local ;;
+  hang) sleep 30 & echo $! >"$PI_CHILD"; sleep 30 ;;
+  slow) sleep 3; echo ok >done.txt ;;
+  pushy) echo ok >done.txt; git push -q origin HEAD 2>/dev/null; gh pr create 2>/dev/null && touch gh-ran ;;
+  branchy) git checkout -qb elsewhere; echo ok >done.txt ;;
+  breaks) echo ko >done.txt; echo junk >junk.txt ;;
 esac
 EOF
 chmod +x "$tmp/stub/curl" "$tmp/stub/pi"
 export TYPESAFE_API_KEY=stub JEV_REPLY=$tmp/jev.json PI_PLAN=$tmp/plan PI_COUNT=$tmp/pi.count PI_CALLS=$tmp/pi.calls \
-  PI_LAST_PROMPT=$tmp/pi.prompt PI_REVIEW=$tmp/review.txt MISTER_HANDY_JUDGE=/dev/null
+  PI_LAST_PROMPT=$tmp/pi.prompt PI_REVIEW=$tmp/review.txt MISTER_HANDY_JUDGE=/dev/null PI_CHILD=$tmp/pi.child
 
 B=$tmp/brief.md
 brief() { printf '# t: write ok to done.txt\n%s\n\n## Task\nWrite ok to done.txt.\n%s\n\n## Reporting\nAppend lines to STATUS.md.\n' "$1" "$2" >"$B"; }
@@ -144,18 +155,26 @@ jev nan-flash 0.41
 expect "low confidence goes one tier up"        "$(route)" "claude sonnet 0.41 low-confidence:nan-flash"
 jev claude-opus 0.9
 expect "Jev picks Claude"                       "$(route)" "claude opus 0.90 jev"
-expect "a Jev timeout routes to Claude"         "$(CURL_RC=28 route)" "claude opus 0.00 jev-timeout"
-expect "a Jev error routes to Claude"           "$(JEV_HTTP=500 route)" "claude opus 0.00 jev-http-500"
+expect "a Jev timeout routes to Claude"         "$(CURL_RC=28 route)" "claude sonnet 0.00 jev-timeout"
+expect "a Jev error routes to Claude"           "$(JEV_HTTP=500 route)" "claude sonnet 0.00 jev-http-500"
+jev nan-flash 0.74
+expect "an empty ladder routes to Claude"        "$(MISTER_HANDY_LADDER=' ' route)" "claude sonnet 0.74 empty-ladder"
+brief "Risk: low" "## Acceptance
+\`test -f x\` passes"
+expect "a prose Acceptance line routes to Claude" "$(route)" "claude opus 1.00 acceptance-not-runnable"
+brief "Risk: low" "Never touch prod.
+$ACC"
 echo '{"answers":{}}' >"$JEV_REPLY"
-expect "an undecided Jev routes to Claude"      "$(route)" "claude opus 0.00 jev-undecided"
+expect "an undecided Jev routes to Claude"      "$(route)" "claude sonnet 0.00 jev-undecided"
 
 R=$tmp/repo
 FHQ=$tmp/fhq
 fresh() {
-  rm -rf "$R" "$FHQ" "$PI_COUNT" "$PI_CALLS" && mkdir -p "$FHQ" && : >"$FHQ/STATUS.md"
+  rm -rf "$R" "$FHQ" "$PI_COUNT" "$PI_CALLS" "$tmp/origin.git" && mkdir -p "$FHQ" && : >"$FHQ/STATUS.md"
   git init -q -b feat/t "$R" && git -C "$R" config user.email t@t && git -C "$R" config user.name t
   [ -z "${1:-}" ] || printf '%s\n' "$1" >"$R/.gitignore"
   git -C "$R" add -A && git -C "$R" commit -q --allow-empty -m init
+  git init -q --bare "$tmp/origin.git" && git -C "$R" remote add origin "$tmp/origin.git"
   printf '%s\n' "${@:2}" >"$PI_PLAN"
 }
 foreman() { (cd "$R" && bash "$here/foreman.sh" t "$B" "$FHQ" >/dev/null 2>&1; echo "exit $?"); }
@@ -210,5 +229,79 @@ fresh "" pass
 echo PASS >"$PI_REVIEW"
 MISTER_HANDY_REVIEW=nan/qwen3.6 foreman >/dev/null
 expect "a review PASS is DONE"                  "$(awk '$3 == "DONE"' "$FHQ/STATUS.md" | grep -c 'review PASS')" "1"
+
+fresh "" pass
+echo PASS >"$PI_REVIEW"
+printf 'REVISE\n1. rename x\nPASSES the tests\n' >"$PI_REVIEW"
+MISTER_HANDY_REVIEW=nan/qwen3.6 MISTER_HANDY_LADDER="nan/glm5.3-flash 1" foreman >/dev/null
+expect "a PASS-prefixed line does not reset REVISE" "$(grep -c 'MILESTONE review nan/qwen3.6 REVISE' "$FHQ/STATUS.md")" "1"
+fresh "" pass breaks
+printf 'REVISE\n1. something\n' >"$PI_REVIEW"
+MISTER_HANDY_REVIEW=nan/qwen3.6 foreman >/dev/null
+expect "a failed review round is rolled back"   "$(cat "$R/done.txt") $(ls "$R" | grep -c junk) $(grep -c 'DONE.*review items not applied' "$FHQ/STATUS.md")" "ok 0 1"
+fresh "" pass
+: >"$PI_REVIEW"
+MISTER_HANDY_REVIEW=nan/qwen3.6 foreman >/dev/null
+expect "a silent reviewer is inconclusive"      "$(grep -c 'DONE.*review inconclusive' "$FHQ/STATUS.md")" "1"
+
+fresh "" pass
+echo stray >"$R/pre-existing.txt"
+expect "a dirty tree is refused"                "$(foreman; states)" "exit 2
+FAILED "
+fresh "" pass
+git -C "$R" checkout -qb main
+expect "main is refused"                        "$(foreman >/dev/null; states)" "FAILED "
+fresh "" pass
+brief "Risk: low" "## Acceptance
+Run the tests and check they pass"
+expect "a prose Acceptance line is FAILED"      "$(foreman >/dev/null; grep -c 'FAILED acceptance line 1 is not a runnable command' "$FHQ/STATUS.md")" "1"
+expect "and no worker ran"                      "$(cat "$PI_CALLS" 2>/dev/null | wc -l | tr -d ' ')" "0"
+
+brief "Risk: low" "Scope: done.txt src/*
+$ACC"
+fresh "" outside revert
+foreman >/dev/null
+expect "out-of-scope files fail the attempt"    "$(states)" "START MILESTONE MILESTONE DONE "
+expect "the Scope failure names the files"      "$(grep -c "FAIL 'Scope'" "$FHQ/STATUS.md") $(grep -c 'outside the brief.s Scope (done.txt src/\*): other.txt' "$PI_LAST_PROMPT")" "1 1"
+brief "Risk: low" "$ACC"
+
+fresh "" secret
+expect "a secret in the diff ESCALATEs"         "$(foreman; grep -c 'ESCALATE possible secret in: config.py' "$FHQ/STATUS.md")" "exit 3
+1"
+expect "the secret is not committed or shown"   "$(git -C "$R" log --oneline | wc -l | tr -d ' ') $(grep -c abcd1234 "$FHQ/STATUS.md")" "1 0"
+fresh "" dotenv
+foreman >/dev/null
+expect "a .env file ESCALATEs"                  "$(grep -c 'ESCALATE possible secret in: .env.local' "$FHQ/STATUS.md")" "1"
+
+fresh "" hang
+MISTER_HANDY_PI_TIMEOUT=1 MISTER_HANDY_LADDER="nan/glm5.3-flash 1" foreman >/dev/null
+expect "a pi timeout is named"                  "$(grep -c 'FAIL.*pi timed out' "$FHQ/STATUS.md")" "1"
+expect "a timed-out worker's children die"      "$(kill -0 "$(cat "$PI_CHILD")" 2>/dev/null && echo alive || echo dead)" "dead"
+fresh "" slow
+MISTER_HANDY_HEARTBEAT=1 foreman >/dev/null
+expect "a long attempt writes a heartbeat"      "$(grep -c 'MILESTONE still working: attempt 1/3' "$FHQ/STATUS.md" | awk '{ print ($1 > 0) }')" "1"
+
+brief "Risk: low" "## Acceptance
+grep -qx ok done.txt
+test -f ok.txt
+test -f not_ok.txt || true"
+fresh "" edits-test
+foreman >/dev/null
+expect "DONE names Acceptance files it changed" "$(grep -c 'changed files the Acceptance runs: done.txt ok.txt' "$FHQ/STATUS.md")" "1"
+brief "Risk: low" "$ACC"
+fresh "" pushy
+foreman >/dev/null
+expect "the worker cannot push or use gh"       "$(git -C "$tmp/origin.git" branch | wc -l | tr -d ' ') $(git -C "$R" ls-files gh-ran | wc -l | tr -d ' ')" "0 0"
+expect "without PR: the foreman does not push"  "$(grep -c 'DONE .* on feat/t (local)' "$FHQ/STATUS.md")" "1"
+fresh "" pass
+brief "Risk: low
+PR: ready main" "$ACC"
+echo "https://github.com/o/r/pull/9" >"$tmp/pr-url"
+foreman >/dev/null
+expect "PR: pushes and opens the PR"            "$(git -C "$tmp/origin.git" branch | tr -d ' *') $(grep -c 'DONE https://github.com/o/r/pull/9' "$FHQ/STATUS.md")" "feat/t 1"
+expect "the worker never sees PR:"              "$(grep -c '^PR:' "$PI_LAST_PROMPT")" "0"
+brief "Risk: low" "$ACC"
+fresh "" branchy
+expect "a worker that switches branch ESCALATEs" "$(foreman >/dev/null; grep -c 'ESCALATE the worker left branch feat/t' "$FHQ/STATUS.md")" "1"
 
 [ "$fails" -eq 0 ] && echo "all green" || { echo "$fails failing"; exit 1; }
