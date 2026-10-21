@@ -39,7 +39,12 @@ brief_risk() {
 }
 
 brief_prod() {
-  grep -iE '(^|[^[:alnum:]_])(prod|production)([^[:alnum:]_]|$)' "$1" |
+  case $(sed -n 's/^Prod:[[:space:]]*\([A-Za-z]*\).*/\1/p' "$1" | head -n 1 | tr 'A-Z' 'a-z') in
+    yes) echo "Prod: yes"; return ;;
+    no) return ;;
+  esac
+  brief_without "$1" Acceptance |
+    grep -iE '(deploy|release|ship|push|migrat|run|apply|write|delete|drop|truncate|update|restart)[a-z]*[^.]{0,40}[[:space:]](to|on|in|against|into)[[:space:]]+(the[[:space:]]+)?(prod|production)([^[:alnum:]_]|$)|(^|[^[:alnum:]_])(prod|production)[ -](db|database|databases|cluster|server|servers|host|hosts|infra|infrastructure|environment|env|data|bucket|account|deploy|deployment)([^[:alnum:]_]|$)|live customer data' |
     grep -viE '(^|[^[:alnum:]_])(no|not|never|without|read-only|nothing)([^[:alnum:]_]|$)' | head -n 1
 }
 

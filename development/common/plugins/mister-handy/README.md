@@ -28,7 +28,7 @@ worktrees", "mándaselo a la sesión del worktree", "¿cómo va?", "do a cleanup
 
 | Mode | What HQ does |
 |------|--------------|
-| Route | `bin/route.sh <brief>` asks Jev which tier fits (`pi <nan model>`, `claude sonnet`, `claude opus`); no runnable Acceptance commands, `Risk: high` or missing, or a production write go to Claude opus without asking; a Jev failure to sonnet |
+| Route | `bin/route.sh <brief>` asks Jev which tier fits (`pi <nan model>`, `claude sonnet`, `claude opus`); no runnable Acceptance commands, `Risk: high` or missing, or `Prod: yes` (a deploy, prod DB or infra write; editing production source is not one) go to Claude opus without asking; a Jev failure to sonnet |
 | Cheap workers | `bin/foreman.sh` runs `pi` on a NAN model in the worktree, then the brief's Acceptance commands; retries with the failure appended, climbs the ladder (`skills/delegate/ladder`), and writes START, MILESTONE per attempt, DONE or ESCALATE itself; HQ relaunches an ESCALATE on Claude |
 | Delegate | Checks the base (integration branch, superseded branches), writes `_hq/briefs/<slug>.md`, launches the worker in an Orca terminal (`worktree create`, `terminal create --command 'claude --permission-mode auto'`, `terminal send "<read the brief>"`), records its terminal handle, reports one line and stops |
 | Fan out | Splits by what the user will see (that slice first, with the first preview), one owner per file, writes every brief, launches all worktrees in parallel |
@@ -73,6 +73,8 @@ route.sh brief  ->  pi nan/glm5.3-flash 0.83 jev        foreman.sh <slug> <brief
 | `MISTER_HANDY_PI_FLAGS` | extra pi flags; `-ne` (no pi extensions) is always on, and their `.atl/` + `.gitignore` lines are removed anyway |
 | `MISTER_HANDY_REVIEW` | off; a NAN model for one read-only review pass, REVISE gets one more round |
 | `MISTER_HANDY_HEARTBEAT` | 600 s between `MILESTONE still working` lines during an attempt |
+| `MISTER_HANDY_NAN_SLOTS` | 3 pi runs at once per user, machine-wide (the NAN key allows 7 parallel requests) |
+| `MISTER_HANDY_RATE_BACKOFF` / `MISTER_HANDY_RATE_RETRIES` | 60 s doubling to 600 s / 5: a 429 is retried without using a ladder try |
 
 The foreman starts only on a clean feature branch. The worker cannot push or use `gh`; the
 foreman pushes only when the brief has `PR: ready|draft <base>`, fails attempts that touch files

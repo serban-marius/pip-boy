@@ -8,6 +8,8 @@
 # Starts only on a clean feature branch. The worker cannot push or use gh; the foreman pushes and
 # opens a PR only when the brief has "PR: ready|draft <base>". "Scope: <globs>" limits what it may
 # change. MISTER_HANDY_REVIEW=<model> adds one read-only reviewer pass; REVISE gets one more round.
+# At most MISTER_HANDY_NAN_SLOTS (3) pi runs at once per user, machine-wide; a run cut off by a rate
+# limit (429) is retried after a backoff without using up a ladder try.
 
 here=$(cd "$(dirname "$0")" && pwd)
 . "$here/brief.sh"
@@ -20,6 +22,11 @@ logs=$hq/logs/$slug
 pi_timeout=${MISTER_HANDY_PI_TIMEOUT:-1800}
 check_timeout=${MISTER_HANDY_CHECK_TIMEOUT:-600}
 pi_flags="-ne ${MISTER_HANDY_PI_FLAGS:-}"
+slots=${MISTER_HANDY_NAN_SLOTS:-3}
+slot_dir=${MISTER_HANDY_SLOT_DIR:-$HOME/.cache/mister-handy/nan-slots}
+slot=""
+rate_limited='(^|[^0-9])429([^0-9]|$)|rate[ _-]?limit|too many requests|max_parallel|concurrent requests'
+
 artifacts='(^|/)(__pycache__|node_modules|venv|\.venv|dist|build|target|coverage[^/]*|\.coverage|\.pytest_cache|\.mypy_cache|\.ruff_cache|\.tox|\.DS_Store|[^/]+\.egg-info)(/|$)|\.py[co]$'
 secret_text='BEGIN [A-Z ]*PRIVATE KEY|sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{30,}|(api[_-]?key|secret|token|passw(or)?d)["'"'"']?[[:space:]]*[:=][[:space:]]*["'"'"']?[A-Za-z0-9_/+=-]{12,}'
 limit_pl='$t = shift; $p = fork; if (!$p) { setpgrp(0, 0); exec @ARGV or exit 127 } setpgrp($p, $p);
@@ -37,7 +44,27 @@ redact() {
 end() { say "$1 $2"; card "$1 $2"; exit "$3"; }
 beat() { (while sleep "${MISTER_HANDY_HEARTBEAT:-600}"; do say "MILESTONE still working: $1"; done) 2>/dev/null & hb=$!; }
 unbeat() { [ -z "${hb:-}" ] || { pkill -P "$hb" 2>/dev/null; kill "$hb" 2>/dev/null; hb=""; }; }
-trap unbeat EXIT
+acquire() {
+  local i pid waiting=""
+  mkdir -p "$slot_dir"
+  while :; do
+    i=1
+    while [ "$i" -le "$slots" ]; do
+      mkdir "$slot_dir/$i" 2>/dev/null && { echo $$ >"$slot_dir/$i/pid"; slot=$slot_dir/$i; return 0; }
+      pid=$(cat "$slot_dir/$i/pid" 2>/dev/null)
+      if { [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; } || { [ -z "$pid" ] && [ -n "$(find "$slot_dir/$i" -maxdepth 0 -mmin +1 2>/dev/null)" ]; }; then
+        mv "$slot_dir/$i" "$slot_dir/stale.$i.$$" 2>/dev/null && rm -rf "$slot_dir/stale.$i.$$"
+        continue
+      fi
+      i=$((i + 1))
+    done
+    [ -n "$waiting" ] || say "MILESTONE waiting for a NAN slot ($slots busy in $slot_dir)"
+    waiting=1
+    sleep "${MISTER_HANDY_SLOT_POLL:-5}"
+  done
+}
+release() { [ -z "$slot" ] || rm -rf "$slot"; slot=""; }
+trap 'unbeat; release' EXIT
 
 [ -f "$brief" ] || end FAILED "no brief at $brief" 2
 cd "${4:-.}" 2>/dev/null && cd "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null ||
@@ -100,10 +127,15 @@ untracked() { git -c core.quotePath=false ls-files -o --exclude-standard; }
 changed() { { git -c core.quotePath=false diff --name-only "$base"; untracked | grep -vE "$artifacts"; } | sort -u; }
 
 pi_run() {
+  local rc
+  acquire
   env -u GH_TOKEN -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN -u TYPESAFE_API_KEY PATH="$logs/bin:$PATH" \
     GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=remote.origin.pushurl GIT_CONFIG_VALUE_0=/dev/null \
     GIT_CONFIG_KEY_1=credential.helper GIT_CONFIG_VALUE_1= GIT_TERMINAL_PROMPT=0 \
     perl -e "$limit_pl" "$pi_timeout" pi -p $pi_flags "$@" </dev/null
+  rc=$?
+  release
+  return "$rc"
 }
 
 work() {
@@ -117,8 +149,22 @@ work() {
     [ -z "$3" ] || printf '\n%s\n' "$3"
   } >"$pf"
   beat "attempt $attempt/$total $2"
-  pi_run --session-dir "$logs/sessions" --model "$2" "$(cat "$pf")" >"$logs/$1.pi.log" 2>&1
-  pi_rc=$?
+  local retry=0 pause note=""
+  while :; do
+    pi_run --session-dir "$logs/sessions" --model "$2" "$(cat "$pf")$note" >"$logs/$1.pi.log" 2>&1
+    pi_rc=$?
+    [ "$pi_rc" -ne 0 ] && [ "$retry" -lt "${MISTER_HANDY_RATE_RETRIES:-5}" ] &&
+      tail -n 5 "$logs/$1.pi.log" | grep -qiE "$rate_limited" || break
+    retry=$((retry + 1))
+    pause=$(( ${MISTER_HANDY_RATE_BACKOFF:-60} << (retry - 1) ))
+    [ "$pause" -le 600 ] || pause=600
+    mv "$logs/$1.pi.log" "$logs/$1.pi.rate-limited-$retry.log"
+    say "MILESTONE attempt $attempt/$total $2 rate-limited, retry $retry in ${pause}s (does not use a ladder try)"
+    sleep "$pause"
+    note="
+
+A previous run of this attempt was cut off by a rate limit; your changes so far are in the tree. Carry on."
+  done
   unbeat
   clean_strays
   [ "$(git branch --show-current)" = "$branch" ] && git merge-base --is-ancestor "$base" HEAD ||

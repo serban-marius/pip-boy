@@ -15,10 +15,11 @@ decision of "done" moves to commands the brief carries, and the reporting moves 
 
 | Case | Today | After |
 |---|---|---|
-| Brief | free-form `Acceptance:` bullet | `Risk: low\|normal\|high` line and an `## Acceptance` section: one command per line, run from the worktree root, exit 0 = accepted, linted (`bash -n`, first word a command); optional `PR: ready\|draft <base>` and `Scope: <globs>` |
-| Choosing the agent | always Claude | `bin/route.sh <brief>` prints `<agent> <model> <confidence> <reason>`. Claude opus without asking Jev: no runnable Acceptance, `Risk: high` or missing, a non-negated prod/production line. Then Jev (`jev-latest`, one `choice` question: `nan-flash`, `claude-sonnet`, `claude-opus`, stakes `design`, 10 s timeout); an error, an undecided answer or an empty ladder → `claude sonnet`; confidence under 0.6 → one tier up |
+| Brief | free-form `Acceptance:` bullet | `Risk: low\|normal\|high` line and an `## Acceptance` section: one command per line, run from the worktree root, exit 0 = accepted, linted (`bash -n`, first word a command); optional `Prod: yes\|no`, `PR: ready\|draft <base>` and `Scope: <globs>` |
+| Choosing the agent | always Claude | `bin/route.sh <brief>` prints `<agent> <model> <confidence> <reason>`. Claude opus without asking Jev: no runnable Acceptance, `Risk: high` or missing, `Prod: yes` (without a `Prod:` line, a narrow phrase match for real production writes: deploy/run/migrate … to/on production, prod db/infra/cluster, live customer data; "production code" or "production edit" no longer counts). Then Jev (`jev-latest`, one `choice` question: `nan-flash`, `claude-sonnet`, `claude-opus`, stakes `design`, 10 s timeout); an error, an undecided answer or an empty ladder → `claude sonnet`; confidence under 0.6 → one tier up |
 | Implementing | a Claude session | `pi -p -ne --model nan/<id>` in a clean feature-branch worktree, prompted with the brief minus its Reporting section and `PR:` line; no push (`pushurl=/dev/null`, no credential helper), no `gh` (shim, tokens unset); a timeout kills the whole process group; a branch switch or history rewrite is ESCALATE |
-| Watching the worker | the worker reports itself | `bin/foreman.sh <slug> <brief> <hq dir> [worktree]`, no LLM: runs the worker, then the Acceptance commands; on failure retries with the failed command and its output appended, climbing the ladder (`MISTER_HANDY_LADDER` or `skills/delegate/ladder`, placeholder `nan/glm5.3-flash` ×2 → `nan/deepseek-v4-flash` ×1) |
+| Watching the worker | the worker reports itself | `bin/foreman.sh <slug> <brief> <hq dir> [worktree]`, no LLM: runs the worker, then the Acceptance commands; on failure retries with the failed command and its output appended, climbing the ladder (`MISTER_HANDY_LADDER` or `skills/delegate/ladder`: `nan/glm5.3-flash` ×2 → `nan/deepseek-v4-flash` ×1 → ESCALATE, then HQ relaunches on sonnet, opus only if sonnet fails too) |
+| NAN throttling | n/a | the key allows 7 parallel requests machine-wide and pi gives up after ~3 429s: at most `MISTER_HANDY_NAN_SLOTS` (3) foreman pi runs at once (lock-dir semaphore, dead holders reclaimed, one `waiting for a NAN slot` line); a run that ends on a rate limit is retried after a 60 s doubling backoff without using a ladder try |
 | STATUS lines | written by the agent | written by the foreman: START, one MILESTONE per attempt (`attempt n/N <model> PASS\|FAIL '<cmd>' exit <rc>`, never the output), `MILESTONE still working` every 10 min, then DONE `<PR url\|sha on branch>`, `ESCALATE <why>` or FAILED (brief or worktree unfit: no or prose Acceptance, command not found, dirty tree, `main`/`master`/PR base; an Acceptance command that exits 126/127 because it is itself missing or not executable stops at once instead of climbing the ladder) |
 | Worker leftovers | n/a | pi always runs with `-ne`; `.atl/` and the `# Local Pi runtime state` / `.atl/` lines extensions add to `.gitignore` are removed (the file restored exactly when nothing else changed), a worker's own `.gitignore` edits kept; build and acceptance artifacts are not committed |
 | Commit, push, PR | the agent | files outside `Scope:` fail the attempt; added lines are scanned for secrets (keys, tokens, `.env*`) → ESCALATE with file names, nothing committed; the foreman commits the worker's changes with the brief's title, names changed files the Acceptance runs in DONE, and pushes + opens the PR only with a `PR:` line |
@@ -33,7 +34,8 @@ investigations, reviews and preview-driven UI work.
 
 `skills/delegate/bin/delegate.test.sh`, with `pi`, `curl`, `gh` and `orca` stubbed:
 
-- `route.sh` → Claude on no Acceptance, a prose Acceptance line, `Risk: high`, no Risk line, a
+- `route.sh` → "production edit"/"production code" stays with Jev, `Prod: yes` → Claude, `Prod: no`
+  overrides a deploy phrase; Claude on no Acceptance, a prose Acceptance line, `Risk: high`, no Risk line, a
   production write, a Jev timeout, HTTP error or undecided answer, an empty ladder, one tier up
   under the threshold; `pi <ladder head>` on a confident `nan-flash`, with the ladder head taken
   from `MISTER_HANDY_LADDER`;
@@ -48,9 +50,22 @@ investigations, reviews and preview-driven UI work.
   worker never sees that line; a branch switch is ESCALATE; a reviewer REVISE gets one more
   round, rolled back when it breaks the acceptance; a `PASSES ...` line does not reset REVISE;
   a silent reviewer is inconclusive;
+- `foreman.sh` and NAN limits: a 429 is retried as the same attempt and the slot is released; a busy
+  machine waits for a slot and says so once; a dead holder's slot is reclaimed;
 - the watcher wakes on `ESCALATE` and the escalated slug settles.
+
+Benchmark (cheap-bench early ranking, replay tasks overseer-deno and overseer-worktree on every arm,
+jira-length partial; every arm passes the hidden tests): `nan/glm5.3-flash` with `-ne` 100 %, median
+183 s, 250k tokens, protocol 0.96, no strays; `nan/deepseek-v4-flash` 100 %, 308 s, 1.7M tokens;
+glm5.3-flash with extensions 100 % but `.atl/` and `.gitignore` strays; qwen3.8-flash and
+mimo-v2.6-flash 100 % at ~11 min. Claude sonnet matches opus's pass rate at ~1/10 of the cost
+($1.99 vs $18.96 for 6 tasks), 4.5× faster. Hence the ladder above. Full results:
+`skills/delegate/bench/RESULTS.md` once cheap-bench's PR lands.
 
 Live: the foreman on a throwaway repo (add `mul()` to `calc.py`, acceptance `python3 test_calc.py`)
 with `nan/glm5.3-flash` ended in DONE on attempt 1 in ~20 s. `route.sh` against Jev sent that
 brief to `pi nan/glm5.3-flash 1.00 jev` and an auth rework across two services to
-`claude opus 0.25 low-confidence:claude-sonnet`.
+`claude opus 0.25 low-confidence:claude-sonnet`. After the routing change, the overseer-deno replay
+brief (with `Risk: normal` and a runnable Acceptance, its "production edit" wording kept) went to
+`pi nan/glm5.3-flash 0.86 jev`; overseer-worktree went to Jev's `claude-sonnet` at 0.46, below the
+threshold, so `claude opus`.

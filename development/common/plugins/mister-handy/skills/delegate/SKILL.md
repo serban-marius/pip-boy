@@ -83,6 +83,7 @@ Create `_hq/` on first use, with `STATUS.md` starting `# append-only: HH:MM <slu
    ```markdown
    # <slug>: <one-line goal>
    Risk: <low|normal|high>
+   Prod: <yes|no>                  (yes = writes to production: deploys, prod DBs or infra, live customer data)
    PR: <ready|draft> <base>        (optional; only for cheap workers, see "Cheap workers")
    Scope: <globs>                  (optional; files a cheap worker may change)
 
@@ -205,8 +206,10 @@ exist, or a test file the brief spells out. The worker sees them; weak checks le
 `PR: ready <base>` (or `draft`) makes the foreman push and open the PR after a pass; without it
 the work stays as a local commit. `Scope: <globs>` (space-separated, e.g. `src/calc/* tests/test_calc.py`)
 fails any attempt that changes a file outside them. Acceptance lines that are prose or not valid
-shell are refused before any worker runs. `Risk:` is the real gate: the production check below
-is a word match, so mark anything touching shared or live systems `Risk: high`.
+shell are refused before any worker runs. Say `Prod: yes` for real production writes (deploys,
+prod DBs or infra, live customer data) and `Prod: no` otherwise; editing a repo's production
+source is ordinary work. Without the line the router falls back to a narrow phrase match, so the
+explicit line, and `Risk: high` for anything touching shared or live systems, are the real gates.
 
 **Routing** (`route.sh`):
 
@@ -214,7 +217,7 @@ is a word match, so mark anything touching shared or live systems `Risk: high`.
 |-------|--------|
 | No Acceptance commands, or a line that is not a runnable command | `claude opus 1.00 no-acceptance` / `acceptance-not-runnable` |
 | `Risk: high`, or no `Risk:` line | `claude opus 1.00 risk-high` / `no-risk` |
-| A line naming prod/production with no negation (no, not, never, without, read-only) | `claude opus 1.00 production` |
+| `Prod: yes`; without a `Prod:` line, a phrase like "deploy to prod", "run … on production", "prod db/infra/cluster", "live customer data" with no negation | `claude opus 1.00 production` |
 | Jev missing key, timeout, HTTP error, unknown answer; an empty ladder | `claude sonnet 0.00 jev-<why>` / `empty-ladder` |
 | Jev answer under `MISTER_HANDY_ROUTE_THRESHOLD` (0.6) | one tier up: `claude sonnet 0.41 low-confidence:nan-flash` |
 | Jev `nan-flash` / `claude-sonnet` / `claude-opus` | `pi <ladder head> 0.83 jev` / `claude sonnet ...` / `claude opus ...` |
@@ -268,6 +271,14 @@ tools only, `jd-judge-a` prompt, the diff against the brief): REVISE items get o
 round, kept only if the acceptance still passes (otherwise rolled back, with the round's new files
 removed). A reviewer with no clear verdict is noted as `review inconclusive`, never as PASS. Timeouts: `MISTER_HANDY_PI_TIMEOUT` (1800 s per
 attempt), `MISTER_HANDY_CHECK_TIMEOUT` (600 s per command).
+
+The NAN key allows 7 parallel requests for every pi on the machine, and pi gives up after a few
+429s. So the foreman runs at most `MISTER_HANDY_NAN_SLOTS` (3) pi processes at once per user (a
+lock-dir semaphore in `~/.cache/mister-handy/nan-slots`, a dead holder's slot reclaimed), writing
+`MILESTONE waiting for a NAN slot` once while it waits. A pi run that ends on a rate limit is
+retried after a backoff (`MISTER_HANDY_RATE_BACKOFF` 60 s, doubling to 600 s, up to
+`MISTER_HANDY_RATE_RETRIES` 5 times) with `MILESTONE ... rate-limited, retry n`, and does not use
+up a ladder try.
 
 **When the watcher wakes HQ:**
 

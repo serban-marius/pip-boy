@@ -112,6 +112,7 @@ printf '%s\n' "${@: -1}" >"$PI_LAST_PROMPT"
 n=$(( $(cat "$PI_COUNT" 2>/dev/null || echo 0) + 1 )); echo "$n" >"$PI_COUNT"
 case $(sed -n "${n}p" "$PI_PLAN") in
   pass) echo ok >done.txt ;;
+  ratelimited) echo "Error: 429 Too Many Requests: max_parallel_requests exceeded" >&2; exit 1 ;;
   config) echo ok >done.txt; printf 'token = os.environ.get("TOKEN")\napi_key = settings.OPENAI_KEY\n' >conf.py ;;
   edits-test) echo ok >done.txt; echo x >ok.txt ;;
   pass-new) echo ok >done.txt; echo new >new.txt; mkdir __pycache__; echo x >__pycache__/c.pyc ;;
@@ -132,7 +133,8 @@ esac
 EOF
 chmod +x "$tmp/stub/curl" "$tmp/stub/pi"
 export TYPESAFE_API_KEY=stub JEV_REPLY=$tmp/jev.json PI_PLAN=$tmp/plan PI_COUNT=$tmp/pi.count PI_CALLS=$tmp/pi.calls \
-  PI_LAST_PROMPT=$tmp/pi.prompt PI_REVIEW=$tmp/review.txt MISTER_HANDY_JUDGE=/dev/null PI_CHILD=$tmp/pi.child
+  PI_LAST_PROMPT=$tmp/pi.prompt PI_REVIEW=$tmp/review.txt MISTER_HANDY_JUDGE=/dev/null PI_CHILD=$tmp/pi.child \
+  MISTER_HANDY_SLOT_DIR=$tmp/slots MISTER_HANDY_SLOT_POLL=1 MISTER_HANDY_RATE_BACKOFF=0
 
 B=$tmp/brief.md
 brief() { printf '# t: write ok to done.txt\n%s\n\n## Task\nWrite ok to done.txt.\n%s\n\n## Reporting\nAppend lines to STATUS.md.\n' "$1" "$2" >"$B"; }
@@ -165,6 +167,18 @@ expect "an empty ladder routes to Claude"        "$(MISTER_HANDY_LADDER=' ' rout
 brief "Risk: low" "## Acceptance
 \`test -f x\` passes"
 expect "a prose Acceptance line routes to Claude" "$(route)" "claude opus 1.00 acceptance-not-runnable"
+brief "Risk: low" "Never touch prod.
+$ACC"
+brief "Risk: low" "Make the production edit in src/x.ts; keep production code paths.
+$ACC"
+expect "editing production source is ordinary work" "$(route)" "pi nan/glm5.3-flash 0.74 jev"
+brief "Risk: low
+Prod: yes" "$ACC"
+expect "Prod: yes routes to Claude"             "$(route)" "claude opus 1.00 production"
+brief "Risk: low
+Prod: no" "Then deploy to prod after merge.
+$ACC"
+expect "Prod: no overrides the keywords"        "$(route)" "pi nan/glm5.3-flash 0.74 jev"
 brief "Risk: low" "Never touch prod.
 $ACC"
 echo '{"answers":{}}' >"$JEV_REPLY"
@@ -319,6 +333,21 @@ fresh "" broken
 printf '#!/bin/sh\nexit 0\n' >"$R/run.sh" && git -C "$R" add run.sh && git -C "$R" commit -qm run
 expect "a non-executable path command stops at once" "$(foreman >/dev/null; grep -c "FAILED acceptance not runnable: './run.sh'.*exit 126" "$FHQ/STATUS.md")" "1"
 brief "Risk: low" "$ACC"
+fresh "" ratelimited pass
+foreman >/dev/null
+expect "a 429 is retried without a ladder try"  "$(states)" "START MILESTONE MILESTONE DONE "
+expect "the retry is the same attempt"          "$(grep -c 'attempt 1/3 nan/glm5.3-flash rate-limited, retry 1' "$FHQ/STATUS.md") $(grep -c 'attempt 1/3 nan/glm5.3-flash PASS' "$FHQ/STATUS.md")" "1 1"
+expect "the slot is released"                   "$(ls "$tmp/slots" | wc -l | tr -d ' ')" "0"
+fresh "" pass
+sleep 4 & holder=$!
+mkdir -p "$tmp/slots/1" && echo "$holder" >"$tmp/slots/1/pid"
+MISTER_HANDY_NAN_SLOTS=1 foreman >/dev/null
+expect "a busy machine waits for a NAN slot"    "$(states)" "START MILESTONE MILESTONE DONE "
+expect "and says so once"                       "$(grep -c 'MILESTONE waiting for a NAN slot (1 busy' "$FHQ/STATUS.md")" "1"
+fresh "" pass
+mkdir -p "$tmp/slots/1" && echo 999999 >"$tmp/slots/1/pid"
+MISTER_HANDY_NAN_SLOTS=1 foreman >/dev/null
+expect "a dead holder's slot is reclaimed"      "$(states)" "START MILESTONE DONE "
 fresh "" pushy
 foreman >/dev/null
 expect "the worker cannot push or use gh"       "$(git -C "$tmp/origin.git" branch | wc -l | tr -d ' ') $(git -C "$R" ls-files gh-ran | wc -l | tr -d ' ')" "0 0"
