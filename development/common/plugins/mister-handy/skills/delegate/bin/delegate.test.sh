@@ -110,6 +110,7 @@ printf '%s\n' "${@: -1}" >"$PI_LAST_PROMPT"
 n=$(( $(cat "$PI_COUNT" 2>/dev/null || echo 0) + 1 )); echo "$n" >"$PI_COUNT"
 case $(sed -n "${n}p" "$PI_PLAN") in
   pass) echo ok >done.txt ;;
+  pass-new) echo ok >done.txt; echo new >new.txt; mkdir __pycache__; echo x >__pycache__/c.pyc ;;
   broken) echo ko >done.txt ;;
   atl) echo ok >done.txt; mkdir -p .atl; echo x >.atl/state; echo '.atl/' >>.gitignore ;;
   revised) echo ok >done.txt; echo renamed >notes.txt ;;
@@ -169,6 +170,12 @@ expect "the worker's change is committed"       "$(git -C "$R" log -1 --format=%
 expect "the worker never sees Reporting"        "$(grep -c 'STATUS.md' "$PI_LAST_PROMPT")" "1"
 expect "per-attempt logs are kept"              "$(ls "$FHQ/logs/t" | grep -c '^attempt-1\.')" "3"
 
+fresh "" pass-new
+brief "Risk: low" "$ACC
+touch acceptance-artifact"
+foreman >/dev/null
+expect "build and acceptance artifacts are not committed" "$(git -C "$R" show --name-only --format= HEAD | tr '\n' ' ')" "done.txt new.txt "
+brief "Risk: low" "$ACC"
 fresh "" broken pass
 foreman >/dev/null
 expect "fail then pass is DONE"                 "$(states)" "START MILESTONE MILESTONE DONE "

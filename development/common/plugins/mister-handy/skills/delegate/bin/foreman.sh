@@ -75,6 +75,8 @@ work() {
 check() {
   local alog=$logs/$1.accept.log cmd
   : >"$alog"
+  git -c core.quotePath=false ls-files -o --exclude-standard |
+    grep -vE '(^|/)(__pycache__|node_modules|\.pytest_cache|\.mypy_cache|\.ruff_cache|\.DS_Store)(/|$)|\.py[co]$' >"$logs/untracked"
   while IFS= read -r cmd; do
     echo "\$ $cmd" >>"$alog"
     limit "$check_timeout" bash -c "$cmd" >>"$alog" 2>&1 </dev/null
@@ -84,8 +86,9 @@ check() {
 }
 
 commit() {
-  [ -n "$(git status --porcelain)" ] || return 0
-  git add -A && git commit -qm "$title" >>"$logs/commit.log" 2>&1
+  git add -u || return 1
+  while IFS= read -r f; do [ ! -e "$f" ] || git add -- "$f" || return 1; done <"$logs/untracked"
+  git diff --cached --quiet || git commit -qm "$title" >>"$logs/commit.log" 2>&1
 }
 
 review() {
