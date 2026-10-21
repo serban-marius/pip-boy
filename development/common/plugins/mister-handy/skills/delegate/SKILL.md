@@ -1,6 +1,6 @@
 ---
 name: delegate
-description: "Keep this session as HQ: send substantive work (investigations, fixes, features, PRs, reviews) out as written briefs, one agent each, to Orca worktrees when running in Orca or to background Claude Code subagents in their own git worktrees otherwise, instead of doing it here; HQ then watches them in the background and acts when they finish, fail, ask or go quiet (review, merge on standing orders, launch chained tasks, close worktrees); workers report through a STATUS file (and their Orca card), never by messaging this session; then answer 'how is it going', pass follow-ups and approvals to a worker, and clean up finished worktrees, all without pulling transcripts back into this context. Use when the user says 'open/spool/boot/spin up an orca worktree for this', 'launch some orca worktrees', 'lanza un orca worktree', 'lánzate unos worktrees y a currar', 'monta unos worktrees', 'hazlo en otro worktree', 'give the task to the X orca session', 'mándaselo a la sesión del worktree', 'quédate vigilándolos', 'ves chapando worktrees si han terminado', 'do a cleanup of worktrees', 'close the worktree if we're done', 'bring the summary here', 'keep this session clean', or '/delegate'. Also the DEFAULT for any substantive task, worded or not, whenever the mister-handy SessionStart note says this session is HQ."
+description: "Keep this session as HQ: send substantive work (investigations, fixes, features, PRs, reviews) out as written briefs, one agent each, to Orca worktrees when running in Orca or to background Claude Code subagents in their own git worktrees otherwise, instead of doing it here; briefs with runnable Acceptance commands are routed by Jev and, when a cheap model fits, implemented by `pi` on NAN models under a deterministic foreman that retries, climbs a model ladder and escalates to Claude; HQ then watches them in the background and acts when they finish, fail, ask or go quiet (review, merge on standing orders, launch chained tasks, close worktrees); workers report through a STATUS file (and their Orca card), never by messaging this session; then answer 'how is it going', pass follow-ups and approvals to a worker, and clean up finished worktrees, all without pulling transcripts back into this context. Use when the user says 'open/spool/boot/spin up an orca worktree for this', 'launch some orca worktrees', 'lanza un orca worktree', 'lánzate unos worktrees y a currar', 'monta unos worktrees', 'hazlo en otro worktree', 'give the task to the X orca session', 'mándaselo a la sesión del worktree', 'quédate vigilándolos', 'ves chapando worktrees si han terminado', 'do a cleanup of worktrees', 'close the worktree if we're done', 'bring the summary here', 'keep this session clean', 'hazlo con un modelo barato', 'hazlo con pi', 'hazlo con Claude', or '/delegate'. Also the DEFAULT for any substantive task, worded or not, whenever the mister-handy SessionStart note says this session is HQ."
 ---
 
 # Delegate to worktrees, keep HQ clean
@@ -82,6 +82,8 @@ Create `_hq/` on first use, with `STATUS.md` starting `# append-only: HH:MM <slu
 
    ```markdown
    # <slug>: <one-line goal>
+   Risk: <low|normal|high>
+   PR: <ready|draft> <base>        (optional; only for cheap workers, see "Cheap workers")
 
    ## Why
    What the user wants and why, in their terms. Quote their words when they are precise.
@@ -95,7 +97,10 @@ Create `_hq/` on first use, with `STATUS.md` starting `# append-only: HH:MM <slu
    - Change: the concrete result (a fix, a PR, a report answering questions 1..n).
    - Constraints: what must not change; read-only or not; prod rules.
    - Ownership: what this worker may edit. Other workers own <...>; do not touch them.
-   - Acceptance: the test, command output or evidence that proves it is done.
+   - Evidence: anything the Acceptance commands cannot prove (screenshots, a report).
+
+   ## Acceptance
+   <one shell command per line, run from the worktree root; every one exits 0 = accepted>
 
    ## Rules
    - You are on a fresh branch from `<base>`; rename it to the repo's branch convention if it
@@ -135,7 +140,9 @@ Create `_hq/` on first use, with `STATUS.md` starting `# append-only: HH:MM <slu
 4. **Images and drops.** A worker cannot see `[Image #N]` or HQ's attachments, and Orca drop
    paths under `/var/folders/.../orca-drop-*` are temporary. Copy every file the task needs
    into `_hq/assets/<slug>/` and, for pasted images, describe in the brief what they show.
-5. **Launch** the agent in a terminal, never with `--agent`: that follows the user's Chat UI
+5. **Route, then launch.** Run `bash <skill dir>/bin/route.sh <brief>` first ("Cheap workers"
+   below): `pi <model> ...` → launch the foreman there instead of the rest of this step;
+   `claude <sonnet|opus> ...` → go on here with `--model <sonnet|opus>`. Launch the agent in a terminal, never with `--agent`: that follows the user's Chat UI
    setting and may start a chat session, which has no terminal handle, so HQ could never send
    it a follow-up, an approval or a hand-off (Mode 4).
 
@@ -178,6 +185,84 @@ setup there: `orca project setups --json`), then launch as in step 5 with
 that host, so the send carries the whole brief, and the worker reports through its Orca card
 comment and its PR only; `orca worktree ps --json` shows remote cards. For anything beyond
 this, read `orca skills get orca-cli --reference references/placement-and-remote.md`.
+
+## Cheap workers
+
+Claude decides what to do and how; the implementation goes to a much cheaper open-source model
+when the brief can prove its own result. Three pieces, none of them spends Claude tokens:
+
+- **Router** `bin/route.sh <brief>` asks Jev (`api.typesafe.ai`, key in `TYPESAFE_API_KEY` or
+  the keychain item `jev`) which tier fits and prints one line `<agent> <model> <confidence> <reason>`.
+- **Worker** `pi` on a NAN model (`nan/*`), headless, in its own worktree, with the same brief.
+- **Foreman** `bin/foreman.sh`, a plain script: runs the worker, then the brief's Acceptance
+  commands; on failure gives the worker the output and retries, climbing the ladder; writes the
+  STATUS lines itself, so the protocol does not depend on the small model's discipline.
+
+**The brief** needs a `Risk:` line and an `## Acceptance` section: one command per line, run from
+the worktree root, every one exits 0 = accepted. Write commands a stranger could run: tests that
+exist, or a test file the brief spells out. The worker sees them; weak checks let weak work through.
+`PR: ready <base>` (or `draft`) makes the foreman push and open the PR after a pass; without it
+the work stays as a local commit.
+
+**Routing** (`route.sh`):
+
+| Brief | Output |
+|-------|--------|
+| No Acceptance commands | `claude opus 1.00 no-acceptance` |
+| `Risk: high`, or no `Risk:` line | `claude opus 1.00 risk-high` / `no-risk` |
+| A line naming prod/production with no negation (no, not, never, without, read-only) | `claude opus 1.00 production` |
+| Jev missing key, timeout, HTTP error, unknown answer | `claude opus 0.00 jev-<why>` |
+| Jev answer under `MISTER_HANDY_ROUTE_THRESHOLD` (0.6) | one tier up: `claude sonnet 0.41 low-confidence:nan-flash` |
+| Jev `nan-flash` / `claude-sonnet` / `claude-opus` | `pi <ladder head> 0.83 jev` / `claude sonnet ...` / `claude opus ...` |
+
+Skip routing and launch Claude when the user names the agent or model ("hazlo con Claude", "con
+opus"; "con pi" forces the foreman), and for investigations, reviews and UI tasks that need a
+preview: they end in judgement, not in a command that exits 0.
+
+**Launching the foreman.** Orca: create the worktree as in Mode 1 step 5, then run the foreman
+itself as the terminal command, so the card shows it; no `wait` or `send`:
+
+```text
+orca terminal create --worktree id:<full worktree id> --title <slug> --command 'bash <skill dir>/bin/foreman.sh <slug> <abs brief path> <abs path>/_hq' --json
+```
+
+Subagents: `git worktree add -b <branch> <repo>/.claude/worktrees/<slug> origin/<base>`, then the
+Bash tool with `run_in_background: true`:
+`bash <skill dir>/bin/foreman.sh <slug> <brief> <hq dir> <worktree path>`.
+Record `foreman <ladder head>` as the agent in `SESSIONS.md`.
+
+**What the foreman does**, per attempt of the ladder (`MISTER_HANDY_LADDER="nan/glm5.3-flash 2,nan/deepseek-v4-flash 1"`,
+else the `ladder` file next to this skill, `<model> <tries>` per line):
+
+1. `pi -p -ne --model <model>` with the brief minus its Reporting section, told not to push or
+   touch `_hq/`; from the second attempt on, with the failed command and its output appended.
+   The tree keeps the previous attempt's changes.
+2. Removes `.atl/` and the `.atl/` line in `.gitignore` that pi extensions drop, when they were
+   not there before.
+3. Runs the Acceptance commands, stops at the first failure; one `MILESTONE attempt n/N <model>
+   PASS|FAIL ...` line. Logs (prompt, pi output, acceptance output, `summary.md`) go to
+   `<hq>/logs/<slug>/`.
+4. Pass → commits what the worker changed (not build or acceptance artifacts) with the brief's
+   title, pushes and opens the PR when the brief has `PR:`, writes `DONE <PR url|sha on branch>`.
+   Last attempt failed → `ESCALATE <why>`, changes left uncommitted, diff in `worker.diff`.
+   `FAILED` only for a broken setup (no brief, no Acceptance, not a git worktree).
+
+`MISTER_HANDY_REVIEW=<nan model>` adds one read-only reviewer pass after a pass (pi with read
+tools only, `jd-judge-a` prompt, the diff against the brief): REVISE items get one more worker
+round, kept only if the acceptance still passes. Timeouts: `MISTER_HANDY_PI_TIMEOUT` (1800 s per
+attempt), `MISTER_HANDY_CHECK_TIMEOUT` (600 s per command).
+
+**When the watcher wakes HQ:**
+
+- `DONE` with a PR URL: as any DONE. `DONE <sha> on <branch> (local)`: not `no-code`; look at
+  `git -C <worktree> diff --stat <base>...` and push + open the PR yourself, or launch a reviewer.
+- `ESCALATE`: relaunch on Claude in the same worktree, as Mode 1 step 5 with
+  `--worktree path:<worktree>` and `--model <sonnet|opus>`, sending: "Your task brief is in
+  <brief>. A cheap worker tried it first and failed: read <hq>/logs/<slug>/summary.md, keep or
+  discard its uncommitted changes, then work until DONE and report as the brief says." Update
+  `SESSIONS.md` and append `hq REOPENED <slug>`. Subagents: one background Agent with that prompt,
+  told to work in that worktree path.
+- `FAILED` from the foreman: fix the brief and relaunch it, or launch Claude.
 
 ## Mode 2: fan out ("lánzate unos worktrees")
 
@@ -269,12 +354,13 @@ When it wakes HQ, handle what it printed, then arm it again unless it said `ALL-
 
 | Output | HQ does |
 |--------|---------|
-| `DONE` | Check the claim cheaply: `gh pr view <url> --json state,mergeable` and `gh pr checks <url>` for one line of CI truth. Then carry out the slug's `on-done` order (launch a reviewer, merge only if the user ordered it and checks are green). `no-code` → close it now (Mode 5); with a PR the watcher reports the merge later; `keep` → append `hq KEPT <slug> on-done keep`. Launch every task whose `after` is this slug once its condition holds. Tell the user one line. |
+| `DONE` | Check the claim cheaply: `gh pr view <url> --json state,mergeable` and `gh pr checks <url>` for one line of CI truth. Then carry out the slug's `on-done` order (launch a reviewer, merge only if the user ordered it and checks are green). `no-code` → close it now (Mode 5); a foreman's local `DONE <sha>` is not no-code ("Cheap workers"); with a PR the watcher reports the merge later; `keep` → append `hq KEPT <slug> on-done keep`. Launch every task whose `after` is this slug once its condition holds. Tell the user one line. |
 | `DONE-STEP` | A follow-up is finished, the main job goes on. Relay it in one line. |
 | `HANDOFF <slug> <what>` | Forward it to that worker (Mode 4) without asking the user; launch it instead if it was waiting with `after`. `HANDOFF-FYI` never wakes HQ: the addressee reads it from `STATUS.md`. |
 | `WAITING-APPROVAL <slug> <message>` | The worker's agent has sat on a permission prompt for over a minute (its Orca card). Tell the user at once, one line: slug, what it was doing, and that the prompt waits in that worktree's terminal. HQ never answers permission prompts. |
 | `PR-MERGED` / `PR-CLOSED <slug> <url>` | The PR left review. Close the worktree (Mode 5), or append `hq KEPT <slug> <why>` when its `on-done` is `keep` or `closable.sh` says `KEEP` (tell the user why). Launch tasks waiting `after` it. |
 | `FAILED` | One line with the reason; ask whether to relaunch with a better brief. |
+| `ESCALATE` | The foreman ran out of cheap attempts. Relaunch on Claude in the same worktree with the foreman's summary ("Cheap workers"), without asking; tell the user one line. |
 | `ANSWER` | Relay the answer in one line. `PREVIEW <url> <login>` and `PUNCH-LIST <path>` go to the user at once, with the URL and login or the screenshots. |
 | `BLOCKED` | Put the worker's exact question to the user. Forward the reply (Mode 4). |
 | `REVISED` | Launch the re-review, or report if no reviewer is involved. |
@@ -324,4 +410,6 @@ Same HQ files, same briefs, same STATUS lines. What changes:
   `check --wait`) or ask workers to message HQ.
 - Never read whole worker transcripts or diffs into HQ to answer a status question.
 - Never put secret values in briefs, STATUS or SESSIONS; point at where they live.
+- Never send a brief to the foreman without Acceptance commands and a `Risk:` line, or one that
+  writes to production; route it, and let the router send those to Claude.
 - Never remove a worktree before `closable.sh` says `CLOSABLE`.

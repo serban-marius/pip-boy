@@ -141,7 +141,7 @@ $ACC"
 expect "a confident nan-flash goes to pi"       "$(route)" "pi nan/glm5.3-flash 0.74 jev"
 expect "the ladder head is the pi model"        "$(MISTER_HANDY_LADDER='nan/qwen3.6 1,nan/gemma4 1' route)" "pi nan/qwen3.6 0.74 jev"
 jev nan-flash 0.41
-expect "low confidence goes one tier up"        "$(route)" "claude sonnet 0.41 low-confidence"
+expect "low confidence goes one tier up"        "$(route)" "claude sonnet 0.41 low-confidence:nan-flash"
 jev claude-opus 0.9
 expect "Jev picks Claude"                       "$(route)" "claude opus 0.90 jev"
 expect "a Jev timeout routes to Claude"         "$(CURL_RC=28 route)" "claude opus 0.00 jev-timeout"

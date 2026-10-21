@@ -62,5 +62,5 @@ case $choice in
 esac
 awk -v c="$conf" 'BEGIN { exit !(c + 0 == c && c >= 0 && c <= 1) }' || pick 2 0.00 jev-undecided
 conf=$(awk -v c="$conf" 'BEGIN { printf "%.2f", c }')
-awk -v c="$conf" -v t="$threshold" 'BEGIN { exit !(c < t) }' && pick $((tier < 2 ? tier + 1 : 2)) "$conf" low-confidence
+awk -v c="$conf" -v t="$threshold" 'BEGIN { exit !(c < t) }' && pick $((tier < 2 ? tier + 1 : 2)) "$conf" "low-confidence:$choice"
 pick "$tier" "$conf" jev
