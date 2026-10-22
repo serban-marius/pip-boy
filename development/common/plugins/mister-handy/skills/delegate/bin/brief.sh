@@ -57,6 +57,8 @@ brief_title() {
 }
 
 ladder() {
+  local f=${XDG_CONFIG_HOME:-$HOME/.config}/mister-handy/ladder
+  [ -f "$f" ] || f=$(dirname "${BASH_SOURCE[0]}")/../ladder
   if [ -n "${MISTER_HANDY_LADDER:-}" ]; then tr ',' '\n' <<<"$MISTER_HANDY_LADDER"
-  else cat "$(dirname "${BASH_SOURCE[0]}")/../ladder"; fi | awk 'NF && $1 !~ /^#/ { print $1, ($2 ? $2 : 1) }'
+  else cat "$f"; fi | awk 'NF && $1 !~ /^#/ { r = $1; if (r !~ /^[A-Za-z0-9_-]+:/) r = "pi:" r; print r, ($2 ? $2 : 1) }'
 }

@@ -26,8 +26,27 @@ cat >"$tmp/stub/orca" <<'EOF'
 #!/bin/bash
 cat "$ORCA_PS"
 EOF
-chmod +x "$tmp/stub/gh" "$tmp/stub/orca"
-export PATH=$tmp/stub:$PATH GH_PR_URL=$tmp/pr-url GH_STATE=$tmp/state GH_MERGED_HEADS=$tmp/heads ORCA_PS=$tmp/ps.json
+cat >"$tmp/stub/claude" <<'EOF'
+#!/bin/bash
+model=""; prev=""
+for a in "$@"; do [ "$prev" = --model ] && model=$a; prev=$a; done
+echo "claude $model" >>"$PI_CALLS"
+printf '%s\n' "$@" >>"$CLAUDE_ARGS"
+case " $* " in *" Read,Grep,Glob "*) cat >/dev/null; jq -n --rawfile r "$PI_REVIEW" '{type: "result", is_error: false, result: $r}'; exit 0 ;; esac
+cat >"$PI_LAST_PROMPT"
+n=$(( $(cat "$PI_COUNT" 2>/dev/null || echo 0) + 1 )); echo "$n" >"$PI_COUNT"
+case $(sed -n "${n}p" "$PI_PLAN") in
+  pass) echo ok >done.txt ;;
+  broken) echo ko >done.txt ;;
+  capped) echo ko >done.txt; echo '{"type":"result","subtype":"error_max_turns","is_error":true}'; exit 1 ;;
+  ratelimited) echo '{"type":"result","subtype":"success","is_error":true,"result":"API Error: 429 rate_limit_error"}'; exit 1 ;;
+esac
+echo '{"type":"result","subtype":"success","is_error":false,"result":"done"}'
+EOF
+printf '#!/bin/sh\nexit 44\n' >"$tmp/stub/security"
+chmod +x "$tmp/stub/gh" "$tmp/stub/orca" "$tmp/stub/claude" "$tmp/stub/security"
+export PATH=$tmp/stub:$PATH GH_PR_URL=$tmp/pr-url GH_STATE=$tmp/state GH_MERGED_HEADS=$tmp/heads ORCA_PS=$tmp/ps.json \
+  XDG_CONFIG_HOME=$tmp/xdg CLAUDE_ARGS=$tmp/claude.args MISTER_HANDY_LADDER="pi:nan/deepseek-v4-flash 2,pi:nan/glm5.3-flash 1"
 : >"$GH_MERGED_HEADS"
 echo '{"result":{"worktrees":[]}}' >"$ORCA_PS"
 
@@ -154,7 +173,7 @@ jev() { echo "{\"model\":\"jev-1.13.0\",\"answers\":{\"agent\":{\"type\":\"choic
 route() { bash "$here/route.sh" "$B" 2>&1; }
 ACC='## Acceptance
 grep -qx ok done.txt'
-jev nan-flash 0.74
+jev cheap 0.74
 brief "Risk: low" ""
 expect "no Acceptance routes to Claude"         "$(route)" "claude opus 1.00 no-acceptance"
 brief "Risk: high" "$ACC"
@@ -166,15 +185,15 @@ $ACC"
 expect "a production write routes to Claude"    "$(route)" "claude opus 1.00 production"
 brief "Risk: low" "Never touch prod.
 $ACC"
-expect "a confident nan-flash goes to pi"       "$(route)" "pi nan/deepseek-v4-flash 0.74 jev"
-expect "the ladder head is the pi model"        "$(MISTER_HANDY_LADDER='nan/qwen3.6 1,nan/gemma4 1' route)" "pi nan/qwen3.6 0.74 jev"
-jev nan-flash 0.41
-expect "low confidence goes one tier up"        "$(route)" "claude sonnet 0.41 low-confidence:nan-flash"
-jev claude-opus 0.9
+expect "a confident nan-flash goes to pi"       "$(route)" "foreman pi:nan/deepseek-v4-flash 0.74 jev"
+expect "the ladder head is the pi model"        "$(MISTER_HANDY_LADDER='nan/qwen3.6 1,nan/gemma4 1' route)" "foreman pi:nan/qwen3.6 0.74 jev"
+jev cheap 0.41
+expect "low confidence goes one tier up"        "$(route)" "claude sonnet 0.41 low-confidence:cheap"
+jev top 0.9
 expect "Jev picks Claude"                       "$(route)" "claude opus 0.90 jev"
 expect "a Jev timeout routes to Claude"         "$(CURL_RC=28 route)" "claude sonnet 0.00 jev-timeout"
 expect "a Jev error routes to Claude"           "$(JEV_HTTP=500 route)" "claude sonnet 0.00 jev-http-500"
-jev nan-flash 0.74
+jev cheap 0.74
 expect "an empty ladder routes to Claude"        "$(MISTER_HANDY_LADDER=' ' route)" "claude sonnet 0.74 empty-ladder"
 brief "Risk: low" "## Acceptance
 \`test -f x\` passes"
@@ -183,23 +202,34 @@ brief "Risk: low" "Never touch prod.
 $ACC"
 brief "Risk: low" "Make the production edit in src/x.ts; keep production code paths.
 $ACC"
-expect "editing production source is ordinary work" "$(route)" "pi nan/deepseek-v4-flash 0.74 jev"
+expect "editing production source is ordinary work" "$(route)" "foreman pi:nan/deepseek-v4-flash 0.74 jev"
 brief "Risk: low
 Prod: yes" "$ACC"
 expect "Prod: yes routes to Claude"             "$(route)" "claude opus 1.00 production"
 brief "Risk: low
 Prod: no" "Then deploy to prod after merge.
 $ACC"
-expect "Prod: no overrides the keywords"        "$(route)" "pi nan/deepseek-v4-flash 0.74 jev"
+expect "Prod: no overrides the keywords"        "$(route)" "foreman pi:nan/deepseek-v4-flash 0.74 jev"
 brief "Risk: low" "Never touch prod.
 $ACC"
 echo '{"answers":{}}' >"$JEV_REPLY"
 expect "an undecided Jev routes to Claude"      "$(route)" "claude sonnet 0.00 jev-undecided"
+brief "Risk: normal" "$ACC"
+expect "rules router sends a Risk normal brief with Acceptance to the foreman" "$(MISTER_HANDY_ROUTER=rules route)" "foreman pi:nan/deepseek-v4-flash 1.00 rules"
+expect "rules router is used when no Jev key exists" "$(env -u TYPESAFE_API_KEY bash "$here/route.sh" "$B" 2>&1)" "foreman pi:nan/deepseek-v4-flash 1.00 rules"
+expect "the jev router without a key is mid"    "$(MISTER_HANDY_ROUTER=jev env -u TYPESAFE_API_KEY bash "$here/route.sh" "$B" 2>&1)" "claude sonnet 0.00 jev-no-key"
+brief "Risk: high" "$ACC"
+expect "rules router keeps the hard gates"      "$(MISTER_HANDY_ROUTER=rules MISTER_HANDY_TOP='claude fable' route)" "claude fable 1.00 risk-high"
+expect "the plugin default ladder is claude-only" "$(unset MISTER_HANDY_LADDER; . "$here/brief.sh"; ladder | tr '\n' ' ')" "claude:haiku 2 claude:sonnet 1 "
+mkdir -p "$XDG_CONFIG_HOME/mister-handy" && printf '# mine\npi:openrouter/qwen/qwen3-coder 2\nollama/qwen3:8b\n' >"$XDG_CONFIG_HOME/mister-handy/ladder"
+expect "the ladder comes from ~/.config when set" "$(unset MISTER_HANDY_LADDER; . "$here/brief.sh"; ladder | tr '\n' ' ')" "pi:openrouter/qwen/qwen3-coder 2 pi:ollama/qwen3:8b 1 "
+expect "MISTER_HANDY_LADDER beats ~/.config"    "$(. "$here/brief.sh"; ladder | head -n 1)" "pi:nan/deepseek-v4-flash 2"
+rm -r "$XDG_CONFIG_HOME/mister-handy"
 
 R=$tmp/repo
 FHQ=$tmp/fhq
 fresh() {
-  rm -rf "$R" "$FHQ" "$PI_COUNT" "$PI_CALLS" "$PI_ARGS" "$tmp/origin.git" && mkdir -p "$FHQ" && : >"$FHQ/STATUS.md"
+  rm -rf "$R" "$FHQ" "$PI_COUNT" "$PI_CALLS" "$PI_ARGS" "$CLAUDE_ARGS" "$tmp/origin.git" && mkdir -p "$FHQ" && : >"$FHQ/STATUS.md"
   git init -q -b feat/t "$R" && git -C "$R" config user.email t@t && git -C "$R" config user.name t
   [ -z "${1:-}" ] || printf '%s\n' "$1" >"$R/.gitignore"
   git -C "$R" add -A && git -C "$R" commit -q --allow-empty -m init
@@ -234,7 +264,7 @@ fresh "" broken pass
 foreman >/dev/null
 expect "fail then pass is DONE"                 "$(states)" "START MILESTONE MILESTONE DONE "
 expect "the retry gets the failure output"      "$(grep -c '^## Previous attempt failed' "$PI_LAST_PROMPT")" "1"
-expect "a failed attempt is one MILESTONE"      "$(awk '$3 == "MILESTONE" { print $4, $5, $6, $7 }' "$FHQ/STATUS.md" | head -n 1)" "attempt 1/3 nan/deepseek-v4-flash FAIL"
+expect "a failed attempt is one MILESTONE"      "$(awk '$3 == "MILESTONE" { print $4, $5, $6, $7 }' "$FHQ/STATUS.md" | head -n 1)" "attempt 1/3 pi:nan/deepseek-v4-flash FAIL"
 
 fresh "" broken broken broken
 expect "an exhausted ladder exits 3"            "$(foreman)" "exit 3"
@@ -246,12 +276,12 @@ expect "escalated work is left uncommitted"     "$(git -C "$R" log --oneline | w
 fresh "" capped pass
 foreman >/dev/null
 expect "an output cap skips to the next rung"   "$(tr '\n' ' ' <"$PI_CALLS")" "nan/deepseek-v4-flash nan/glm5.3-flash "
-expect "and says so"                            "$(grep -c 'attempt 1/3 nan/deepseek-v4-flash FAIL .*output cap: no more nan/deepseek-v4-flash tries' "$FHQ/STATUS.md") $(grep -c 'attempt 3/3 nan/glm5.3-flash PASS' "$FHQ/STATUS.md")" "1 1"
+expect "and says so"                            "$(grep -c 'attempt 1/3 pi:nan/deepseek-v4-flash FAIL .*output cap: no more pi:nan/deepseek-v4-flash tries' "$FHQ/STATUS.md") $(grep -c 'attempt 3/3 pi:nan/glm5.3-flash PASS' "$FHQ/STATUS.md")" "1 1"
 fresh "" capped broken broken pass
 MISTER_HANDY_LADDER="nan/a 1,nan/b 2,nan/c 1" foreman >/dev/null
 expect "an older capped session does not skip"  "$(tr '\n' ' ' <"$PI_CALLS")" "nan/a nan/b nan/b nan/c "
 fresh "" capped
-expect "a cap on the last rung ESCALATEs"       "$(MISTER_HANDY_LADDER="nan/a 2" foreman | tr '\n' ' '; awk '$3 == "ESCALATE" { print $4, $5, $6, $7 }' "$FHQ/STATUS.md")" "exit 3 1 attempts failed (nan/a);"
+expect "a cap on the last rung ESCALATEs"       "$(MISTER_HANDY_LADDER="nan/a 2" foreman | tr '\n' ' '; awk '$3 == "ESCALATE" { print $4, $5, $6, $7 }' "$FHQ/STATUS.md")" "exit 3 1 attempts failed (pi:nan/a);"
 
 fresh "" atl
 foreman >/dev/null
@@ -375,18 +405,58 @@ brief "Risk: low" "$ACC"
 fresh "" ratelimited pass
 foreman >/dev/null
 expect "a 429 is retried without a ladder try"  "$(states)" "START MILESTONE MILESTONE DONE "
-expect "the retry is the same attempt"          "$(grep -c 'attempt 1/3 nan/deepseek-v4-flash rate-limited, retry 1' "$FHQ/STATUS.md") $(grep -c 'attempt 1/3 nan/deepseek-v4-flash PASS' "$FHQ/STATUS.md")" "1 1"
-expect "the slot is released"                   "$(ls "$tmp/slots" | wc -l | tr -d ' ')" "0"
+expect "the retry is the same attempt"          "$(grep -c 'attempt 1/3 pi:nan/deepseek-v4-flash rate-limited, retry 1' "$FHQ/STATUS.md") $(grep -c 'attempt 1/3 pi:nan/deepseek-v4-flash PASS' "$FHQ/STATUS.md")" "1 1"
+expect "the slot is released"                   "$(ls "$tmp/slots/pi-nan" | wc -l | tr -d ' ')" "0"
 fresh "" pass
 sleep 4 & holder=$!
-mkdir -p "$tmp/slots/1" && echo "$holder" >"$tmp/slots/1/pid"
+mkdir -p "$tmp/slots/pi-nan/1" && echo "$holder" >"$tmp/slots/pi-nan/1/pid"
 MISTER_HANDY_NAN_SLOTS=1 foreman >/dev/null
 expect "a busy machine waits for a NAN slot"    "$(states)" "START MILESTONE MILESTONE DONE "
-expect "and says so once"                       "$(grep -c 'MILESTONE waiting for a NAN slot (1 busy' "$FHQ/STATUS.md")" "1"
+expect "and says so once"                       "$(grep -c 'MILESTONE waiting for a pi:nan slot (1 busy' "$FHQ/STATUS.md")" "1"
 fresh "" pass
-mkdir -p "$tmp/slots/1" && echo 999999 >"$tmp/slots/1/pid"
+mkdir -p "$tmp/slots/pi-nan/1" && echo 999999 >"$tmp/slots/pi-nan/1/pid"
 MISTER_HANDY_NAN_SLOTS=1 foreman >/dev/null
 expect "a dead holder's slot is reclaimed"      "$(states)" "START MILESTONE DONE "
+fresh "" pass
+sleep 4 & holder=$!
+mkdir -p "$tmp/slots/pi-nan/1" && echo "$holder" >"$tmp/slots/pi-nan/1/pid"
+MISTER_HANDY_SLOTS=5 MISTER_HANDY_NAN_SLOTS=1 foreman >/dev/null
+expect "NAN_SLOTS still caps pi:nan"            "$(states) $(grep -c 'waiting for a pi:nan slot (1 busy' "$FHQ/STATUS.md")" "START MILESTONE MILESTONE DONE  1"
+fresh "" pass
+MISTER_HANDY_SLOTS=1 MISTER_HANDY_LADDER="claude:haiku 1" foreman >/dev/null
+expect "a pi:nan holder does not block claude"  "$(states)" "START MILESTONE DONE "
+wait "$holder" 2>/dev/null
+mkdir -p "$tmp/slots/claude/1" && echo "$$" >"$tmp/slots/claude/1/pid"
+fresh "" pass
+expect "MISTER_HANDY_SLOTS caps claude"         "$(MISTER_HANDY_SLOTS=1 MISTER_HANDY_LADDER="claude:haiku 1" MISTER_HANDY_SLOT_POLL=1 perl -e 'alarm 3; exec @ARGV' bash "$here/foreman.sh" t "$B" "$FHQ" "$R" >/dev/null 2>&1; grep -c 'waiting for a claude slot' "$FHQ/STATUS.md")" "1"
+rm -rf "$tmp/slots/claude/1"
+
+fresh "" pass
+MISTER_HANDY_ADVISOR=opus MISTER_HANDY_LADDER="claude:haiku 1" foreman >/dev/null
+expect "a claude:haiku rung runs the claude runner" "$(tr '\n' ' ' <"$PI_CALLS")$(states)" "claude haiku START MILESTONE DONE "
+expect "the claude worker is headless, no MCP, no session, no advisor" "$(grep -cxE -- '-p|--no-session-persistence|--strict-mcp-config|--permission-mode|Read,Edit,Write,Bash,Grep,Glob' "$CLAUDE_ARGS") $(grep -c 'advisor\.ts\|an .advisor. tool' "$CLAUDE_ARGS" "$PI_LAST_PROMPT" | awk -F: '{ s += $2 } END { print s }')" "6 0"
+expect "the claude worker gets the brief"       "$(grep -c '^Write ok to done.txt.$' "$PI_LAST_PROMPT")" "1"
+expect "the claude runner disables the Claude Code advisor" "$(grep -A1 -x -- '--settings' "$CLAUDE_ARGS" | tr '\n' ' ')" '--settings {"advisorModel":""} '
+fresh "" pass
+MISTER_HANDY_CLAUDE_ADVISOR=keep MISTER_HANDY_LADDER="claude:haiku 1" foreman >/dev/null
+expect "MISTER_HANDY_CLAUDE_ADVISOR=keep leaves it on" "$(grep -c advisorModel "$CLAUDE_ARGS") $(states)" "0 START MILESTONE DONE "
+fresh "" capped pass
+MISTER_HANDY_LADDER="claude:haiku 2,claude:sonnet 1" foreman >/dev/null
+expect "a claude max-turns cap skips to the next rung" "$(tr '\n' ' ' <"$PI_CALLS")$(grep -c 'output cap: no more claude:haiku tries' "$FHQ/STATUS.md")" "claude haiku claude sonnet 1"
+fresh "" ratelimited pass
+MISTER_HANDY_LADDER="claude:haiku 1" foreman >/dev/null
+expect "a claude 429 is retried without a ladder try" "$(grep -c 'attempt 1/1 claude:haiku rate-limited, retry 1' "$FHQ/STATUS.md") $(states)" "1 START MILESTONE MILESTONE DONE "
+fresh "" pass
+MISTER_HANDY_LADDER="nan/x 1" foreman >/dev/null
+expect "a bare nan/ line is a pi rung"          "$(tr '\n' ' ' <"$PI_CALLS")$(grep -c 'attempt 1/1 pi:nan/x PASS' "$FHQ/STATUS.md")" "nan/x 1"
+fresh "" pass
+expect "an unknown runner is FAILED"            "$(MISTER_HANDY_LADDER="codex:gpt 1" foreman; grep -c 'FAILED unknown runner in rung codex:gpt' "$FHQ/STATUS.md")" "exit 2
+1"
+fresh "" pass
+echo PASS >"$PI_REVIEW"
+MISTER_HANDY_REVIEW=claude:sonnet foreman >/dev/null
+expect "a claude reviewer is read-only"         "$(tr '\n' ' ' <"$PI_CALLS")$(grep -cx 'Read,Grep,Glob' "$CLAUDE_ARGS") $(grep -c 'DONE.*review PASS' "$FHQ/STATUS.md")" "nan/deepseek-v4-flash claude sonnet 2 1"
+expect "the claude reviewer runs without the Claude Code advisor too" "$(grep -cx '{"advisorModel":""}' "$CLAUDE_ARGS")" "1"
 fresh "" pushy
 foreman >/dev/null
 expect "the worker cannot push or use gh"       "$(git -C "$tmp/origin.git" branch | wc -l | tr -d ' ') $(git -C "$R" ls-files gh-ran | wc -l | tr -d ' ')" "0 0"
@@ -423,5 +493,7 @@ expect "savings: TOTAL"                         "$(sv | tail -n 1)" 'TOTAL - - -
 expect "savings: baseline override"             "$(MISTER_HANDY_BASELINE_USD=10 sv | tail -n 1)" 'TOTAL - - - $0.57 $30.00 saving $29.43'
 expect "savings: no foreman rows"               "$(printf '# x\n' >"$tmp/sv0.md"; mkdir -p "$tmp/sv0" && cp "$tmp/sv0.md" "$tmp/sv0/STATUS.md"; bash "$here/savings.sh" "$tmp/sv0" | awk '{$1=$1}1' | tail -n 1)" 'TOTAL - - - $0.00 $0.00 saving $0.00'
 expect "savings: missing STATUS exits 2"        "$(bash "$here/savings.sh" "$tmp/nope" 2>/dev/null; echo $?)" "2"
+
+expect "the HQ note tells HQ to route code tasks" "$(MISTER_HANDY=hq CLAUDE_PROJECT_DIR=$tmp bash "$here/../../../hooks/role.sh" | grep -c 'run bin/route.sh, and launch what it prints')" "1"
 
 [ "$fails" -eq 0 ] && echo "all green" || { echo "$fails failing"; exit 1; }
