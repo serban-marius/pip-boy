@@ -86,7 +86,44 @@ check "markdown is free"                        0 post-edit "$(edit NOTES.md)"
 printf '/**\n * The page read model.\n */\n' >"$R/src/Fresh.php"
 check "a new file with a prose docblock"        2 post-edit "$(edit src/Fresh.php)" "page read model"
 check "PR creation reminds to post the why"     2 post-bash "$(bash_ "$PR")" "review comment"
+check "a commit with prose comments: blocked"   2 pre-bash "$(bash_ 'git commit -am fresh')" "page read model"
 git -C "$R" checkout -q -- src/Legacy.php && rm -f "$R/src/Fresh.php" "$R/NOTES.md"
+printf '# Reverb resolves hosts with its own DNS\n' >>"$R/deploy.yaml"
+check "a config-only commit with prose: blocked" 2 pre-bash "$(bash_ 'git commit -am deploy')" "Reverb resolves"
+git -C "$R" checkout -q -- deploy.yaml
+
+doc() { printf '<?php\n/**\n%s\n */\n' "$2" >"$R/src/Doc.php"; check "$1" "$3" post-edit "$(edit src/Doc.php)" "${4:-}"; rm -f "$R/src/Doc.php"; }
+doc "a bare @param passes"                    ' * @param list<SourceSnapshot> $snapshots' 0
+doc "a bare array-shape @return passes"       ' * @return array{0: ContextOutcome, 1: float}' 0
+doc "a callable type passes"                  ' * @param callable(int): string $fn' 0
+doc "a variadic by-ref @param passes"         ' * @param int &...$ids' 0
+doc "a bare @var and @throws pass"            "$(printf ' * @var array<string, int>\n * @throws RuntimeException')" 0
+doc "phpstan and psalm types pass"            "$(printf ' * @phpstan-param list<int> $ids\n * @psalm-return non-empty-list<string>')" 0
+doc "directives pass whole"                   "$(printf ' * @dataProvider casesFor\n * @phpstan-ignore-next-line\n * @psalm-suppress MixedAssignment')" 0
+doc "a bare marker tag passes"                "$(printf ' * @deprecated\n * @internal\n * {@inheritDoc}')" 0
+doc "@param followed by prose"                ' * @param list<string> $excludedTerms facts using these terms never reach the writer' 2 "excludedTerms facts"
+doc "@return followed by prose"               ' * @return list<string> snapshot ids where at least one quote was found' 2 "snapshot ids"
+doc "@see with a target"                      ' * @see ContextBuilder::verify' 2 "@see"
+doc "@deprecated with a reason"               ' * @deprecated use build() instead' 2 "use build"
+doc "@todo is prose"                          ' * @todo split this' 2 "@todo"
+doc "a jsdoc param with a description"        ' * @param {string} name - the program name' 2 "program name"
+doc "a bare jsdoc param passes"               ' * @param {Array<string>} names' 0
+printf '%s\n' '// deno-lint-ignore no-explicit-any' '// @deno-types="./x.d.ts"' '/// <reference types="vite/client" />' '// biome-ignore lint/style: generated' >"$R/src/tools.ts"
+check "deno, biome and reference directives pass" 0 post-edit "$(edit src/tools.ts)"
+printf '%s\n' '# fmt: off' 'def load(' '    *args,' '    **kwargs,' '):' '    pass' >"$R/src/star.py"
+check "python star params are code, fmt: passes" 0 post-edit "$(edit src/star.py)"
+printf '%s\n' 'package x' 'func f(s *[]int) {' '	*s = append(*s, 1)' '}' >"$R/src/star.go"
+check "a go dereference is code"                0 post-edit "$(edit src/star.go)"
+printf '%s\n' '# syntax=docker/dockerfile:1' '# yaml-language-server: $schema=x.json' >"$R/deploy.yml"
+check "dockerfile and yaml schema directives pass" 0 post-edit "$(edit deploy.yml)"
+rm -f "$R/src/tools.ts" "$R/src/star.py" "$R/src/star.go" "$R/deploy.yml"
+printf '<?php\n/** @var Foo $x */\n$x = 1;\n' >"$R/src/Doc.php"
+check "a one-line @var docblock passes"         0 post-edit "$(edit src/Doc.php)"
+printf '<?php\n// see @foo for this\n' >"$R/src/Doc.php"
+check "an @ inside prose is still prose"        2 post-edit "$(edit src/Doc.php)" "see @foo"
+printf 'x = 1  # type: ignore[attr]\n// eslint-disable-next-line no-console -- noisy\n' >"$R/src/doc.ts"
+check "directives with reasons pass"            0 post-edit "$(edit src/doc.ts)"
+rm -f "$R/src/Doc.php" "$R/src/doc.ts"
 
 mkdir -p "$R/src/my dir" && touch "$R/src/my dir/Spaced.php"
 check "a path with spaces is still prod code"   0 post-edit "$(edit 'src/my dir/Spaced.php')"
