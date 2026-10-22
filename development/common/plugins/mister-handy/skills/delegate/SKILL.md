@@ -279,7 +279,9 @@ For `Risk: normal` briefs, add the cheap reviewer: prefix the command with
    second attempt on, with the failed command and its output appended. The tree keeps the previous
    attempt's changes. `pi:` runs `pi -p -ne --model <provider>/<model>`; `claude:` runs
    `claude -p --model <model>` with only the Read, Edit, Write, Bash, Grep and Glob tools, no MCP
-   servers, `--no-session-persistence` and `--max-turns` `MISTER_HANDY_CLAUDE_MAX_TURNS` (100).
+   servers, `--no-session-persistence`, `--max-turns` `MISTER_HANDY_CLAUDE_MAX_TURNS` (100) and
+   `--settings '{"advisorModel":""}'`, so a Claude Code advisor set in your settings does not run
+   (and bill) on every cheap attempt or review; `MISTER_HANDY_CLAUDE_ADVISOR=keep` leaves it on.
    Either way the worker cannot push (`remote.origin.pushurl=/dev/null`, no credential helper) or
    use `gh` (a failing shim, GH and Typesafe tokens unset); a worker that switches branch or
    rewrites history is `ESCALATE`. A timeout kills its whole process group. Every 10 min of an

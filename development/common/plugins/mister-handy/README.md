@@ -81,6 +81,7 @@ route.sh brief  ->  foreman claude:haiku 1.00 rules   foreman.sh <slug> <brief> 
 | `MISTER_HANDY_ROUTE_THRESHOLD` | 0.6 Jev confidence, below it one tier up |
 | `MISTER_HANDY_PI_TIMEOUT` / `MISTER_HANDY_CHECK_TIMEOUT` | 1800 s per attempt (any runner) / 600 s per command |
 | `MISTER_HANDY_CLAUDE_MAX_TURNS` | 100 turns per `claude:` attempt |
+| `MISTER_HANDY_CLAUDE_ADVISOR` | off: `claude:` workers and reviewers run with `--settings '{"advisorModel":""}'`, so your Claude Code `advisorModel` does not bill on every attempt; `keep` leaves it on |
 | `MISTER_HANDY_PI_FLAGS` | extra pi flags; `-ne` (no pi extensions) is always on, and their `.atl/` + `.gitignore` lines are removed anyway |
 | `MISTER_HANDY_REVIEW` | off; a rung (e.g. `claude:sonnet`, `pi:nan/glm5.3-flash`) for one read-only review pass, REVISE gets one more round; set it for `Risk: normal` briefs. `MISTER_HANDY_JUDGE` or `~/.config/mister-handy/judge.md` adds a reviewer system prompt |
 | `MISTER_HANDY_ADVISOR` / `MISTER_HANDY_ADVISOR_MAX` | off; a Claude model (e.g. `opus`) a `pi:` worker can consult through an `advisor` tool that sees its whole conversation, max 4 calls per run; recommended for `Risk: normal` briefs |

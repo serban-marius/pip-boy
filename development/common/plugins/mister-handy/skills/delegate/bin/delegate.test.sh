@@ -434,8 +434,12 @@ rm -rf "$tmp/slots/claude/1"
 fresh "" pass
 MISTER_HANDY_ADVISOR=opus MISTER_HANDY_LADDER="claude:haiku 1" foreman >/dev/null
 expect "a claude:haiku rung runs the claude runner" "$(tr '\n' ' ' <"$PI_CALLS")$(states)" "claude haiku START MILESTONE DONE "
-expect "the claude worker is headless, no MCP, no session, no advisor" "$(grep -cxE -- '-p|--no-session-persistence|--strict-mcp-config|--permission-mode|Read,Edit,Write,Bash,Grep,Glob' "$CLAUDE_ARGS") $(grep -c advisor "$CLAUDE_ARGS" "$PI_LAST_PROMPT" | awk -F: '{ s += $2 } END { print s }')" "6 0"
+expect "the claude worker is headless, no MCP, no session, no advisor" "$(grep -cxE -- '-p|--no-session-persistence|--strict-mcp-config|--permission-mode|Read,Edit,Write,Bash,Grep,Glob' "$CLAUDE_ARGS") $(grep -c 'advisor\.ts\|an .advisor. tool' "$CLAUDE_ARGS" "$PI_LAST_PROMPT" | awk -F: '{ s += $2 } END { print s }')" "6 0"
 expect "the claude worker gets the brief"       "$(grep -c '^Write ok to done.txt.$' "$PI_LAST_PROMPT")" "1"
+expect "the claude runner disables the Claude Code advisor" "$(grep -A1 -x -- '--settings' "$CLAUDE_ARGS" | tr '\n' ' ')" '--settings {"advisorModel":""} '
+fresh "" pass
+MISTER_HANDY_CLAUDE_ADVISOR=keep MISTER_HANDY_LADDER="claude:haiku 1" foreman >/dev/null
+expect "MISTER_HANDY_CLAUDE_ADVISOR=keep leaves it on" "$(grep -c advisorModel "$CLAUDE_ARGS") $(states)" "0 START MILESTONE DONE "
 fresh "" capped pass
 MISTER_HANDY_LADDER="claude:haiku 2,claude:sonnet 1" foreman >/dev/null
 expect "a claude max-turns cap skips to the next rung" "$(tr '\n' ' ' <"$PI_CALLS")$(grep -c 'output cap: no more claude:haiku tries' "$FHQ/STATUS.md")" "claude haiku claude sonnet 1"
@@ -452,6 +456,7 @@ fresh "" pass
 echo PASS >"$PI_REVIEW"
 MISTER_HANDY_REVIEW=claude:sonnet foreman >/dev/null
 expect "a claude reviewer is read-only"         "$(tr '\n' ' ' <"$PI_CALLS")$(grep -cx 'Read,Grep,Glob' "$CLAUDE_ARGS") $(grep -c 'DONE.*review PASS' "$FHQ/STATUS.md")" "nan/deepseek-v4-flash claude sonnet 2 1"
+expect "the claude reviewer runs without the Claude Code advisor too" "$(grep -cx '{"advisorModel":""}' "$CLAUDE_ARGS")" "1"
 fresh "" pushy
 foreman >/dev/null
 expect "the worker cannot push or use gh"       "$(git -C "$tmp/origin.git" branch | wc -l | tr -d ' ') $(git -C "$R" ls-files gh-ran | wc -l | tr -d ' ')" "0 0"

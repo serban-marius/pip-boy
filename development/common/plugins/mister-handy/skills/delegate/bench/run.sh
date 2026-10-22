@@ -69,7 +69,9 @@ child_env=(env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_CODE_SESSION_ID
 
 case $arm in
   claude-*) kind=claude model=${arm#claude-}
-    cmd=(claude -p --model "$model" --permission-mode auto --output-format stream-json --verbose "$prompt") ;;
+    cmd=(claude -p --model "$model" --permission-mode auto --output-format stream-json --verbose)
+    [ "${BENCH_CLAUDE_ADVISOR:-}" = keep ] || cmd+=(--settings '{"advisorModel":""}')
+    cmd+=("$prompt") ;;
   pi-*-ne) kind=pi model=${arm#pi-}; model=${model%-ne}
     cmd=(pi -p --no-session --mode json --model "nan/$model" -ne "$prompt") ;;
   pi-*) kind=pi model=${arm#pi-}

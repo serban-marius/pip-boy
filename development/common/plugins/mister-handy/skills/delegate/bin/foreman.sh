@@ -203,6 +203,7 @@ run_worker() {
     claude)
       [ -z "$ro" ] || tools=Read,Grep,Glob
       [ -z "$ro" ] || [ ! -s "$logs/judge.md" ] || args=(--append-system-prompt-file "$logs/judge.md")
+      [ "${MISTER_HANDY_CLAUDE_ADVISOR:-}" = keep ] || args+=(--settings '{"advisorModel":""}')
       acquire claude
       sandboxed claude -p --model "$model" --output-format json --no-session-persistence --strict-mcp-config \
         --tools "$tools" --allowedTools "$tools" --permission-mode dontAsk \

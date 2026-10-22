@@ -18,7 +18,7 @@ Arms:
 
 | Arm | Launch |
 |---|---|
-| `claude-<model>` | `claude -p --model <model> --permission-mode auto --output-format stream-json --verbose` (the user's plugins and hooks load, as for a real worker) |
+| `claude-<model>` | `claude -p --model <model> --permission-mode auto --output-format stream-json --verbose --settings '{"advisorModel":""}'` (the user's plugins and hooks load, as for a real worker; the Claude Code advisor is off unless `BENCH_CLAUDE_ADVISOR=keep`. `claude-*` runs before 2026-10-22 ran with the user's `advisorModel` (Fable) on, so their cost includes the advisor) |
 | `pi-<nan model id>` | `pi -p --no-session --mode json --model nan/<id>` (the user's pi extensions load) |
 | `pi-<nan model id>-ne` | same with `--no-extensions` |
 | `pipeline` | `BENCH_PIPELINE='bash bench/pipeline.sh "$@"' BENCH_CHEAP_DIR=<cheap-mvp delegate dir>`: route.sh's pick is recorded, then foreman.sh runs its default ladder (`~/.config/mister-handy/ladder`, else the plugin's); `ESCALATE` ends the run and is scored `escalated` |
