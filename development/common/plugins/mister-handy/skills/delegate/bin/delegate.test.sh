@@ -244,6 +244,17 @@ expect "the ladder comes from ~/.config when set" "$(unset MISTER_HANDY_LADDER; 
 expect "MISTER_HANDY_LADDER beats ~/.config"    "$(. "$here/brief.sh"; ladder | head -n 1)" "pi:nan/deepseek-v4-flash 2"
 rm -r "$XDG_CONFIG_HOME/mister-handy"
 
+mkdir -p "$XDG_CONFIG_HOME/mister-handy"
+printf '%s\n' 'MISTER_HANDY_TEST_CONFIG=from-file' 'MISTER_HANDY_TEST_CONFIG_Q="from file"' >"$XDG_CONFIG_HOME/mister-handy/env"
+expect "config env sets an unset MISTER_HANDY var" "$(. "$here/brief.sh"; load_config; printf '%s|%s' "${MISTER_HANDY_TEST_CONFIG-unset}" "${MISTER_HANDY_TEST_CONFIG_Q-unset}")" "from-file|from file"
+expect "config env never overrides the environment" "$(export MISTER_HANDY_TEST_CONFIG=from-env; . "$here/brief.sh"; load_config; printf '%s' "$MISTER_HANDY_TEST_CONFIG")" "from-env"
+printf '%s\n' 'OTHER_NAME=other' 'MISTER_HANDY_lower=nope' 'MISTER_HANDY_=nope' 'MISTER_HANDY_A-B=nope' >"$XDG_CONFIG_HOME/mister-handy/env"
+expect "config env ignores non MISTER_HANDY names" "$(. "$here/brief.sh"; load_config; printf '%s|%s|%s|%s' "${OTHER_NAME-unset}" "${MISTER_HANDY_lower-unset}" "${MISTER_HANDY_-unset}" "${MISTER_HANDY_A_B-unset}")" "unset|unset|unset|unset"
+printf 'MISTER_HANDY_TEST_LITERAL=$(touch %s/pwned)\nMISTER_HANDY_TEST_TICK=`touch %s/pwned2`\n' "$tmp" "$tmp" >"$XDG_CONFIG_HOME/mister-handy/env"
+literal='$(touch '"$tmp"'/pwned)|`touch '"$tmp"'/pwned2` 0'
+expect "config env does not evaluate values" "$(. "$here/brief.sh"; load_config; printf '%s|%s' "$MISTER_HANDY_TEST_LITERAL" "$MISTER_HANDY_TEST_TICK") $(find "$tmp" -maxdepth 1 -name 'pwned*' | wc -l | tr -d ' ')" "$literal"
+rm -rf "$XDG_CONFIG_HOME/mister-handy"
+
 Q=$tmp/question.md
 printf 'Where does the ladder live?\n' >"$Q"
 scout_pi() {
@@ -369,7 +380,7 @@ expect "a silent reviewer is inconclusive"      "$(grep -c 'DONE.*review inconcl
 
 fresh "" pass
 MISTER_HANDY_ADVISOR=opus foreman >/dev/null
-expect "the worker gets the advisor extension"  "$(grep -c -- "^$here/advisor.ts\$" "$PI_ARGS") $(grep -c 'You have an `advisor` tool' "$PI_LAST_PROMPT") $(grep -c -- '-e' "$PI_ARGS")" "1 1 1"
+expect "the worker gets the advisor extension"  "$(grep -c -- "^$here/advisor.ts\$" "$PI_ARGS") $(grep -c 'You have an `advisor` tool' "$PI_LAST_PROMPT") $(grep -cx -- '-e' "$PI_ARGS")" "1 1 1"
 fresh "" pass
 foreman >/dev/null
 expect "without MISTER_HANDY_ADVISOR no extension is loaded" "$(grep -c advisor "$PI_ARGS") $(grep -c 'advisor' "$PI_LAST_PROMPT")" "0 0"

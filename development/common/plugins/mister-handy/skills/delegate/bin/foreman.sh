@@ -18,6 +18,7 @@
 
 here=$(cd "$(dirname "$0")" && pwd)
 . "$here/brief.sh"
+load_config
 slug=${1:?usage: foreman.sh <slug> <brief> <hq dir> [worktree]}
 brief=${2:?usage: foreman.sh <slug> <brief> <hq dir> [worktree]}
 hq=${3:?usage: foreman.sh <slug> <brief> <hq dir> [worktree]}

@@ -56,6 +56,26 @@ brief_title() {
   sed -n '1s/^# *[^:]*: *//p' "$1"
 }
 
+load_config() {
+  local f=${XDG_CONFIG_HOME:-$HOME/.config}/mister-handy/env line name value
+  [ -f "$f" ] || return 0
+  while IFS= read -r line || [ -n "$line" ]; do
+    line=${line#"${line%%[![:space:]]*}"}
+    case $line in '' | '#'*) continue ;; esac
+    case $line in *=*) ;; *) continue ;; esac
+    name=${line%%=*}
+    value=${line#*=}
+    [[ $name =~ ^MISTER_HANDY_[A-Z0-9_]+$ ]] || continue
+    [ -z "${!name+x}" ] || continue
+    case $value in
+      \"*\") value=${value#\"}; value=${value%\"} ;;
+      \'*\') value=${value#\'}; value=${value%\'} ;;
+    esac
+    printf -v "$name" '%s' "$value"
+    export "$name"
+  done <"$f"
+}
+
 ladder() {
   local f=${XDG_CONFIG_HOME:-$HOME/.config}/mister-handy/ladder
   [ -f "$f" ] || f=$(dirname "${BASH_SOURCE[0]}")/../ladder

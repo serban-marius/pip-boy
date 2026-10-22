@@ -116,6 +116,15 @@ route.sh brief  ->  foreman claude:haiku 1.00 rules   foreman.sh <slug> <brief> 
   pi:nan/glm5.3-flash 1
   claude:sonnet 1
   ```
+- **Defaults**: `~/.config/mister-handy/env` (or `$XDG_CONFIG_HOME/mister-handy/env`) holds
+  `MISTER_HANDY_*` defaults for `route.sh` and `foreman.sh`, one `NAME=value` per line, `#`
+  comments allowed, values literal (no shell expansion; surrounding single or double quotes are
+  stripped). Precedence is environment > file > built-in defaults:
+
+  ```text
+  MISTER_HANDY_ROUTER=rules
+  MISTER_HANDY_ADVISOR=opus
+  ```
 - **Reviewer prompt**: `~/.config/mister-handy/judge.md` (used when `MISTER_HANDY_REVIEW` is set).
 - The foreman unsets `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` and `TYPESAFE_API_KEY`
   for workers. Never put keys in briefs or STATUS lines.

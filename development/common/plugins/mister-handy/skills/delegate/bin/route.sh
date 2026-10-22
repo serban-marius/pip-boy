@@ -9,6 +9,7 @@
 
 here=$(cd "$(dirname "$0")" && pwd)
 . "$here/brief.sh"
+load_config
 brief=${1:?usage: route.sh <brief>}
 [ -f "$brief" ] || { echo "no brief: $brief" >&2; exit 1; }
 threshold=${MISTER_HANDY_ROUTE_THRESHOLD:-0.6}
