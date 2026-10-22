@@ -494,4 +494,6 @@ expect "savings: baseline override"             "$(MISTER_HANDY_BASELINE_USD=10 
 expect "savings: no foreman rows"               "$(printf '# x\n' >"$tmp/sv0.md"; mkdir -p "$tmp/sv0" && cp "$tmp/sv0.md" "$tmp/sv0/STATUS.md"; bash "$here/savings.sh" "$tmp/sv0" | awk '{$1=$1}1' | tail -n 1)" 'TOTAL - - - $0.00 $0.00 saving $0.00'
 expect "savings: missing STATUS exits 2"        "$(bash "$here/savings.sh" "$tmp/nope" 2>/dev/null; echo $?)" "2"
 
+expect "the HQ note tells HQ to route code tasks" "$(MISTER_HANDY=hq CLAUDE_PROJECT_DIR=$tmp bash "$here/../../../hooks/role.sh" | grep -c 'run bin/route.sh, and launch what it prints')" "1"
+
 [ "$fails" -eq 0 ] && echo "all green" || { echo "$fails failing"; exit 1; }

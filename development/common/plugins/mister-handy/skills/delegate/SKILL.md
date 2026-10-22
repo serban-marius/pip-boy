@@ -142,9 +142,19 @@ Create `_hq/` on first use, with `STATUS.md` starting `# append-only: HH:MM <slu
 4. **Images and drops.** A worker cannot see `[Image #N]` or HQ's attachments, and Orca drop
    paths under `/var/folders/.../orca-drop-*` are temporary. Copy every file the task needs
    into `_hq/assets/<slug>/` and, for pasted images, describe in the brief what they show.
-5. **Route, then launch.** Run `bash <skill dir>/bin/route.sh <brief>` first ("Cheap workers"
-   below): `foreman <rung> ...` → launch the foreman there instead of the rest of this step;
-   `claude <model> ...` → go on here with `--model <model>`. Launch the agent in a terminal, never with `--agent`: that follows the user's Chat UI
+5. **Route. Mandatory for every task that changes code.** The brief gets an `## Acceptance`
+   block plus `Risk:` and `Prod:` lines, then run `bash <skill dir>/bin/route.sh <brief>` and
+   launch what it prints, on either backend:
+   - `foreman <rung> ...` → the foreman ("Launching the foreman" under "Cheap workers"), not
+     Claude.
+   - `claude <model> ...` → Claude with THAT model: `--model <model>` here, the Agent tool's
+     `model` without Orca. Never the session's default model.
+
+   Skip it only when the user names the agent or model, and for investigations, reviews and UI
+   tasks that need a preview. A code task launched on the default model without routing costs
+   more than doing it in HQ (measured: an unrouted Opus subagent, $4.39 vs $3.37 for Opus
+   directly).
+6. **Launch.** Launch the agent in a terminal, never with `--agent`: that follows the user's Chat UI
    setting and may start a chat session, which has no terminal handle, so HQ could never send
    it a follow-up, an approval or a hand-off (Mode 4).
 
@@ -166,7 +176,7 @@ Create `_hq/` on first use, with `STATUS.md` starting `# append-only: HH:MM <slu
      Otherwise stop: tell the user the task did not start and why, and record nothing.
    - If the bare create opened a fallback shell, close it only after `orca terminal show`
      confirms it is an unused shell.
-6. **Record** a line in `SESSIONS.md`
+7. **Record** a line in `SESSIONS.md`
    (`<slug>  <worktree path>  <term handle>  <agent>  <HH:MM>  on-done: <order>  after: <slug|->`)
    and append `HH:MM hq DISPATCHED <slug>` to `STATUS.md`. `on-done` is the user's standing
    order for when it finishes ("review it", "merge if green"), and ends in closing the worktree
@@ -174,7 +184,7 @@ Create `_hq/` on first use, with `STATUS.md` starting `# append-only: HH:MM <slu
    task once its PR is merged or closed. Use `keep` for workers HQ will send more work to.
    `after` names a task this one waits for (Mode 2 chains); such a task is recorded but not
    launched yet.
-7. **Report and watch.** One line to the user: slug, worktree, what it will deliver. Then arm the
+8. **Report and watch.** One line to the user: slug, worktree, what it will deliver. Then arm the
    watcher (Mode 6) if it is not already running, and end the turn. Never sit waiting in a
    foreground command.
 
@@ -182,7 +192,7 @@ Create `_hq/` on first use, with `STATUS.md` starting `# append-only: HH:MM <slu
 
 Find the paired server with `orca environment list --json` and create there with
 `--project <projectId> --host runtime:<environment id>` (the project must already have a host
-setup there: `orca project setups --json`), then launch as in step 5 with
+setup there: `orca project setups --json`), then launch as in step 6 with
 `--environment <environment id>` on the terminal commands. HQ files are not reachable from
 that host, so the send carries the whole brief, and the worker reports through its Orca card
 comment and its PR only; `orca worktree ps --json` shows remote cards. For anything beyond
@@ -255,7 +265,7 @@ Skip routing and launch Claude when the user names the agent or model ("hazlo co
 opus"; "con pi" or "con un modelo barato" forces the foreman), and for investigations, reviews and
 UI tasks that need a preview: they end in judgement, not in a command that exits 0.
 
-**Launching the foreman.** Orca: create the worktree as in Mode 1 step 5, then run the foreman
+**Launching the foreman.** Orca: create the worktree as in Mode 1 step 6, then run the foreman
 itself as the terminal command, so the card shows it; no `wait` or `send`:
 
 ```text
@@ -341,7 +351,7 @@ with `MILESTONE ... rate-limited, retry n`, and does not use up a ladder try.
 
 - `DONE` with a PR URL: as any DONE. `DONE <sha> on <branch> (local)`: not `no-code`; look at
   `git -C <worktree> diff --stat <base>...` and push + open the PR yourself, or launch a reviewer.
-- `ESCALATE`: relaunch on Claude in the same worktree, as Mode 1 step 5 with
+- `ESCALATE`: relaunch on Claude in the same worktree, as Mode 1 step 6 with
   `--worktree path:<worktree>` and the mid tier's model (`MISTER_HANDY_MID`, `sonnet` by default):
   one tier up from the cheap one, as the router does; the top tier only when the user asks or the
   mid relaunch also fails. Send: "Your task brief is
@@ -468,10 +478,14 @@ Same HQ files, same briefs, same STATUS lines. What changes:
 
 - **Launch** with the Agent tool: `description` = slug, `run_in_background: true`,
   `isolation: "worktree"` when the task edits files (read-only investigations need none),
-  `model` only when the user names one. The prompt is the launch prompt from Mode 1 plus:
+  `model` from route.sh (Mode 1 step 5; the user's choice when they name one, never omitted for a
+  code task). The prompt is the launch prompt from Mode 1 plus:
   "Commit your work on your branch. Your final message is at most five lines: the DONE line,
   the PR or branch, the report path, any open question. Everything longer goes to the report."
   The final message lands in HQ on its own; that limit is what keeps HQ clean.
+- **Route** every code task as in Mode 1 step 5. `foreman ...` → no Agent call: `git worktree
+  add` a worktree and run the foreman there with the Bash tool and `run_in_background: true`
+  ("Launching the foreman"); `claude <model> ...` → the Agent tool with that `model`.
 - **Brief**: drop the Orca card lines (comment, unread) from the Reporting section. The
   worktree starts from HQ's HEAD, so a different base goes in the brief as its first step
   (`git switch -c <branch> origin/<base>`).

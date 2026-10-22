@@ -73,6 +73,52 @@ route.sh brief  ->  foreman claude:haiku 1.00 rules   foreman.sh <slug> <brief> 
 | + any pi provider | `pi` with the provider set up in pi | e.g. `pi:nan/deepseek-v4-flash 2`, `pi:nan/glm5.3-flash 1` (benchmarked), `pi:openrouter/<vendor>/<model>`, `pi:ollama/<model>` | rules or Jev |
 | + Jev router | `TYPESAFE_API_KEY` (or the macOS keychain item `jev`) | any | Jev |
 
+### Keys and setup
+
+- **Claude**: `claude` logged in (subscription or API key); nothing else. `claude:` workers use
+  that login.
+- **Jev** (optional router): get a key at https://typesafe.ai, then either put it in the shell
+  profile HQ starts from or in the macOS keychain (the second command prompts for the key):
+
+  ```bash
+  export TYPESAFE_API_KEY=...
+  security add-generic-password -a "$USER" -s jev -w
+  ```
+
+  Lookup order: `TYPESAFE_API_KEY`, then the keychain item `jev`. Check:
+  `bash skills/delegate/bin/route.sh <brief>` ends in `jev` (or `low-confidence:...`), not
+  `rules` or `jev-no-key`.
+- **pi providers**: credentials live in pi, never in mister-handy. Built-in providers read their
+  env var (e.g. `OPENROUTER_API_KEY`, `DEEPSEEK_API_KEY`; see pi's `docs/providers.md`) or
+  `~/.pi/agent/auth.json` (written by `/login` in pi). Custom OpenAI-compatible providers (e.g.
+  NAN: https://nan.builders/docs/pi) go in `~/.pi/agent/models.json`; `apiKey` takes a literal,
+  `$ENV_VAR`, or `!command`, so the key need not sit in the file:
+
+  ```json
+  { "providers": { "nan": {
+      "baseUrl": "https://...",
+      "api": "openai-completions",
+      "apiKey": "!security find-generic-password -ws nan",
+      "models": [ { "id": "glm5.3-flash", "maxTokens": 131072 } ]
+  } } }
+  ```
+
+  Check: `pi auth check --provider <name>`. Ollama needs no real key (pi's docs use a dummy
+  `"apiKey": "ollama"`). Raise `maxTokens` to the provider's real output limit (NAN
+  glm5.3-flash: 131072): reasoning tokens count against it, and an attempt cut by it skips to the
+  next rung.
+- **Ladder**: `~/.config/mister-handy/ladder`, one `<runner>:<model> <tries>` per line, top rung
+  first, `#` comments allowed:
+
+  ```text
+  pi:nan/deepseek-v4-flash 2
+  pi:nan/glm5.3-flash 1
+  claude:sonnet 1
+  ```
+- **Reviewer prompt**: `~/.config/mister-handy/judge.md` (used when `MISTER_HANDY_REVIEW` is set).
+- The foreman unsets `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` and `TYPESAFE_API_KEY`
+  for workers. Never put keys in briefs or STATUS lines.
+
 | Foreman knob | Default |
 |--------------|---------|
 | `MISTER_HANDY_LADDER` | `<runner>:<model> <tries>`, comma-separated; else `~/.config/mister-handy/ladder` (one per line), else the plugin's `skills/delegate/ladder` (`claude:haiku` ×2, `claude:sonnet` ×1); a bare `nan/x` is `pi:nan/x`; an attempt cut by the output cap skips to the next rung |
