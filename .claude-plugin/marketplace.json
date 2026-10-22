@@ -90,7 +90,7 @@
       "name": "mister-handy",
       "source": "./development/common/plugins/mister-handy",
       "description": "Mister Handy: the main session is HQ and orchestrates by default. A SessionStart hook marks HQ vs worker; HQ sends every substantive task out as a written brief to Orca worktrees, or to background subagents in git worktrees without Orca, then watches them through a STATUS file and acts when they finish, fail, ask or stall, without pulling transcripts back in. Briefs with runnable acceptance checks are routed (by rules, or by Jev when a key is set) to cheap workers (Claude haiku with only a Claude subscription, or pi on any inference provider) under a deterministic foreman that retries, climbs a model ladder and escalates to Claude.",
-      "version": "1.12.0",
+      "version": "1.13.0",
       "author": {
         "name": "Marius Serban"
       },

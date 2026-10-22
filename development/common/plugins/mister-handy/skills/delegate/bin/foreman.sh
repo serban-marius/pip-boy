@@ -416,9 +416,36 @@ if [ -n "$pr" ] && [ "$(git rev-parse HEAD)" != "$base" ]; then
   draft=$([ "$1" = draft ] && echo --draft)
   if git push -q -u origin HEAD >>"$logs/pr.log" 2>&1; then
     where="$sha on $branch (pushed)"
+    body=$logs/pr-body.md
+    bash "$here/pr-body.sh" "$brief" "$base" "$body" >>"$logs/pr.log" 2>&1
+    [ -s "$body" ] || printf '## What\n\n%s\n\n## Changes\n\n```text\n%s\n```\n' \
+      "$(brief_section "$brief" Why)" "$(git diff --stat "$base")" >"$body"
+    case $note in
+      *"review PASS"*) review_note=PASS ;;
+      *"review items applied"*) review_note="items applied" ;;
+      *"review items not applied"*) review_note="not applied" ;;
+      *"review inconclusive"*) review_note=inconclusive ;;
+      *) review_note="not run" ;;
+    esac
+    {
+      echo
+      echo '---'
+      echo '<details><summary>How this was built and checked</summary>'
+      echo
+      echo "- Runner: ${model%%:*}, model: ${model#*:}, attempt $attempt/$total"
+      echo "- Review: $review_note"
+      [ "$adv_seen" -eq 0 ] || printf -- '- Advisor: %s calls, $%.2f\n' "$adv_seen" "$adv_total"
+      echo
+      echo 'Every Acceptance command passed:'
+      echo
+      echo '```bash'
+      brief_acceptance "$brief"
+      echo '```'
+      echo
+      echo '</details>'
+    } >>"$body"
     url=$(gh pr create $draft --base "$2" --head "$branch" --title "$title" \
-      --body "Implemented by a cheap worker ($model, attempt $attempt/$total) under mister-handy's foreman; every Acceptance command in the brief passed.
-$acc" 2>>"$logs/pr.log" | tail -n 1)
+      --body-file "$body" 2>>"$logs/pr.log" | tail -n 1)
   fi
   case ${url:-} in
     https://*) where="$url ($sha)" ;;
