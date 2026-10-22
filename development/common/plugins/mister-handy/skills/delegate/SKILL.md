@@ -333,7 +333,7 @@ again to reconcile instead of silently switching. This is how Claude stays in th
 while a cheap provider implements: Claude tokens are spent only on advice, never on code.
 `claude:` workers never get it. `MISTER_HANDY_ADVISOR_MAX` (4) caps the calls per pi run; past it the
 tool answers "advisor budget used up". Each call becomes `MILESTONE advisor call n/max ($cost)` and
-DONE/ESCALATE end with `advisor <calls> calls $<total>` (log in `<hq>/logs/<slug>/advisor.log`).
+DONE/ESCALATE end with `advisor <calls> calls $<total>` (log in `<hq>/logs/<slug>/advisor.log`) and `claude $<total>`, the summed `total_cost_usd` of every `claude:` worker run and the `claude:` reviewer (left out when zero).
 Recommend `MISTER_HANDY_ADVISOR=opus` for `Risk: normal` briefs on a pi ladder (`sonnet` when quota
 is tight). The advisor has no tools and runs without the GH and Typesafe tokens. A failed or
 timed-out (5 min) advisor call is a tool error the worker reads, never a hang.

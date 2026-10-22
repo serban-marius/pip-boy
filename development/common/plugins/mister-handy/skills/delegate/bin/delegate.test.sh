@@ -31,17 +31,18 @@ cat >"$tmp/stub/claude" <<'EOF'
 model=""; prev=""
 for a in "$@"; do [ "$prev" = --model ] && model=$a; prev=$a; done
 echo "claude $model" >>"$PI_CALLS"
+cost=0.10; [ "$model" = sonnet ] && cost=0.25
 printf '%s\n' "$@" >>"$CLAUDE_ARGS"
-case " $* " in *" Read,Grep,Glob "*) cat >/dev/null; jq -n --rawfile r "$PI_REVIEW" '{type: "result", is_error: false, result: $r}'; exit 0 ;; esac
+case " $* " in *" Read,Grep,Glob "*) cat >/dev/null; jq -n --rawfile r "$PI_REVIEW" --argjson c "$cost" '{type: "result", is_error: false, total_cost_usd: $c, result: $r}'; exit 0 ;; esac
 cat >"$PI_LAST_PROMPT"
 n=$(( $(cat "$PI_COUNT" 2>/dev/null || echo 0) + 1 )); echo "$n" >"$PI_COUNT"
 case $(sed -n "${n}p" "$PI_PLAN") in
   pass) echo ok >done.txt ;;
   broken) echo ko >done.txt ;;
-  capped) echo ko >done.txt; echo '{"type":"result","subtype":"error_max_turns","is_error":true}'; exit 1 ;;
+  capped) echo ko >done.txt; echo '{"type":"result","subtype":"error_max_turns","is_error":true,"total_cost_usd":'"$cost"'}'; exit 1 ;;
   ratelimited) echo '{"type":"result","subtype":"success","is_error":true,"result":"API Error: 429 rate_limit_error"}'; exit 1 ;;
 esac
-echo '{"type":"result","subtype":"success","is_error":false,"result":"done"}'
+echo '{"type":"result","subtype":"success","is_error":false,"total_cost_usd":'"$cost"',"result":"done"}'
 EOF
 printf '#!/bin/sh\nexit 44\n' >"$tmp/stub/security"
 chmod +x "$tmp/stub/gh" "$tmp/stub/orca" "$tmp/stub/claude" "$tmp/stub/security"
@@ -443,6 +444,15 @@ expect "MISTER_HANDY_CLAUDE_ADVISOR=keep leaves it on" "$(grep -c advisorModel "
 fresh "" capped pass
 MISTER_HANDY_LADDER="claude:haiku 2,claude:sonnet 1" foreman >/dev/null
 expect "a claude max-turns cap skips to the next rung" "$(tr '\n' ' ' <"$PI_CALLS")$(grep -c 'output cap: no more claude:haiku tries' "$FHQ/STATUS.md")" "claude haiku claude sonnet 1"
+expect "DONE sums the claude cost of every attempt" "$(grep -c 'DONE.*, claude \$0.35;' "$FHQ/STATUS.md")" "1"
+fresh "" ratelimited pass
+MISTER_HANDY_LADDER="claude:haiku 1" foreman >/dev/null
+fresh "" pass
+MISTER_HANDY_LADDER="claude:haiku 1" foreman >/dev/null
+expect "DONE carries the claude cost"          "$(grep -c 'DONE.*, claude \$0.10;' "$FHQ/STATUS.md")" "1"
+fresh "" broken broken
+MISTER_HANDY_LADDER="claude:haiku 2" foreman >/dev/null
+expect "ESCALATE carries the claude cost"      "$(grep -c 'ESCALATE.*, claude \$0.20;' "$FHQ/STATUS.md")" "1"
 fresh "" ratelimited pass
 MISTER_HANDY_LADDER="claude:haiku 1" foreman >/dev/null
 expect "a claude 429 is retried without a ladder try" "$(grep -c 'attempt 1/1 claude:haiku rate-limited, retry 1' "$FHQ/STATUS.md") $(states)" "1 START MILESTONE MILESTONE DONE "
@@ -456,6 +466,7 @@ fresh "" pass
 echo PASS >"$PI_REVIEW"
 MISTER_HANDY_REVIEW=claude:sonnet foreman >/dev/null
 expect "a claude reviewer is read-only"         "$(tr '\n' ' ' <"$PI_CALLS")$(grep -cx 'Read,Grep,Glob' "$CLAUDE_ARGS") $(grep -c 'DONE.*review PASS' "$FHQ/STATUS.md")" "nan/deepseek-v4-flash claude sonnet 2 1"
+expect "the claude reviewer's cost joins the nan worker's" "$(grep -c 'DONE.*review PASS.*, claude \$0.25;' "$FHQ/STATUS.md")" "1"
 expect "the claude reviewer runs without the Claude Code advisor too" "$(grep -cx '{"advisorModel":""}' "$CLAUDE_ARGS")" "1"
 fresh "" pushy
 foreman >/dev/null
@@ -482,15 +493,22 @@ cat >"$SV/STATUS.md" <<'EOT'
 09:20 c DONE https://github.com/o/r/pull/2 e280862
 09:30 d MILESTONE advisor call 1/4 ($0.20)
 09:40 d ESCALATE 3 attempts failed (nan/m1 FAIL); advisor 1 calls $0.20; summary /x
+09:50 e DONE abc on feat/e (local), acceptance passed on attempt 2/3 (claude:haiku), claude $0.30; logs /x
+10:05 f DONE abc on feat/f (local), acceptance passed on attempt 1/2 (claude:sonnet), review PASS, advisor 1 calls $0.10, claude $0.40; logs /x
+10:10 g ESCALATE 2 attempts failed (claude:haiku FAIL), claude $0.50; worker changes left; summary /x
+10:15 g MILESTONE attempt 1/2 claude $9.99
 EOT
 sv() { bash "$here/savings.sh" "$SV" "$@" | awk '{$1=$1}1'; }
 expect "savings: header"                        "$(sv | sed -n 1p)" "slug result model attempt claude baseline"
 expect "savings: DONE without advisor"          "$(sv)" 'a DONE nan/m1 1/3 $0.00 $3.16'
 expect "savings: DONE with advisor"             "$(sv)" 'b DONE nan/m2 3/3 $0.37 $3.16'
 expect "savings: ESCALATE"                      "$(sv)" 'd ESCALATE - - $0.20 $3.16'
-expect "savings: noise lines are ignored"       "$(sv | wc -l | tr -d ' ')" "5"
-expect "savings: TOTAL"                         "$(sv | tail -n 1)" 'TOTAL - - - $0.57 $9.48 saving $8.91'
-expect "savings: baseline override"             "$(MISTER_HANDY_BASELINE_USD=10 sv | tail -n 1)" 'TOTAL - - - $0.57 $30.00 saving $29.43'
+expect "savings: DONE with claude"              "$(sv)" 'e DONE claude:haiku 2/3 $0.30 $3.16'
+expect "savings: advisor and claude on one line" "$(sv)" 'f DONE claude:sonnet 1/2 $0.50 $3.16'
+expect "savings: ESCALATE with claude"          "$(sv)" 'g ESCALATE - - $0.50 $3.16'
+expect "savings: noise lines are ignored"       "$(sv | wc -l | tr -d ' ')" "8"
+expect "savings: TOTAL"                         "$(sv | tail -n 1)" 'TOTAL - - - $1.87 $18.96 saving $17.09'
+expect "savings: baseline override"             "$(MISTER_HANDY_BASELINE_USD=10 sv | tail -n 1)" 'TOTAL - - - $1.87 $60.00 saving $58.13'
 expect "savings: no foreman rows"               "$(printf '# x\n' >"$tmp/sv0.md"; mkdir -p "$tmp/sv0" && cp "$tmp/sv0.md" "$tmp/sv0/STATUS.md"; bash "$here/savings.sh" "$tmp/sv0" | awk '{$1=$1}1' | tail -n 1)" 'TOTAL - - - $0.00 $0.00 saving $0.00'
 expect "savings: missing STATUS exits 2"        "$(bash "$here/savings.sh" "$tmp/nope" 2>/dev/null; echo $?)" "2"
 
