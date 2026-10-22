@@ -274,7 +274,7 @@ Fix what made it fail."
       end FAILED "acceptance not runnable: '$bad' is missing or not executable after attempt $attempt (exit $failed_rc); fix the brief or launch Claude" 2 ;;
   esac
   [ "$failed_rc" -ne 142 ] || timed="$timed, acceptance timed out"
-  [ "$stop" != length ] || { capped=$model; timed="$timed, output cap: next rung"; }
+  [ "$stop" != length ] || { capped=$model; timed="$timed, output cap: no more $model tries"; }
   printf '\n## Attempt %s/%s %s: FAIL (%ss, pi exit %s%s)\n`%s` exited %s:\n```\n%s\n```\n' \
     "$attempt" "$total" "$model" "$secs" "$pi_rc" "${stop:+, stop $stop}" "$failed_cmd" "$failed_rc" "$(tail -n 40 <<<"$failure" | redact)" >>"$summary"
   say "MILESTONE attempt $attempt/$total $model FAIL '$(oneline 60 <<<"$failed_cmd")' exit $failed_rc (${secs}s$timed), log $logs/attempt-$attempt.accept.log"

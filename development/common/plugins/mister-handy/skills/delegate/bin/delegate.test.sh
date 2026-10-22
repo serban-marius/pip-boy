@@ -230,7 +230,7 @@ expect "escalated work is left uncommitted"     "$(git -C "$R" log --oneline | w
 fresh "" capped pass
 foreman >/dev/null
 expect "an output cap skips to the next rung"   "$(tr '\n' ' ' <"$PI_CALLS")" "nan/deepseek-v4-flash nan/glm5.3-flash "
-expect "and says so"                            "$(grep -c 'attempt 1/3 nan/deepseek-v4-flash FAIL .*output cap: next rung' "$FHQ/STATUS.md") $(grep -c 'attempt 3/3 nan/glm5.3-flash PASS' "$FHQ/STATUS.md")" "1 1"
+expect "and says so"                            "$(grep -c 'attempt 1/3 nan/deepseek-v4-flash FAIL .*output cap: no more nan/deepseek-v4-flash tries' "$FHQ/STATUS.md") $(grep -c 'attempt 3/3 nan/glm5.3-flash PASS' "$FHQ/STATUS.md")" "1 1"
 fresh "" capped broken broken pass
 MISTER_HANDY_LADDER="nan/a 1,nan/b 2,nan/c 1" foreman >/dev/null
 expect "an older capped session does not skip"  "$(tr '\n' ' ' <"$PI_CALLS")" "nan/a nan/b nan/b nan/c "

@@ -265,7 +265,7 @@ benchmark runs on the first attempt, glm first 11/12 and about 3× slower):
    never the command's output (that stays in the logs, and redacted in `summary.md`). Logs
    (prompt, pi output, pi sessions, acceptance output, `summary.md`) go to `<hq>/logs/<slug>/`,
    outside the repo. A failed attempt whose pi session ended on the model's output cap (stopReason
-   `length`) skips that model's remaining tries (`, output cap: next rung`): retrying the same model
+   `length`) skips that model's remaining tries (`, output cap: no more <model> tries`): retrying the same model
    hit the cap again 11 times out of 13 in the benchmark.
 4. Pass → scans the added lines for secrets (private keys, `sk-`, `AKIA`, `gh*_` tokens,
    `api_key|token|secret|password = <long value>`, `.env*` files): a hit is `ESCALATE` with the
