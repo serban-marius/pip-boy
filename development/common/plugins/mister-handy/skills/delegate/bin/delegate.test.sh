@@ -19,7 +19,7 @@ cat >"$tmp/stub/gh" <<'EOF'
 case "$*" in
   "pr view"*) cat "$GH_STATE" ;;
   "pr list"*) cat "$GH_MERGED_HEADS" ;;
-  "pr create"*) cat "$GH_PR_URL" ;;
+  "pr create"*) printf '%s\n' "$@" >"$GH_ARGS"; cat "$GH_PR_URL" ;;
 esac
 EOF
 cat >"$tmp/stub/orca" <<'EOF'
@@ -28,6 +28,14 @@ cat "$ORCA_PS"
 EOF
 cat >"$tmp/stub/claude" <<'EOF'
 #!/bin/bash
+case " $* " in
+  *"Write the GitHub pull request description"*)
+    printf '%s\n' "${@: -1}" >"$PR_BODY_PROMPT"
+    printf '%s' "${PR_BODY_ANSWER-## What
+
+A cheap answer.}"
+    exit 0 ;;
+esac
 model=""; prev=""
 for a in "$@"; do [ "$prev" = --model ] && model=$a; prev=$a; done
 echo "claude $model" >>"$PI_CALLS"
@@ -50,6 +58,7 @@ EOF
 printf '#!/bin/sh\nexit 44\n' >"$tmp/stub/security"
 chmod +x "$tmp/stub/gh" "$tmp/stub/orca" "$tmp/stub/claude" "$tmp/stub/security"
 export PATH=$tmp/stub:$PATH GH_PR_URL=$tmp/pr-url GH_STATE=$tmp/state GH_MERGED_HEADS=$tmp/heads ORCA_PS=$tmp/ps.json \
+  GH_ARGS=$tmp/gh.args PR_BODY_PROMPT=$tmp/pr-body.prompt PR_BODY_ARGS=$tmp/pr-body.args \
   XDG_CONFIG_HOME=$tmp/xdg CLAUDE_ARGS=$tmp/claude.args MISTER_HANDY_LADDER="pi:nan/deepseek-v4-flash 2,pi:nan/glm5.3-flash 1"
 : >"$GH_MERGED_HEADS"
 echo '{"result":{"worktrees":[]}}' >"$ORCA_PS"
@@ -134,6 +143,15 @@ cat "$JEV_REPLY"; printf '\n%s' "${JEV_HTTP:-200}"
 EOF
 cat >"$tmp/stub/pi" <<'EOF'
 #!/bin/bash
+case " $* " in
+  *"Write the GitHub pull request description"*)
+    printf '%s\n' "$@" >"$PR_BODY_ARGS"
+    printf '%s\n' "${@: -1}" >"$PR_BODY_PROMPT"
+    printf '%s' "${PR_BODY_ANSWER-## What
+
+A cheap answer.}"
+    exit 0 ;;
+esac
 model=""; prev=""
 sd=""
 for a in "$@"; do [ "$prev" = --model ] && model=$a; [ "$prev" = --session-dir ] && sd=$a; prev=$a; done
@@ -539,6 +557,32 @@ expect "the worker never sees PR:"              "$(grep -c '^PR:' "$PI_LAST_PROM
 brief "Risk: low" "$ACC"
 fresh "" branchy
 expect "a worker that switches branch ESCALATEs" "$(foreman >/dev/null; grep -c 'ESCALATE the worker left branch feat/t' "$FHQ/STATUS.md")" "1"
+
+fresh "" pass
+printf '# t: describe the change\n\nRisk: low\n\n## Why\nThe body must explain the change.\n\n## Task\nAdd change.txt.\n\n## Acceptance\ngrep -qx ok done.txt\n\n## Reporting\nAppend lines to STATUS.md.\n' >"$B"
+echo change >"$R/change.txt" && git -C "$R" add change.txt && git -C "$R" commit -qm "add the change"
+base=$(git -C "$R" rev-parse HEAD~1)
+: >"$PR_BODY_ARGS"
+pbody=$(cd "$R" && PR_BODY_ANSWER='## What
+
+The cheap worker explained it.' bash "$here/pr-body.sh" "$B" "$base" 2>&1)
+expect "pr-body uses the cheap model's answer" "$(printf '%s\n' "$pbody" | grep -cx 'The cheap worker explained it.') $(grep -cx -- '--no-tools' "$PR_BODY_ARGS") $(grep -cx -- '--no-session' "$PR_BODY_ARGS") $(grep -cx -- '-ne' "$PR_BODY_ARGS") $(grep -cx 'nan/deepseek-v4-flash' "$PR_BODY_ARGS") $(grep -c 'Write the GitHub pull request description for the change below.' "$PR_BODY_PROMPT") $(grep -c 'add the change' "$PR_BODY_PROMPT") $(grep -c 'Append lines to STATUS.md' "$PR_BODY_PROMPT")" "1 1 1 1 1 1 1 0"
+pbody=$(cd "$R" && PR_BODY_ANSWER='No heading here' bash "$here/pr-body.sh" "$B" "$base" 2>&1)
+expect "pr-body falls back when the answer has no What section" "$(printf '%s\n' "$pbody" | grep -cx '## What') $(printf '%s\n' "$pbody" | grep -cx 'The body must explain the change.') $(printf '%s\n' "$pbody" | grep -cx '## Changes') $(printf '%s\n' "$pbody" | grep -cx '```text') $(printf '%s\n' "$pbody" | grep -c 'change.txt')" "1 1 1 1 1"
+
+fresh "" pass
+brief "Risk: low
+PR: ready main" '## Acceptance
+grep -qx ok done.txt
+test -f done.txt'
+echo "https://github.com/o/r/pull/10" >"$tmp/pr-url"
+: >"$GH_ARGS"
+foreman >/dev/null
+bodyfile=$(awk 'p == "--body-file" { print; exit } { p = $0 }' "$GH_ARGS")
+fenced=$(awk '/^```bash$/{on=1;next} /^```$/{on=0} on' "$bodyfile")
+outside=$(awk '/^```/{on=!on;next} !on' "$bodyfile")
+expect "the PR footer fences every acceptance command" "$(printf '%s\n' "$fenced" | grep -cx 'grep -qx ok done.txt') $(printf '%s\n' "$fenced" | grep -cx 'test -f done.txt') $(printf '%s\n' "$outside" | grep -c 'grep -qx ok done.txt') $(printf '%s\n' "$outside" | grep -c 'test -f done.txt') $(grep -c '^<details><summary>How this was built and checked</summary>$' "$bodyfile")" "1 1 0 0 1"
+expect "foreman opens the PR with a body file" "$(grep -cx -- '--body-file' "$GH_ARGS") $(grep -cx -- '--body' "$GH_ARGS") $(grep -c '^## What' "$bodyfile")" "1 0 1"
 
 SV=$tmp/sv && mkdir -p "$SV"
 cat >"$SV/STATUS.md" <<'EOT'
