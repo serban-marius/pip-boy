@@ -78,7 +78,10 @@ Create `_hq/` on first use, with `STATUS.md` starting `# append-only: HH:MM <slu
    to bring (no `+` lines) or far behind → base on the integration branch; a mix → ask the user.
    The brief names the base and the PR target.
 3. **Write the brief** to `_hq/briefs/<slug>.md`. It must stand on its own: the worker has
-   none of this conversation. Use this shape:
+   none of this conversation. Before reading code yourself, run
+   `bash <skill dir>/bin/scout.sh <repo dir> <question file> [out file]` with the user's request
+   and paste or trim its answer into `## What we already know`; HQ verifies only what the decision
+   depends on. Use this shape:
 
    ```markdown
    # <slug>: <one-line goal>

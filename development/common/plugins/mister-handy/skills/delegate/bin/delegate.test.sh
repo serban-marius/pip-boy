@@ -33,7 +33,10 @@ for a in "$@"; do [ "$prev" = --model ] && model=$a; prev=$a; done
 echo "claude $model" >>"$PI_CALLS"
 cost=0.10; [ "$model" = sonnet ] && cost=0.25
 printf '%s\n' "$@" >>"$CLAUDE_ARGS"
-case " $* " in *" Read,Grep,Glob "*) cat >/dev/null; jq -n --rawfile r "$PI_REVIEW" --argjson c "$cost" '{type: "result", is_error: false, total_cost_usd: $c, result: $r}'; exit 0 ;; esac
+case " $* " in
+  *" --output-format text "*) printf '%s\n' "${@: -1}" >"$SCOUT_PROMPT"; printf '%s' "${SCOUT_ANSWER-default answer}"; exit 0 ;;
+  *" Read,Grep,Glob "*) cat >/dev/null; jq -n --rawfile r "$PI_REVIEW" --argjson c "$cost" '{type: "result", is_error: false, total_cost_usd: $c, result: $r}'; exit 0 ;;
+esac
 cat >"$PI_LAST_PROMPT"
 n=$(( $(cat "$PI_COUNT" 2>/dev/null || echo 0) + 1 )); echo "$n" >"$PI_COUNT"
 case $(sed -n "${n}p" "$PI_PLAN") in
@@ -134,7 +137,12 @@ cat >"$tmp/stub/pi" <<'EOF'
 model=""; prev=""
 sd=""
 for a in "$@"; do [ "$prev" = --model ] && model=$a; [ "$prev" = --session-dir ] && sd=$a; prev=$a; done
-case " $* " in *" --tools "*) echo "reviewed $model" >>"$PI_CALLS"; cat "$PI_REVIEW"; exit 0 ;; esac
+case " $* " in
+  *"Investigate this repository read-only"*)
+    echo "scout-pi $model" >>"$PI_CALLS"; printf '%s\n' "$@" >>"$SCOUT_ARGS"
+    printf '%s\n' "${@: -1}" >"$SCOUT_PROMPT"; printf '%s' "${SCOUT_ANSWER-default answer}"; exit 0 ;;
+  *" --tools "*) echo "reviewed $model" >>"$PI_CALLS"; cat "$PI_REVIEW"; exit 0 ;;
+esac
 echo "$model" >>"$PI_CALLS"
 case " $* " in *" -ne "*) ;; *) echo "extensions on" >>"$PI_CALLS" ;; esac
 printf '%s\n' "${@: -1}" >"$PI_LAST_PROMPT"
@@ -166,6 +174,7 @@ EOF
 chmod +x "$tmp/stub/curl" "$tmp/stub/pi"
 export TYPESAFE_API_KEY=stub JEV_REPLY=$tmp/jev.json PI_PLAN=$tmp/plan PI_ARGS=$tmp/pi.args PI_COUNT=$tmp/pi.count PI_CALLS=$tmp/pi.calls \
   PI_LAST_PROMPT=$tmp/pi.prompt PI_REVIEW=$tmp/review.txt MISTER_HANDY_JUDGE=/dev/null PI_CHILD=$tmp/pi.child \
+  SCOUT_PROMPT=$tmp/scout.prompt SCOUT_ARGS=$tmp/scout.args \
   MISTER_HANDY_SLOT_DIR=$tmp/slots MISTER_HANDY_SLOT_POLL=1 MISTER_HANDY_RATE_BACKOFF=0
 
 B=$tmp/brief.md
@@ -234,6 +243,35 @@ mkdir -p "$XDG_CONFIG_HOME/mister-handy" && printf '# mine\npi:openrouter/qwen/q
 expect "the ladder comes from ~/.config when set" "$(unset MISTER_HANDY_LADDER; . "$here/brief.sh"; ladder | tr '\n' ' ')" "pi:openrouter/qwen/qwen3-coder 2 pi:ollama/qwen3:8b 1 "
 expect "MISTER_HANDY_LADDER beats ~/.config"    "$(. "$here/brief.sh"; ladder | head -n 1)" "pi:nan/deepseek-v4-flash 2"
 rm -r "$XDG_CONFIG_HOME/mister-handy"
+
+Q=$tmp/question.md
+printf 'Where does the ladder live?\n' >"$Q"
+scout_pi() {
+  local out rc
+  out=$(SCOUT_ANSWER="${1-default answer}" bash "$here/scout.sh" "$tmp" "$Q" 2>&1)
+  rc=$?
+  printf 'out=%s rc=%s' "$(tr '\n' ' ' <<<"$out" | sed 's/ *$//')" "$rc"
+}
+scout_claude() {
+  local out rc
+  out=$(MISTER_HANDY_LADDER="claude:haiku 2" SCOUT_ANSWER="${1-default answer}" bash "$here/scout.sh" "$tmp" "$Q" 2>&1)
+  rc=$?
+  printf 'out=%s rc=%s' "$(tr '\n' ' ' <<<"$out" | sed 's/ *$//')" "$rc"
+}
+scout_rc() {
+  SCOUT_ANSWER= bash "$here/scout.sh" "$tmp" "$Q" >/dev/null 2>&1
+  echo "rc=$?"
+}
+: >"$SCOUT_ARGS"; : >"$CLAUDE_ARGS"; : >"$PI_CALLS"; : >"$SCOUT_PROMPT"
+expect "scout runs the pi rung read-only" \
+  "$(scout_pi '## What we already know') $(grep -cx -- '-ne' "$SCOUT_ARGS") $(grep -cx -- '--no-session' "$SCOUT_ARGS") $(grep -cx -- '--tools' "$SCOUT_ARGS") $(grep -cx 'read,grep,find,ls' "$SCOUT_ARGS") $(grep -cx 'nan/deepseek-v4-flash' "$SCOUT_ARGS") $(grep -c '^claude ' "$PI_CALLS")" \
+  "out=## What we already know rc=0 1 1 1 1 1 0"
+expect "scout asks only for the facts section" "$(grep -c 'Investigate this repository read-only' "$SCOUT_PROMPT") $(grep -c 'Where does the ladder live' "$SCOUT_PROMPT")" "1 1"
+: >"$SCOUT_ARGS"; : >"$CLAUDE_ARGS"; : >"$PI_CALLS"; : >"$SCOUT_PROMPT"
+expect "scout falls back to a claude rung without the advisor" \
+  "$(scout_claude '## What we already know') $(grep -cx -- '--settings' "$CLAUDE_ARGS") $(grep -cx '{"advisorModel":""}' "$CLAUDE_ARGS") $(grep -cx 'Read,Grep,Glob' "$CLAUDE_ARGS") $(grep -c '^scout-pi' "$PI_CALLS") $(grep -c '^claude haiku$' "$PI_CALLS")" \
+  "out=## What we already know rc=0 1 1 2 0 1"
+expect "scout fails on an empty answer" "$(scout_rc)" "rc=1"
 
 R=$tmp/repo
 FHQ=$tmp/fhq
