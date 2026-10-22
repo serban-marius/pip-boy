@@ -594,6 +594,7 @@ expect "savings --all: nothing found lines"     "$(emptyall | wc -l | tr -d ' ')
 expect "savings --all: nothing found TOTAL"     "$(emptyall | tail -n 1)" '- TOTAL - - - $0.00 $0.00 saving $0.00'
 expect "savings: --all with missing positional exits 2" "$(HOME=$ALLHOME MISTER_HANDY_WORKSPACES=$ALLWS bash "$here/savings.sh" --all "$tmp/nope" 2>/dev/null; echo $?)" "2"
 
+expect "the HQ note tells HQ to scout before a code brief" "$(MISTER_HANDY=hq CLAUDE_PROJECT_DIR=$tmp bash "$here/../../../hooks/role.sh" | grep -c 'run bin/scout.sh <repo dir> <question file> with the user.s request to draft its .What we already know. instead of reading the code yourself')" "1"
 expect "the HQ note tells HQ to route code tasks" "$(MISTER_HANDY=hq CLAUDE_PROJECT_DIR=$tmp bash "$here/../../../hooks/role.sh" | grep -c 'run bin/route.sh, and launch what it prints')" "1"
 
 [ "$fails" -eq 0 ] && echo "all green" || { echo "$fails failing"; exit 1; }
