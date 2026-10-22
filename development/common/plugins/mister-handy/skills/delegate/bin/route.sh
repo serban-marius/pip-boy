@@ -1,8 +1,10 @@
 #!/bin/bash
 # route.sh <brief>: which agent takes this brief. Prints <agent> <model> <confidence> <reason>.
-# Claude opus without asking Jev: no runnable Acceptance, Risk missing or high, a production write. Then
-# Jev; an error is claude sonnet, an answer under MISTER_HANDY_ROUTE_THRESHOLD (0.6) goes one tier up.
-# Key: TYPESAFE_API_KEY, else the keychain item "jev". Never printed.
+# Tiers: cheap = "foreman <ladder head>", mid = MISTER_HANDY_MID (claude sonnet), top = MISTER_HANDY_TOP (claude opus).
+# Top without asking: no runnable Acceptance, Risk missing or high, a production write. Then the router,
+# MISTER_HANDY_ROUTER=jev|rules (default jev when a key is found, else rules). rules: everything left is cheap.
+# jev: an error is mid, an answer under MISTER_HANDY_ROUTE_THRESHOLD (0.6) goes one tier up.
+# Jev key: TYPESAFE_API_KEY, else the macOS keychain item "jev". Never printed.
 
 here=$(cd "$(dirname "$0")" && pwd)
 . "$here/brief.sh"
@@ -13,9 +15,9 @@ threshold=${MISTER_HANDY_ROUTE_THRESHOLD:-0.6}
 pick() {
   case $1 in
     0) head=$(ladder | awk '{ print $1; exit }')
-      [ -n "$head" ] && echo "pi $head $2 $3" || echo "claude sonnet $2 empty-ladder" ;;
-    1) echo "claude sonnet $2 $3" ;;
-    *) echo "claude opus $2 $3" ;;
+      [ -n "$head" ] && echo "foreman $head $2 $3" || echo "${MISTER_HANDY_MID:-claude sonnet} $2 empty-ladder" ;;
+    1) echo "${MISTER_HANDY_MID:-claude sonnet} $2 $3" ;;
+    *) echo "${MISTER_HANDY_TOP:-claude opus} $2 $3" ;;
   esac
   exit 0
 }
@@ -29,7 +31,15 @@ case $(brief_risk "$brief") in
 esac
 [ -z "$(brief_prod "$brief")" ] || pick 2 1.00 production
 
-key=${TYPESAFE_API_KEY:-$(security find-generic-password -s jev -w 2>/dev/null)}
+router=${MISTER_HANDY_ROUTER:-}
+key=""
+[ "$router" = rules ] || key=${TYPESAFE_API_KEY:-$(security find-generic-password -s jev -w 2>/dev/null)}
+[ -n "$router" ] || router=$([ -n "$key" ] && echo jev || echo rules)
+case $router in
+  rules) pick 0 1.00 rules ;;
+  jev) ;;
+  *) echo "MISTER_HANDY_ROUTER must be jev or rules, not $router" >&2; exit 1 ;;
+esac
 [ -n "$key" ] || pick 1 0.00 jev-no-key
 
 body=$(jq -n --rawfile brief "$brief" '{
@@ -40,9 +50,9 @@ body=$(jq -n --rawfile brief "$brief" '{
     stakes: "design",
     instructions: "Pick the cheapest coding agent that will very likely complete this task correctly on its first attempt. The task is accepted only when every command in its Acceptance section exits 0.",
     criteria: {
-      "nan-flash": "A small open-source model running headless with read, bash, edit and write tools. Fits well-specified, local, mechanical changes: few files, the change spelled out, runnable acceptance commands, no design judgement, no cross-system reasoning, no production access.",
-      "claude-sonnet": "A strong general coding agent. Fits multi-file features and bug fixes with some ambiguity, unfamiliar code to understand first, or tests to design, where the design is mostly given.",
-      "claude-opus": "The strongest and most expensive agent. Fits open-ended design, subtle debugging, security- or money-sensitive work, large refactors, and briefs whose success depends on judgement."
+      "cheap": "A small, cheap model running headless with read, bash, edit and write tools, retried by a script on failure. Fits well-specified, local, mechanical changes: few files, the change spelled out, runnable acceptance commands, no design judgement, no cross-system reasoning, no production access.",
+      "mid": "A strong general coding agent. Fits multi-file features and bug fixes with some ambiguity, unfamiliar code to understand first, or tests to design, where the design is mostly given.",
+      "top": "The strongest and most expensive agent. Fits open-ended design, subtle debugging, security- or money-sensitive work, large refactors, and briefs whose success depends on judgement."
     }
   } }
 }')
@@ -57,9 +67,9 @@ rc=$?
 
 read -r choice conf < <(sed '$d' <<<"$reply" | jq -r '.answers.agent | "\(.choice) \(.confidence)"' 2>/dev/null)
 case $choice in
-  nan-flash) tier=0 ;;
-  claude-sonnet) tier=1 ;;
-  claude-opus) tier=2 ;;
+  cheap) tier=0 ;;
+  mid) tier=1 ;;
+  top) tier=2 ;;
   *) pick 1 0.00 jev-undecided ;;
 esac
 awk -v c="$conf" 'BEGIN { exit !(c + 0 == c && c >= 0 && c <= 1) }' || pick 1 0.00 jev-undecided

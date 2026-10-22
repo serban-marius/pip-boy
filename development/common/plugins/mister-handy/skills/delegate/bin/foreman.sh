@@ -1,18 +1,20 @@
 #!/bin/bash
 # foreman.sh <slug> <brief> <hq dir> [worktree, default .]
-# Runs a cheap pi worker on the brief, then its Acceptance commands from the worktree root. A failure
+# Runs a cheap worker on the brief, then its Acceptance commands from the worktree root. A failure
 # goes back to the worker with the output appended, climbing the ladder (MISTER_HANDY_LADDER, else
-# ../ladder: "<model> <tries>" per line). Reports to <hq>/STATUS.md itself: START, one MILESTONE per
+# ~/.config/mister-handy/ladder, else ../ladder: "<runner>:<model> <tries>" per line, runner pi or claude,
+# a bare "<provider>/<model>" is pi). Reports to <hq>/STATUS.md itself: START, one MILESTONE per
 # attempt (and a heartbeat every 10 min), then DONE <PR url|sha>, ESCALATE <why> (HQ relaunches on
 # Claude) or FAILED <why> (the brief or the worktree is not fit to start). Logs in <hq>/logs/<slug>/.
 # Starts only on a clean feature branch. The worker cannot push or use gh; the foreman pushes and
 # opens a PR only when the brief has "PR: ready|draft <base>". "Scope: <globs>" limits what it may
-# change. MISTER_HANDY_REVIEW=<model> adds one read-only reviewer pass; REVISE gets one more round.
-# MISTER_HANDY_ADVISOR=<claude model> gives the worker an `advisor` tool (bin/advisor.ts) that sends its
+# change. MISTER_HANDY_REVIEW=<rung> adds one read-only reviewer pass; REVISE gets one more round.
+# MISTER_HANDY_ADVISOR=<claude model> gives a pi worker an `advisor` tool (bin/advisor.ts) that sends its
 # conversation to that model; up to MISTER_HANDY_ADVISOR_MAX (4) calls, each logged to <hq>/logs/<slug>/advisor.log.
-# At most MISTER_HANDY_NAN_SLOTS (3) pi runs at once per user, machine-wide; a run cut off by a rate
-# limit (429) is retried after a backoff without using up a ladder try. A failed attempt whose pi session
-# ended on the output cap (stopReason length) skips that model's remaining tries.
+# At most MISTER_HANDY_SLOTS (3) runs at once per user and provider (pi:<provider>, claude), machine-wide;
+# MISTER_HANDY_NAN_SLOTS caps pi:nan. A run cut off by a rate limit (429) is retried after a backoff without
+# using up a ladder try. A failed attempt that ended on the output cap (pi stopReason length, claude max
+# turns or max tokens) skips that model's remaining tries.
 
 here=$(cd "$(dirname "$0")" && pwd)
 . "$here/brief.sh"
@@ -25,8 +27,8 @@ logs=$hq/logs/$slug
 pi_timeout=${MISTER_HANDY_PI_TIMEOUT:-1800}
 check_timeout=${MISTER_HANDY_CHECK_TIMEOUT:-600}
 pi_flags="-ne ${MISTER_HANDY_PI_FLAGS:-}"
-slots=${MISTER_HANDY_NAN_SLOTS:-3}
-slot_dir=${MISTER_HANDY_SLOT_DIR:-$HOME/.cache/mister-handy/nan-slots}
+conf_dir=${XDG_CONFIG_HOME:-$HOME/.config}/mister-handy
+slot_root=${MISTER_HANDY_SLOT_DIR:-$HOME/.cache/mister-handy/slots}
 slot=""
 rate_limited='(^|[^0-9])429([^0-9]|$)|rate[ _-]?limit|too many requests|max_parallel|concurrent requests'
 
@@ -48,7 +50,9 @@ end() { say "$1 $2"; card "$1 $2"; exit "$3"; }
 beat() { (while sleep "${MISTER_HANDY_HEARTBEAT:-600}"; do say "MILESTONE still working: $1"; done) 2>/dev/null & hb=$!; }
 unbeat() { [ -z "${hb:-}" ] || { pkill -P "$hb" 2>/dev/null; kill "$hb" 2>/dev/null; hb=""; }; }
 acquire() {
-  local i pid waiting=""
+  local i pid waiting="" slots=${MISTER_HANDY_SLOTS:-3}
+  local slot_dir=$slot_root/$(printf %s "$1" | tr -c 'A-Za-z0-9._-' -)
+  [ "$1" != pi:nan ] || slots=${MISTER_HANDY_NAN_SLOTS:-$slots}
   mkdir -p "$slot_dir"
   while :; do
     i=1
@@ -61,7 +65,7 @@ acquire() {
       fi
       i=$((i + 1))
     done
-    [ -n "$waiting" ] || say "MILESTONE waiting for a NAN slot ($slots busy in $slot_dir)"
+    [ -n "$waiting" ] || say "MILESTONE waiting for a $1 slot ($slots busy in $slot_dir)"
     waiting=1
     sleep "${MISTER_HANDY_SLOT_POLL:-5}"
   done
@@ -83,7 +87,6 @@ case $branch in
   "" | main | master | "${pr#* }") end FAILED "not on a feature branch (${branch:-detached HEAD}); start from a fresh branch" 2 ;;
 esac
 [ -z "$(git status --porcelain)" ] || end FAILED "worktree not clean; the foreman commits only the worker's changes" 2
-command -v pi >/dev/null || end ESCALATE "pi not installed" 3
 
 models=()
 while read -r m n; do
@@ -91,6 +94,14 @@ while read -r m n; do
 done < <(ladder)
 total=${#models[@]}
 [ "$total" -gt 0 ] || end FAILED "empty ladder" 2
+review_rung=""
+[ -z "${MISTER_HANDY_REVIEW:-}" ] || review_rung=$(MISTER_HANDY_LADDER=$MISTER_HANDY_REVIEW ladder | awk '{ print $1; exit }')
+for m in "${models[@]}" $review_rung; do
+  case ${m%%:*} in
+    pi | claude) command -v "${m%%:*}" >/dev/null || end ESCALATE "${m%%:*} not installed (ladder rung $m)" 3 ;;
+    *) end FAILED "unknown runner in rung $m; use pi:<provider>/<model> or claude:<model>" 2 ;;
+  esac
+done
 
 title=$(brief_title "$brief")
 title=${title:-$slug}
@@ -156,16 +167,53 @@ adv_note() {
   [ "$adv_seen" -eq 0 ] || printf ', advisor %s calls $%.2f' "$adv_seen" "$adv_total"
 }
 
-pi_run() {
-  local rc
-  acquire
-  env -u GH_TOKEN -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN -u TYPESAFE_API_KEY PATH="$logs/bin:$PATH" \
+sandboxed() {
+  env -u GH_TOKEN -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN -u TYPESAFE_API_KEY -u CLAUDECODE PATH="$logs/bin:$PATH" \
     GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=remote.origin.pushurl GIT_CONFIG_VALUE_0=/dev/null \
     GIT_CONFIG_KEY_1=credential.helper GIT_CONFIG_VALUE_1= GIT_TERMINAL_PROMPT=0 \
     MISTER_HANDY_ADVISOR_LOG="$logs/advisor.log" \
-    perl -e "$limit_pl" "$pi_timeout" pi -p $pi_flags "$@" </dev/null
-  rc=$?
-  release
+    perl -e "$limit_pl" "$pi_timeout" "$@"
+}
+
+run_worker() {
+  local runner=$1 model=$2 pf=$3 ro=${4:-} rc args=() tools=Read,Edit,Write,Bash,Grep,Glob session key
+  stop=""
+  case $runner in
+    pi)
+      if [ -n "$ro" ]; then
+        args=(--no-session --tools read,grep,find,ls)
+        [ ! -s "$logs/judge.md" ] || args+=(--append-system-prompt "$logs/judge.md")
+      else
+        args=(--session-dir "$logs/sessions")
+        [ -z "${MISTER_HANDY_ADVISOR:-}" ] || args+=(-e "$here/advisor.ts")
+        ls "$logs/sessions" >"$logs/sessions.before" 2>/dev/null
+      fi
+      key=pi
+      case $model in */*) key=pi:${model%%/*} ;; esac
+      acquire "$key"
+      sandboxed pi -p $pi_flags "${args[@]}" --model "$model" "$(cat "$pf")" </dev/null
+      rc=$?
+      release
+      clean_strays
+      [ -z "$ro" ] || return "$rc"
+      session=$(ls "$logs/sessions" 2>/dev/null | grep '\.jsonl$' | tail -n 1)
+      [ -z "$session" ] || grep -qxF "$session" "$logs/sessions.before" ||
+        stop=$(grep -o '"stopReason":"[A-Za-z]*"' "$logs/sessions/$session" | tail -n 1 | cut -d'"' -f4)
+      ;;
+    claude)
+      [ -z "$ro" ] || tools=Read,Grep,Glob
+      [ -z "$ro" ] || [ ! -s "$logs/judge.md" ] || args=(--append-system-prompt-file "$logs/judge.md")
+      acquire claude
+      sandboxed claude -p --model "$model" --output-format json --no-session-persistence --strict-mcp-config \
+        --tools "$tools" --allowedTools "$tools" --permission-mode dontAsk \
+        --max-turns "${MISTER_HANDY_CLAUDE_MAX_TURNS:-100}" "${args[@]}" <"$pf" >"$logs/claude.out"
+      rc=$?
+      release
+      cat "$logs/claude.out"
+      [ -n "$ro" ] || stop=$(jq -r 'if .stop_reason == "max_tokens" or .subtype == "error_max_turns" then "length" else .subtype // empty end' "$logs/claude.out" 2>/dev/null)
+      [ "$rc" -ne 0 ] || ! jq -e '.is_error == true' "$logs/claude.out" >/dev/null 2>&1 || rc=1
+      ;;
+  esac
   return "$rc"
 }
 
@@ -177,33 +225,27 @@ work() {
     echo "Do not push, open pull requests, switch branches, rewrite history, write to any STATUS.md or _hq folder, or touch files outside this worktree. You need not commit."
     echo
     brief_without "$brief" Reporting | grep -v '^PR:'
-    [ -z "${MISTER_HANDY_ADVISOR:-}" ] || printf '\n%s\n' "$advisor_rules"
+    [ -z "${MISTER_HANDY_ADVISOR:-}" ] || [ "${2%%:*}" != pi ] || printf '\n%s\n' "$advisor_rules"
     [ -z "$3" ] || printf '\n%s\n' "$3"
   } >"$pf"
   beat "attempt $attempt/$total $2"
-  local retry=0 pause note="" session
-  ls "$logs/sessions" >"$logs/sessions.before" 2>/dev/null
+  local retry=0 pause run=$pf
+  runner=${2%%:*}
   while :; do
-    pi_run --session-dir "$logs/sessions" --model "$2" ${MISTER_HANDY_ADVISOR:+-e "$here/advisor.ts"} "$(cat "$pf")$note" >"$logs/$1.pi.log" 2>&1
-    pi_rc=$?
-    [ "$pi_rc" -ne 0 ] && [ "$retry" -lt "${MISTER_HANDY_RATE_RETRIES:-5}" ] &&
-      tail -n 5 "$logs/$1.pi.log" | grep -qiE "$rate_limited" || break
+    run_worker "$runner" "${2#*:}" "$run" >"$logs/$1.$runner.log" 2>&1
+    worker_rc=$?
+    [ "$worker_rc" -ne 0 ] && [ "$retry" -lt "${MISTER_HANDY_RATE_RETRIES:-5}" ] &&
+      tail -n 5 "$logs/$1.$runner.log" | grep -qiE "$rate_limited" || break
     retry=$((retry + 1))
     pause=$(( ${MISTER_HANDY_RATE_BACKOFF:-60} << (retry - 1) ))
     [ "$pause" -le 600 ] || pause=600
-    mv "$logs/$1.pi.log" "$logs/$1.pi.rate-limited-$retry.log"
+    mv "$logs/$1.$runner.log" "$logs/$1.$runner.rate-limited-$retry.log"
     say "MILESTONE attempt $attempt/$total $2 rate-limited, retry $retry in ${pause}s (does not use a ladder try)"
     sleep "$pause"
-    note="
-
-A previous run of this attempt was cut off by a rate limit; your changes so far are in the tree. Carry on."
+    run=$logs/$1.retry.prompt.md
+    { cat "$pf"; printf '\n\nA previous run of this attempt was cut off by a rate limit; your changes so far are in the tree. Carry on.\n'; } >"$run"
   done
   unbeat
-  stop=""
-  session=$(ls "$logs/sessions" 2>/dev/null | grep '\.jsonl$' | tail -n 1)
-  [ -z "$session" ] || grep -qxF "$session" "$logs/sessions.before" ||
-    stop=$(grep -o '"stopReason":"[A-Za-z]*"' "$logs/sessions/$session" | tail -n 1 | cut -d'"' -f4)
-  clean_strays
   adv_sync
   [ "$(git branch --show-current)" = "$branch" ] && git merge-base --is-ancestor "$base" HEAD ||
     end ESCALATE "the worker left branch $branch or rewrote its history; check $PWD by hand" 3
@@ -257,18 +299,14 @@ commit() {
 }
 
 review() {
-  local judge=${MISTER_HANDY_JUDGE:-$HOME/.pi/agent/agents/jd-judge-a.md}
+  local judge=${MISTER_HANDY_JUDGE:-$conf_dir/judge.md}
   awk 'NR == 1 && /^---$/ { fm = 1; next } fm && /^---$/ { fm = 0; next } fm { next } /^## Review ledger/ { exit } { print }' \
     "$judge" >"$logs/judge.md" 2>/dev/null
-  pi_run --no-session --tools read,grep,find,ls --model "$MISTER_HANDY_REVIEW" \
-    --append-system-prompt "$logs/judge.md" \
-    "Review this change in $PWD against the brief below. Ignore any output format in your system prompt. End with one line that is exactly PASS, or REVISE followed by numbered items, one per line, each a concrete fix.
-
-$(brief_without "$brief" Reporting | grep -v '^PR:')
-
-## The change (git diff $base...HEAD)
-$(git diff "$base"...HEAD | head -c 200000)" >"$logs/review.log" 2>&1
-  clean_strays
+  printf '%s\n\n%s\n\n## The change (git diff %s...HEAD)\n%s\n' \
+    "Review this change in $PWD against the brief below. Ignore any output format in your system prompt. End with one line that is exactly PASS, or REVISE followed by numbered items, one per line, each a concrete fix." \
+    "$(brief_without "$brief" Reporting | grep -v '^PR:')" "$base" "$(git diff "$base"...HEAD | head -c 200000)" >"$logs/review.prompt.md"
+  run_worker "${review_rung%%:*}" "${review_rung#*:}" "$logs/review.prompt.md" read-only >"$logs/review.log" 2>&1
+  [ "${review_rung%%:*}" != claude ] || jq -r '.result // empty' "$logs/claude.out" >"$logs/review.log" 2>/dev/null
   awk '{ l = $0; gsub(/^[*`[:space:]]+|[*`[:space:]]+$/, "", l) }
     l == "PASS" { v = "PASS"; on = 0; items = ""; next }
     l ~ /^REVISE([[:space:]:]|$)/ { v = l; on = 1; items = ""; next }
@@ -300,9 +338,9 @@ $failure
 Fix what made it fail."
   work "attempt-$attempt" "$model" "$extra"
   secs=$((SECONDS - started))
-  timed=$([ "$pi_rc" -eq 142 ] && echo ", pi timed out")
+  timed=$([ "$worker_rc" -eq 142 ] && echo ", $runner timed out")
   if check "attempt-$attempt"; then
-    printf '\n## Attempt %s/%s %s: PASS (%ss, pi exit %s%s)\n' "$attempt" "$total" "$model" "$secs" "$pi_rc" "${stop:+, stop $stop}" >>"$summary"
+    printf '\n## Attempt %s/%s %s: PASS (%ss, %s exit %s%s)\n' "$attempt" "$total" "$model" "$secs" "$runner" "$worker_rc" "${stop:+, stop $stop}" >>"$summary"
     say "MILESTONE attempt $attempt/$total $model PASS (${secs}s$timed)"
     commit || end FAILED "acceptance passed but the commit failed, see $logs/commit.log" 2
     passed=1
@@ -314,8 +352,8 @@ Fix what made it fail."
   esac
   [ "$failed_rc" -ne 142 ] || timed="$timed, acceptance timed out"
   [ "$stop" != length ] || { capped=$model; timed="$timed, output cap: no more $model tries"; }
-  printf '\n## Attempt %s/%s %s: FAIL (%ss, pi exit %s%s)\n`%s` exited %s:\n```\n%s\n```\n' \
-    "$attempt" "$total" "$model" "$secs" "$pi_rc" "${stop:+, stop $stop}" "$failed_cmd" "$failed_rc" "$(tail -n 40 <<<"$failure" | redact)" >>"$summary"
+  printf '\n## Attempt %s/%s %s: FAIL (%ss, %s exit %s%s)\n`%s` exited %s:\n```\n%s\n```\n' \
+    "$attempt" "$total" "$model" "$secs" "$runner" "$worker_rc" "${stop:+, stop $stop}" "$failed_cmd" "$failed_rc" "$(tail -n 40 <<<"$failure" | redact)" >>"$summary"
   say "MILESTONE attempt $attempt/$total $model FAIL '$(oneline 60 <<<"$failed_cmd")' exit $failed_rc (${secs}s$timed), log $logs/attempt-$attempt.accept.log"
 done
 [ -n "$passed" ] || {

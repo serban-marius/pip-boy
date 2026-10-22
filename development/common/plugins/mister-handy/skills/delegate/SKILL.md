@@ -1,6 +1,6 @@
 ---
 name: delegate
-description: "Keep this session as HQ: send substantive work (investigations, fixes, features, PRs, reviews) out as written briefs, one agent each, to Orca worktrees when running in Orca or to background Claude Code subagents in their own git worktrees otherwise, instead of doing it here; briefs with runnable Acceptance commands are routed by Jev and, when a cheap model fits, implemented by `pi` on NAN models under a deterministic foreman that retries, climbs a model ladder and escalates to Claude; HQ then watches them in the background and acts when they finish, fail, ask or go quiet (review, merge on standing orders, launch chained tasks, close worktrees); workers report through a STATUS file (and their Orca card), never by messaging this session; then answer 'how is it going', pass follow-ups and approvals to a worker, and clean up finished worktrees, all without pulling transcripts back into this context. Use when the user says 'open/spool/boot/spin up an orca worktree for this', 'launch some orca worktrees', 'lanza un orca worktree', 'lánzate unos worktrees y a currar', 'monta unos worktrees', 'hazlo en otro worktree', 'give the task to the X orca session', 'mándaselo a la sesión del worktree', 'quédate vigilándolos', 'ves chapando worktrees si han terminado', 'do a cleanup of worktrees', 'close the worktree if we're done', 'bring the summary here', 'keep this session clean', 'hazlo con un modelo barato', 'hazlo con pi', 'hazlo con Claude', or '/delegate'. Also the DEFAULT for any substantive task, worded or not, whenever the mister-handy SessionStart note says this session is HQ."
+description: "Keep this session as HQ: send substantive work (investigations, fixes, features, PRs, reviews) out as written briefs, one agent each, to Orca worktrees when running in Orca or to background Claude Code subagents in their own git worktrees otherwise, instead of doing it here; briefs with runnable Acceptance commands are routed (by rules, or by Jev when a key is set) and, when a cheap model fits, implemented by a cheap worker (`claude -p` on haiku with only a Claude subscription, or `pi` on any provider such as NAN, OpenRouter or Ollama) under a deterministic foreman that retries, climbs a model ladder and escalates to Claude; HQ then watches them in the background and acts when they finish, fail, ask or go quiet (review, merge on standing orders, launch chained tasks, close worktrees); workers report through a STATUS file (and their Orca card), never by messaging this session; then answer 'how is it going', pass follow-ups and approvals to a worker, and clean up finished worktrees, all without pulling transcripts back into this context. Use when the user says 'open/spool/boot/spin up an orca worktree for this', 'launch some orca worktrees', 'lanza un orca worktree', 'lánzate unos worktrees y a currar', 'monta unos worktrees', 'hazlo en otro worktree', 'give the task to the X orca session', 'mándaselo a la sesión del worktree', 'quédate vigilándolos', 'ves chapando worktrees si han terminado', 'do a cleanup of worktrees', 'close the worktree if we're done', 'bring the summary here', 'keep this session clean', 'hazlo con un modelo barato', 'hazlo con pi', 'hazlo con Claude', or '/delegate'. Also the DEFAULT for any substantive task, worded or not, whenever the mister-handy SessionStart note says this session is HQ."
 ---
 
 # Delegate to worktrees, keep HQ clean
@@ -143,8 +143,8 @@ Create `_hq/` on first use, with `STATUS.md` starting `# append-only: HH:MM <slu
    paths under `/var/folders/.../orca-drop-*` are temporary. Copy every file the task needs
    into `_hq/assets/<slug>/` and, for pasted images, describe in the brief what they show.
 5. **Route, then launch.** Run `bash <skill dir>/bin/route.sh <brief>` first ("Cheap workers"
-   below): `pi <model> ...` → launch the foreman there instead of the rest of this step;
-   `claude <sonnet|opus> ...` → go on here with `--model <sonnet|opus>`. Launch the agent in a terminal, never with `--agent`: that follows the user's Chat UI
+   below): `foreman <rung> ...` → launch the foreman there instead of the rest of this step;
+   `claude <model> ...` → go on here with `--model <model>`. Launch the agent in a terminal, never with `--agent`: that follows the user's Chat UI
    setting and may start a chat session, which has no terminal handle, so HQ could never send
    it a follow-up, an approval or a hand-off (Mode 4).
 
@@ -190,45 +190,70 @@ this, read `orca skills get orca-cli --reference references/placement-and-remote
 
 ## Cheap workers
 
-Claude decides what to do and how; the implementation goes to a much cheaper open-source model
-when the brief can prove its own result. Three pieces, none of them spends Claude tokens:
+Claude decides what to do and how; the implementation goes to a cheaper model when the brief can
+prove its own result. Three pieces, all plain scripts:
 
-- **Router** `bin/route.sh <brief>` asks Jev (`api.typesafe.ai`, key in `TYPESAFE_API_KEY` or
-  the keychain item `jev`) which tier fits and prints one line `<agent> <model> <confidence> <reason>`.
-- **Worker** `pi` on a NAN model (`nan/*`), headless, in its own worktree, with the same brief.
-- **Foreman** `bin/foreman.sh`, a plain script: runs the worker, then the brief's Acceptance
-  commands; on failure gives the worker the output and retries, climbing the ladder; writes the
-  STATUS lines itself, so the protocol does not depend on the small model's discipline.
+- **Router** `bin/route.sh <brief>` picks one of three tiers and prints one line
+  `<agent> <model> <confidence> <reason>`: `cheap` = `foreman <ladder head>`, `mid` =
+  `MISTER_HANDY_MID` (default `claude sonnet`), `top` = `MISTER_HANDY_TOP` (default `claude opus`).
+- **Worker** a headless agent in its own worktree with the same brief, one rung of the ladder at a
+  time: `claude:<model>` (`claude -p`) or `pi:<provider>/<model>` (any provider pi knows,
+  `pi --list-models`).
+- **Foreman** `bin/foreman.sh`: runs the worker, then the brief's Acceptance commands; on failure
+  gives the worker the output and retries, climbing the ladder; writes the STATUS lines itself, so
+  the protocol does not depend on the small model's discipline.
+
+**Setup.** A Claude subscription is enough; pi and Jev are optional additions.
+
+| Profile | Needs | Ladder | Router |
+|---------|-------|--------|--------|
+| Claude subscription only (default) | `claude` logged in, `jq` | `claude:haiku 2`, `claude:sonnet 1` (the plugin's `ladder` file) | `rules` |
+| + any pi provider | `pi`, with the provider's credentials in pi's own config | NAN `pi:nan/deepseek-v4-flash 2`, `pi:nan/glm5.3-flash 1`; OpenRouter `pi:openrouter/<vendor>/<model>`; a local Ollama provider `pi:ollama/<model>`; `claude:sonnet 1` as a last rung mixes in fine | `rules`, or Jev |
+| + Jev router | a Typesafe key in `TYPESAFE_API_KEY`, or on macOS the keychain item `jev` | any | `jev`, chosen automatically once a key is found |
+
+The ladder is `<runner>:<model> <tries>` per line (`#` comments), first hit wins:
+`MISTER_HANDY_LADDER` (comma-separated, `"pi:nan/deepseek-v4-flash 2,claude:sonnet 1"`), then
+`${XDG_CONFIG_HOME:-~/.config}/mister-handy/ladder`, then the plugin's `ladder` file. Keep your own
+ladder in `~/.config` so plugin updates leave it alone. A bare `nan/x` line (the old format) is
+`pi:nan/x`; an unknown runner is `FAILED` before any worker runs. `MISTER_HANDY_ROUTER=rules|jev`
+forces a router.
+
+Measured on NAN (`bench/RESULTS.md`, ladder `pi:nan/deepseek-v4-flash 2`, `pi:nan/glm5.3-flash 1`):
+deepseek first passed 12/12 runs on the first attempt, glm first 11/12 and about 3× slower; glm once
+reached DONE on a passing Acceptance while the hidden tests were red (Claude and deepseek under the
+foreman never did); a model retried after hitting its output cap hit it again 11 times out of 13.
+`bench/ladders/haiku` runs the subscription-only ladder as the `pipeline-haiku` arm.
 
 **The brief** needs a `Risk:` line and an `## Acceptance` section: one command per line, run from
 the worktree root, every one exits 0 = accepted. Write commands a stranger could run: tests that
 exist, or a test file the brief spells out. The worker sees them; weak checks let weak work through.
 The Acceptance block must hold the real tests for the change, the ones a reviewer would run, not a
 smoke check (`bash -n`, `--help`, one happy-path call): the foreman's DONE means only that these
-commands passed. In the benchmark (`bench/RESULTS.md`), glm5.3-flash reached DONE on a passing
-Acceptance while the hidden tests were red; Claude and deepseek under the foreman never did.
-`PR: ready <base>` (or `draft`) makes the foreman push and open the PR after a pass; without it
-the work stays as a local commit. `Scope: <globs>` (space-separated, e.g. `src/calc/* tests/test_calc.py`)
-fails any attempt that changes a file outside them. Acceptance lines that are prose or not valid
-shell are refused before any worker runs. Say `Prod: yes` for real production writes (deploys,
-prod DBs or infra, live customer data) and `Prod: no` otherwise; editing a repo's production
-source is ordinary work. Without the line the router falls back to a narrow phrase match, so the
-explicit line, and `Risk: high` for anything touching shared or live systems, are the real gates.
+commands passed. `PR: ready <base>` (or `draft`) makes the foreman push and open the PR after a
+pass; without it the work stays as a local commit. `Scope: <globs>` (space-separated, e.g.
+`src/calc/* tests/test_calc.py`) fails any attempt that changes a file outside them. Acceptance
+lines that are prose or not valid shell are refused before any worker runs. Say `Prod: yes` for
+real production writes (deploys, prod DBs or infra, live customer data) and `Prod: no` otherwise;
+editing a repo's production source is ordinary work. Without the line the router falls back to a
+narrow phrase match, so the explicit line, and `Risk: high` for anything touching shared or live
+systems, are the real gates.
 
-**Routing** (`route.sh`):
+**Routing** (`route.sh`). The hard gates come first, whatever the router:
 
 | Brief | Output |
 |-------|--------|
 | No Acceptance commands, or a line that is not a runnable command | `claude opus 1.00 no-acceptance` / `acceptance-not-runnable` |
 | `Risk: high`, or no `Risk:` line | `claude opus 1.00 risk-high` / `no-risk` |
 | `Prod: yes`; without a `Prod:` line, a phrase like "deploy to prod", "run … on production", "prod db/infra/cluster", "live customer data" with no negation | `claude opus 1.00 production` |
-| Jev missing key, timeout, HTTP error, unknown answer; an empty ladder | `claude sonnet 0.00 jev-<why>` / `empty-ladder` |
-| Jev answer under `MISTER_HANDY_ROUTE_THRESHOLD` (0.6) | one tier up: `claude sonnet 0.41 low-confidence:nan-flash` |
-| Jev `nan-flash` / `claude-sonnet` / `claude-opus` | `pi <ladder head> 0.83 jev` / `claude sonnet ...` / `claude opus ...` |
+| `rules` router, anything left (`Risk: low` or `normal` with Acceptance) | `foreman claude:haiku 1.00 rules` |
+| `jev`: missing key, timeout, HTTP error, unknown answer; an empty ladder | `claude sonnet 0.00 jev-<why>` / `empty-ladder` |
+| `jev` answer under `MISTER_HANDY_ROUTE_THRESHOLD` (0.6) | one tier up: `claude sonnet 0.41 low-confidence:cheap` |
+| `jev` answer `cheap` / `mid` / `top` | `foreman <ladder head> 0.83 jev` / `claude sonnet ...` / `claude opus ...` |
 
+(`claude opus` / `claude sonnet` stand for `MISTER_HANDY_TOP` / `MISTER_HANDY_MID`.)
 Skip routing and launch Claude when the user names the agent or model ("hazlo con Claude", "con
-opus"; "con pi" forces the foreman), and for investigations, reviews and UI tasks that need a
-preview: they end in judgement, not in a command that exits 0.
+opus"; "con pi" or "con un modelo barato" forces the foreman), and for investigations, reviews and
+UI tasks that need a preview: they end in judgement, not in a command that exits 0.
 
 **Launching the foreman.** Orca: create the worktree as in Mode 1 step 5, then run the foreman
 itself as the terminal command, so the card shows it; no `wait` or `send`:
@@ -244,29 +269,31 @@ Record `foreman <ladder head>` as the agent in `SESSIONS.md`. The foreman starts
 feature branch (not `main`, `master` or the `PR:` base); anything else is `FAILED`.
 
 For `Risk: normal` briefs, add the cheap reviewer: prefix the command with
-`MISTER_HANDY_REVIEW=nan/glm5.3-flash` (a model other than the ladder head), so a second model
-reads the diff against the brief before DONE. `Risk: low` briefs can skip it.
+`MISTER_HANDY_REVIEW=<rung>` (a model other than the ladder head, e.g. `claude:sonnet` or
+`pi:nan/glm5.3-flash`), so a second model reads the diff against the brief before DONE.
+`Risk: low` briefs can skip it.
 
-**What the foreman does**, per attempt of the ladder (`MISTER_HANDY_LADDER="nan/deepseek-v4-flash 2,nan/glm5.3-flash 1"`,
-else the `ladder` file next to this skill, `<model> <tries>` per line; deepseek first passed 12/12
-benchmark runs on the first attempt, glm first 11/12 and about 3× slower):
+**What the foreman does**, per attempt of the ladder:
 
-1. `pi -p -ne --model <model>` with the brief minus its Reporting section and `PR:` line; from
-   the second attempt on, with the failed command and its output appended. The tree keeps the
-   previous attempt's changes. The worker cannot push (`remote.origin.pushurl=/dev/null`, no
-   credential helper) or use `gh` (a failing shim, tokens unset); a worker that switches branch
-   or rewrites history is `ESCALATE`. A timeout kills its whole process group. Every 10 min of an
+1. Runs the rung's worker with the brief minus its Reporting section and `PR:` line; from the
+   second attempt on, with the failed command and its output appended. The tree keeps the previous
+   attempt's changes. `pi:` runs `pi -p -ne --model <provider>/<model>`; `claude:` runs
+   `claude -p --model <model>` with only the Read, Edit, Write, Bash, Grep and Glob tools, no MCP
+   servers, `--no-session-persistence` and `--max-turns` `MISTER_HANDY_CLAUDE_MAX_TURNS` (100).
+   Either way the worker cannot push (`remote.origin.pushurl=/dev/null`, no credential helper) or
+   use `gh` (a failing shim, GH and Typesafe tokens unset); a worker that switches branch or
+   rewrites history is `ESCALATE`. A timeout kills its whole process group. Every 10 min of an
    attempt the foreman writes `MILESTONE still working: ...`, so `QUIET` stays for real stalls.
 2. pi always runs with `-ne` (`MISTER_HANDY_PI_FLAGS` only adds flags). If `.atl/` or the
    `# Local Pi runtime state` / `.atl/` lines that pi extensions write into `.gitignore` still
    appear, they are removed (`.gitignore` restored byte for byte when that was all that changed).
 3. Checks `Scope:`, then runs the Acceptance commands, stops at the first failure; one
-   `MILESTONE attempt n/N <model> PASS|FAIL '<command>' exit <rc> (<s>s[, pi timed out])` line,
+   `MILESTONE attempt n/N <rung> PASS|FAIL '<command>' exit <rc> (<s>s[, <runner> timed out])` line,
    never the command's output (that stays in the logs, and redacted in `summary.md`). Logs
-   (prompt, pi output, pi sessions, acceptance output, `summary.md`) go to `<hq>/logs/<slug>/`,
-   outside the repo. A failed attempt whose pi session ended on the model's output cap (stopReason
-   `length`) skips that model's remaining tries (`, output cap: no more <model> tries`): retrying the same model
-   hit the cap again 11 times out of 13 in the benchmark.
+   (prompt, worker output, pi sessions, acceptance output, `summary.md`) go to `<hq>/logs/<slug>/`,
+   outside the repo. A failed attempt that ended on the model's output cap (pi stopReason `length`,
+   claude `error_max_turns` or `max_tokens`) skips that rung's remaining tries
+   (`, output cap: no more <rung> tries`).
 4. Pass → scans the added lines for secrets (private keys, `sk-`, `AKIA`, `gh*_` tokens,
    `api_key|token|secret|password = <long value>`, `.env*` files): a hit is `ESCALATE` with the
    file names, nothing committed. Otherwise commits what the worker changed (not build or acceptance
@@ -278,39 +305,44 @@ benchmark runs on the first attempt, glm first 11/12 and about 3× slower):
    and at once, without climbing the ladder, when an Acceptance command exits 126/127 because the
    command itself (`./run.sh`, `bash run.sh`, a bare name) is missing or not executable.
 
-`MISTER_HANDY_REVIEW=<nan model>` adds one read-only reviewer pass after a pass (pi with read
-tools only, `jd-judge-a` prompt, the diff against the brief): REVISE items get one more worker
-round, kept only if the acceptance still passes (otherwise rolled back, with the round's new files
-removed). A reviewer with no clear verdict is noted as `review inconclusive`, never as PASS. Timeouts: `MISTER_HANDY_PI_TIMEOUT` (1800 s per
-attempt), `MISTER_HANDY_CHECK_TIMEOUT` (600 s per command).
+`MISTER_HANDY_REVIEW=<rung>` adds one read-only reviewer pass after a pass (pi with read, grep, find
+and ls; claude with Read, Grep and Glob; the diff against the brief, with the system prompt from
+`MISTER_HANDY_JUDGE` or `~/.config/mister-handy/judge.md` when one exists): REVISE items get one
+more worker round, kept only if the acceptance still passes (otherwise rolled back, with the round's
+new files removed). A reviewer with no clear verdict is noted as `review inconclusive`, never as
+PASS. Timeouts: `MISTER_HANDY_PI_TIMEOUT` (1800 s per attempt, either runner),
+`MISTER_HANDY_CHECK_TIMEOUT` (600 s per command).
 
-`MISTER_HANDY_ADVISOR=<claude model>` gives the cheap worker an `advisor` tool (`bin/advisor.ts`, a
+`MISTER_HANDY_ADVISOR=<claude model>` gives a `pi:` worker an `advisor` tool (`bin/advisor.ts`, a
 pi extension), the same idea as Claude Code's own advisor: no parameters, and calling it sends the
 worker's whole conversation to that model, which returns advice. The foreman tells the worker to call
 it before substantive work, when stuck, and when it thinks it is done, to weigh the advice, and to call
 again to reconcile instead of silently switching. This is how Claude stays in the decide/advise role
-while NAN implements: Claude tokens are spent only on advice, never on code. `MISTER_HANDY_ADVISOR_MAX`
-(4) caps the calls per pi run; past it the tool answers "advisor budget used up". Each call becomes
-`MILESTONE advisor call n/max ($cost)` and DONE/ESCALATE end with `advisor <calls> calls $<total>`
-(log in `<hq>/logs/<slug>/advisor.log`). Recommend `MISTER_HANDY_ADVISOR=opus` for `Risk: normal`
-briefs (`sonnet` when quota is tight). The advisor has no tools and runs without the GH and Typesafe
-tokens. A failed or timed-out (5 min) advisor call is a tool error the worker reads, never a hang.
+while a cheap provider implements: Claude tokens are spent only on advice, never on code.
+`claude:` workers never get it. `MISTER_HANDY_ADVISOR_MAX` (4) caps the calls per pi run; past it the
+tool answers "advisor budget used up". Each call becomes `MILESTONE advisor call n/max ($cost)` and
+DONE/ESCALATE end with `advisor <calls> calls $<total>` (log in `<hq>/logs/<slug>/advisor.log`).
+Recommend `MISTER_HANDY_ADVISOR=opus` for `Risk: normal` briefs on a pi ladder (`sonnet` when quota
+is tight). The advisor has no tools and runs without the GH and Typesafe tokens. A failed or
+timed-out (5 min) advisor call is a tool error the worker reads, never a hang.
 
-The NAN key allows 7 parallel requests for every pi on the machine, and pi gives up after a few
-429s. So the foreman runs at most `MISTER_HANDY_NAN_SLOTS` (3) pi processes at once per user (a
-lock-dir semaphore in `~/.cache/mister-handy/nan-slots`, a dead holder's slot reclaimed), writing
-`MILESTONE waiting for a NAN slot` once while it waits. A pi run that ends on a rate limit is
-retried after a backoff (`MISTER_HANDY_RATE_BACKOFF` 60 s, doubling to 600 s, up to
-`MISTER_HANDY_RATE_RETRIES` 5 times) with `MILESTONE ... rate-limited, retry n`, and does not use
-up a ladder try.
+Providers throttle parallel requests (NAN allows 7 for every pi on the machine, and pi gives up
+after a few 429s). So the foreman runs at most `MISTER_HANDY_SLOTS` (3) workers at once per user
+and provider key, `pi:<provider>` or `claude` (a lock-dir semaphore per key in
+`~/.cache/mister-handy/slots/`, a dead holder's slot reclaimed), writing
+`MILESTONE waiting for a <key> slot` once while it waits; `MISTER_HANDY_NAN_SLOTS` still sets the
+cap for `pi:nan`. A run that ends on a rate limit is retried after a backoff
+(`MISTER_HANDY_RATE_BACKOFF` 60 s, doubling to 600 s, up to `MISTER_HANDY_RATE_RETRIES` 5 times)
+with `MILESTONE ... rate-limited, retry n`, and does not use up a ladder try.
 
 **When the watcher wakes HQ:**
 
 - `DONE` with a PR URL: as any DONE. `DONE <sha> on <branch> (local)`: not `no-code`; look at
   `git -C <worktree> diff --stat <base>...` and push + open the PR yourself, or launch a reviewer.
 - `ESCALATE`: relaunch on Claude in the same worktree, as Mode 1 step 5 with
-  `--worktree path:<worktree>` and `--model sonnet`: one tier up from the cheap one, as the router
-  does; `opus` only when the user asks or a sonnet relaunch also fails. Send: "Your task brief is
+  `--worktree path:<worktree>` and the mid tier's model (`MISTER_HANDY_MID`, `sonnet` by default):
+  one tier up from the cheap one, as the router does; the top tier only when the user asks or the
+  mid relaunch also fails. Send: "Your task brief is
   in <brief>. A cheap worker tried it first and failed: read <hq>/logs/<slug>/summary.md and
   `git status --short`, keep or discard its uncommitted changes, then work until DONE and report
   as the brief says." Update `SESSIONS.md` and append `hq REOPENED <slug>`. ESCALATE does not
@@ -416,7 +448,7 @@ When it wakes HQ, handle what it printed, then arm it again unless it said `ALL-
 | `WAITING-APPROVAL <slug> <message>` | The worker's agent has sat on a permission prompt for over a minute (its Orca card). Tell the user at once, one line: slug, what it was doing, and that the prompt waits in that worktree's terminal. HQ never answers permission prompts. |
 | `PR-MERGED` / `PR-CLOSED <slug> <url>` | The PR left review. Close the worktree (Mode 5), or append `hq KEPT <slug> <why>` when its `on-done` is `keep` or `closable.sh` says `KEEP` (tell the user why). Launch tasks waiting `after` it. |
 | `FAILED` | One line with the reason; ask whether to relaunch with a better brief. |
-| `ESCALATE` | The foreman ran out of cheap attempts (or stopped on a secret or a branch change). Relaunch on Claude sonnet in the same worktree with the foreman's summary ("Cheap workers"), without asking; tell the user one line. Tasks `after` it keep waiting for the relaunch's DONE. |
+| `ESCALATE` | The foreman ran out of cheap attempts (or stopped on a secret or a branch change). Relaunch on the mid tier (Claude sonnet by default) in the same worktree with the foreman's summary ("Cheap workers"), without asking; tell the user one line. Tasks `after` it keep waiting for the relaunch's DONE. |
 | `ANSWER` | Relay the answer in one line. `PREVIEW <url> <login>` and `PUNCH-LIST <path>` go to the user at once, with the URL and login or the screenshots. |
 | `BLOCKED` | Put the worker's exact question to the user. Forward the reply (Mode 4). |
 | `REVISED` | Launch the re-review, or report if no reviewer is involved. |

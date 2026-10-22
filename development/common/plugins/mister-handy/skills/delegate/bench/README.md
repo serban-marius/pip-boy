@@ -21,8 +21,8 @@ Arms:
 | `claude-<model>` | `claude -p --model <model> --permission-mode auto --output-format stream-json --verbose` (the user's plugins and hooks load, as for a real worker) |
 | `pi-<nan model id>` | `pi -p --no-session --mode json --model nan/<id>` (the user's pi extensions load) |
 | `pi-<nan model id>-ne` | same with `--no-extensions` |
-| `pipeline` | `BENCH_PIPELINE='bash bench/pipeline.sh "$@"' BENCH_CHEAP_DIR=<cheap-mvp delegate dir>`: route.sh's pick is recorded, then foreman.sh runs its NAN ladder; `ESCALATE` ends the run and is scored `escalated` |
-| `pipeline-<name>` | same, with foreman's ladder from `ladders/<name>` (`<model> <tries>` per line, passed as `MISTER_HANDY_LADDER`); the run records each pi session's model, last stopReason and tokens |
+| `pipeline` | `BENCH_PIPELINE='bash bench/pipeline.sh "$@"' BENCH_CHEAP_DIR=<cheap-mvp delegate dir>`: route.sh's pick is recorded, then foreman.sh runs its default ladder (`~/.config/mister-handy/ladder`, else the plugin's); `ESCALATE` ends the run and is scored `escalated` |
+| `pipeline-<name>` | same, with foreman's ladder from `ladders/<name>` (`<runner>:<model> <tries>` per line, passed as `MISTER_HANDY_LADDER`): `ladders/ds` is NAN deepseek → glm, `ladders/haiku` the subscription-only `claude:haiku` → `claude:sonnet`. The run records each pi session's model, last stopReason and tokens; `claude:` rungs add up into the run's `cost_usd`, `turns` and tokens |
 
 Limits used for the published numbers: ≤3 pi runs and ≤2 Claude runs at once (NAN throttles),
 25 min per run (`BENCH_TIMEOUT`, seconds).

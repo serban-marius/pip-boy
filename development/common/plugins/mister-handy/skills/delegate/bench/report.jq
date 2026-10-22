@@ -23,8 +23,8 @@ def row: "| " + join(" | ") + " |";
   def cell($t; $a; f): runs($t; $a) as $rs | if ($rs | length) == 0 then "–" else (stats($rs) | f) end;
   def best($t): [$arms[] | select(startswith("pipeline") | not) | . as $a | stats(runs($t; $a)) + {arm: $a, tier: ($a | tier)}
       | select(.n > 0 and .rate >= 0.5)] | sort_by(.tier, -.rate, .wall) | first;
-  def jevtier: if . == "nan-flash" then 0 elif . == "claude-sonnet" then 1 elif . == "claude-opus" then 2 else null end;
-  def routetier: if . == null then null elif startswith("pi ") then 0 elif startswith("claude sonnet") then 1 else 2 end;
+  def jevtier: if . == "nan-flash" or . == "cheap" then 0 elif . == "claude-sonnet" or . == "mid" then 1 elif . == "claude-opus" or . == "top" then 2 else null end;
+  def routetier: if . == null then null elif startswith("pi ") or startswith("foreman ") then 0 elif startswith("claude sonnet") then 1 else 2 end;
 
   "# Bench results",
   "",

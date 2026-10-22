@@ -15,7 +15,7 @@ for task in "$@"; do
   route=$(bash "$cheap/bin/route.sh" "$tmp/$task.md" 2>/dev/null | tail -n 1)
   raw=$(MISTER_HANDY_ROUTE_THRESHOLD=0 bash "$cheap/bin/route.sh" "$tmp/$task.raw.md" 2>/dev/null | tail -n 1)
   read -r agent model conf reason <<<"$raw"
-  case "$agent $model" in pi\ *) choice=nan-flash ;; "claude sonnet") choice=claude-sonnet ;; *) choice=claude-opus ;; esac
+  case "$agent $model" in foreman\ *) choice=cheap ;; "claude sonnet") choice=mid ;; *) choice=top ;; esac
   [ "$reason" = jev ] || choice=""
   jq -nc --arg task "$task" --arg choice "$choice" --arg conf "${conf:-0}" --arg route "$route" --arg raw "$raw" \
     --arg sha "$sha" --arg ts "$(date -u +%FT%TZ)" \
