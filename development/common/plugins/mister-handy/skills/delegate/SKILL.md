@@ -284,6 +284,18 @@ round, kept only if the acceptance still passes (otherwise rolled back, with the
 removed). A reviewer with no clear verdict is noted as `review inconclusive`, never as PASS. Timeouts: `MISTER_HANDY_PI_TIMEOUT` (1800 s per
 attempt), `MISTER_HANDY_CHECK_TIMEOUT` (600 s per command).
 
+`MISTER_HANDY_ADVISOR=<claude model>` gives the cheap worker an `advisor` tool (`bin/advisor.ts`, a
+pi extension), the same idea as Claude Code's own advisor: no parameters, and calling it sends the
+worker's whole conversation to that model, which returns advice. The foreman tells the worker to call
+it before substantive work, when stuck, and when it thinks it is done, to weigh the advice, and to call
+again to reconcile instead of silently switching. This is how Claude stays in the decide/advise role
+while NAN implements: Claude tokens are spent only on advice, never on code. `MISTER_HANDY_ADVISOR_MAX`
+(4) caps the calls per pi run; past it the tool answers "advisor budget used up". Each call becomes
+`MILESTONE advisor call n/max ($cost)` and DONE/ESCALATE end with `advisor <calls> calls $<total>`
+(log in `<hq>/logs/<slug>/advisor.log`). Recommend `MISTER_HANDY_ADVISOR=opus` for `Risk: normal`
+briefs (`sonnet` when quota is tight). The advisor has no tools and runs without the GH and Typesafe
+tokens. A failed or timed-out (5 min) advisor call is a tool error the worker reads, never a hang.
+
 The NAN key allows 7 parallel requests for every pi on the machine, and pi gives up after a few
 429s. So the foreman runs at most `MISTER_HANDY_NAN_SLOTS` (3) pi processes at once per user (a
 lock-dir semaphore in `~/.cache/mister-handy/nan-slots`, a dead holder's slot reclaimed), writing
