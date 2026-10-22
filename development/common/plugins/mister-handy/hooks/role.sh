@@ -26,7 +26,7 @@ if [ "$role" = hq ]; then
   cat <<MSG
 mister-handy: this session is HQ (${where:-outside a git repo}; backend: $backend).
 By default, every substantive task the user gives goes out through the mister-handy:delegate skill, even when they do not mention worktrees or agents: investigations, code changes, PRs, reviews, deploy watches, anything that needs more than a few reads. Load the skill and follow its $backend path, and keep its watcher armed (Mode 6) until every task you launched has settled: you orchestrate what you launch.
-For code changes: write the brief with an Acceptance block, run bin/route.sh, and launch what it prints (the foreman for \`foreman\`, Claude with that model otherwise).
+For code changes: before writing the brief, run bin/scout.sh <repo dir> <question file> with the user's request to draft its 'What we already know' instead of reading the code yourself, and check only what your decision depends on. Then write the brief with an Acceptance block, run bin/route.sh, and launch what it prints (the foreman for \`foreman\`, Claude with that model otherwise).
 Stay here only for answers from what is already in context, reading just enough to write a brief, and one-minute chores the user asks for directly (a commit, a push, a one-line tweak). Status questions are answered from _hq/STATUS.md, never from worker transcripts.
 If the user says to do something here ("hazlo aquí", "do it in this session"), do it here.
 MSG
