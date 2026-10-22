@@ -118,6 +118,8 @@ case " $* " in *" --tools "*) echo "reviewed $model" >>"$PI_CALLS"; cat "$PI_REV
 echo "$model" >>"$PI_CALLS"
 case " $* " in *" -ne "*) ;; *) echo "extensions on" >>"$PI_CALLS" ;; esac
 printf '%s\n' "${@: -1}" >"$PI_LAST_PROMPT"
+printf '%s\n' "${@:1:$#-1}" >>"$PI_ARGS"
+[ -z "${PI_ADVISOR_LINES:-}" ] || cat "$PI_ADVISOR_LINES" >>"$MISTER_HANDY_ADVISOR_LOG"
 n=$(( $(cat "$PI_COUNT" 2>/dev/null || echo 0) + 1 )); echo "$n" >"$PI_COUNT"
 case $(sed -n "${n}p" "$PI_PLAN") in
   pass) echo ok >done.txt ;;
@@ -142,7 +144,7 @@ case $(sed -n "${n}p" "$PI_PLAN") in
 esac
 EOF
 chmod +x "$tmp/stub/curl" "$tmp/stub/pi"
-export TYPESAFE_API_KEY=stub JEV_REPLY=$tmp/jev.json PI_PLAN=$tmp/plan PI_COUNT=$tmp/pi.count PI_CALLS=$tmp/pi.calls \
+export TYPESAFE_API_KEY=stub JEV_REPLY=$tmp/jev.json PI_PLAN=$tmp/plan PI_ARGS=$tmp/pi.args PI_COUNT=$tmp/pi.count PI_CALLS=$tmp/pi.calls \
   PI_LAST_PROMPT=$tmp/pi.prompt PI_REVIEW=$tmp/review.txt MISTER_HANDY_JUDGE=/dev/null PI_CHILD=$tmp/pi.child \
   MISTER_HANDY_SLOT_DIR=$tmp/slots MISTER_HANDY_SLOT_POLL=1 MISTER_HANDY_RATE_BACKOFF=0
 
@@ -197,7 +199,7 @@ expect "an undecided Jev routes to Claude"      "$(route)" "claude sonnet 0.00 j
 R=$tmp/repo
 FHQ=$tmp/fhq
 fresh() {
-  rm -rf "$R" "$FHQ" "$PI_COUNT" "$PI_CALLS" "$tmp/origin.git" && mkdir -p "$FHQ" && : >"$FHQ/STATUS.md"
+  rm -rf "$R" "$FHQ" "$PI_COUNT" "$PI_CALLS" "$PI_ARGS" "$tmp/origin.git" && mkdir -p "$FHQ" && : >"$FHQ/STATUS.md"
   git init -q -b feat/t "$R" && git -C "$R" config user.email t@t && git -C "$R" config user.name t
   [ -z "${1:-}" ] || printf '%s\n' "$1" >"$R/.gitignore"
   git -C "$R" add -A && git -C "$R" commit -q --allow-empty -m init
@@ -287,6 +289,17 @@ fresh "" pass
 : >"$PI_REVIEW"
 MISTER_HANDY_REVIEW=nan/qwen3.6 foreman >/dev/null
 expect "a silent reviewer is inconclusive"      "$(grep -c 'DONE.*review inconclusive' "$FHQ/STATUS.md")" "1"
+
+fresh "" pass
+MISTER_HANDY_ADVISOR=opus foreman >/dev/null
+expect "the worker gets the advisor extension"  "$(grep -c -- "^$here/advisor.ts\$" "$PI_ARGS") $(grep -c 'You have an `advisor` tool' "$PI_LAST_PROMPT") $(grep -c -- '-e' "$PI_ARGS")" "1 1 1"
+fresh "" pass
+foreman >/dev/null
+expect "without MISTER_HANDY_ADVISOR no extension is loaded" "$(grep -c advisor "$PI_ARGS") $(grep -c 'advisor' "$PI_LAST_PROMPT")" "0 0"
+fresh "" pass
+printf '10:00 advisor call 1/4 $0.0312 20s\n10:01 advisor call 2/4 $0.0188 15s\n' >"$tmp/adv.lines"
+PI_ADVISOR_LINES=$tmp/adv.lines MISTER_HANDY_ADVISOR=opus foreman >/dev/null
+expect "advisor calls show up in STATUS and DONE" "$(grep -c 'MILESTONE advisor call [12]/4 (\$0.0[32])' "$FHQ/STATUS.md") $(awk '$3 == "DONE"' "$FHQ/STATUS.md" | grep -c 'advisor 2 calls \$0.05')" "2 1"
 
 fresh "" pass
 echo stray >"$R/pre-existing.txt"

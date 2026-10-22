@@ -8,6 +8,8 @@
 # Starts only on a clean feature branch. The worker cannot push or use gh; the foreman pushes and
 # opens a PR only when the brief has "PR: ready|draft <base>". "Scope: <globs>" limits what it may
 # change. MISTER_HANDY_REVIEW=<model> adds one read-only reviewer pass; REVISE gets one more round.
+# MISTER_HANDY_ADVISOR=<claude model> gives the worker an `advisor` tool (bin/advisor.ts) that sends its
+# conversation to that model; up to MISTER_HANDY_ADVISOR_MAX (4) calls, each logged to <hq>/logs/<slug>/advisor.log.
 # At most MISTER_HANDY_NAN_SLOTS (3) pi runs at once per user, machine-wide; a run cut off by a rate
 # limit (429) is retried after a backoff without using up a ladder try. A failed attempt whose pi session
 # ended on the output cap (stopReason length) skips that model's remaining tries.
@@ -71,6 +73,7 @@ trap 'unbeat; release' EXIT
 cd "${4:-.}" 2>/dev/null && cd "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null ||
   end FAILED "not a git worktree: ${4:-.}" 2
 mkdir -p "$logs/bin"
+: >"$logs/advisor.log"
 [ -n "$(brief_acceptance "$brief")" ] || end FAILED "brief has no Acceptance commands; route it to Claude" 2
 lint=$(brief_lint "$brief" strict) || end FAILED "$lint" 2
 pr=$(brief_pr "$brief")
@@ -127,12 +130,39 @@ unrunnable() {
 untracked() { git -c core.quotePath=false ls-files -o --exclude-standard; }
 changed() { { git -c core.quotePath=false diff --name-only "$base"; untracked | grep -vE "$artifacts"; } | sort -u; }
 
+advisor_rules='## Advisor
+You have an `advisor` tool with no parameters. Calling it sends your whole conversation so far to a stronger model and returns its advice. Call it:
+1. before substantive work, once you have oriented yourself (read the files you need), and before you write or edit anything;
+2. when you are stuck: errors keep recurring or your approach is not converging;
+3. when you believe the task is done, after the result is saved to disk and the Acceptance commands pass.
+Give its advice serious weight. If you follow a step and it fails, or you have direct evidence (a file, a command output) that contradicts a specific claim, adapt; but do not silently switch: call the advisor again and say what you found so it can reconcile.'
+
+adv_seen=0
+adv_total=0
+adv_sync() {
+  local line n=0 c
+  [ -f "$logs/advisor.log" ] || return 0
+  while IFS= read -r line; do
+    n=$((n + 1))
+    [ "$n" -gt "$adv_seen" ] || continue
+    c=$(sed -n 's/.* \$\([0-9.]*\) [0-9]*s$/\1/p' <<<"$line")
+    adv_total=$(awk -v a="$adv_total" -v b="${c:-0}" 'BEGIN { printf "%.4f", a + b }')
+    say "MILESTONE advisor call $(awk '{ print $4 }' <<<"$line") ($(awk -v c="${c:-0}" 'BEGIN { printf "$%.2f", c }'))"
+  done <"$logs/advisor.log"
+  adv_seen=$n
+}
+adv_note() {
+  adv_sync
+  [ "$adv_seen" -eq 0 ] || printf ', advisor %s calls $%.2f' "$adv_seen" "$adv_total"
+}
+
 pi_run() {
   local rc
   acquire
   env -u GH_TOKEN -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN -u TYPESAFE_API_KEY PATH="$logs/bin:$PATH" \
     GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=remote.origin.pushurl GIT_CONFIG_VALUE_0=/dev/null \
     GIT_CONFIG_KEY_1=credential.helper GIT_CONFIG_VALUE_1= GIT_TERMINAL_PROMPT=0 \
+    MISTER_HANDY_ADVISOR_LOG="$logs/advisor.log" \
     perl -e "$limit_pl" "$pi_timeout" pi -p $pi_flags "$@" </dev/null
   rc=$?
   release
@@ -147,13 +177,14 @@ work() {
     echo "Do not push, open pull requests, switch branches, rewrite history, write to any STATUS.md or _hq folder, or touch files outside this worktree. You need not commit."
     echo
     brief_without "$brief" Reporting | grep -v '^PR:'
+    [ -z "${MISTER_HANDY_ADVISOR:-}" ] || printf '\n%s\n' "$advisor_rules"
     [ -z "$3" ] || printf '\n%s\n' "$3"
   } >"$pf"
   beat "attempt $attempt/$total $2"
   local retry=0 pause note="" session
   ls "$logs/sessions" >"$logs/sessions.before" 2>/dev/null
   while :; do
-    pi_run --session-dir "$logs/sessions" --model "$2" "$(cat "$pf")$note" >"$logs/$1.pi.log" 2>&1
+    pi_run --session-dir "$logs/sessions" --model "$2" ${MISTER_HANDY_ADVISOR:+-e "$here/advisor.ts"} "$(cat "$pf")$note" >"$logs/$1.pi.log" 2>&1
     pi_rc=$?
     [ "$pi_rc" -ne 0 ] && [ "$retry" -lt "${MISTER_HANDY_RATE_RETRIES:-5}" ] &&
       tail -n 5 "$logs/$1.pi.log" | grep -qiE "$rate_limited" || break
@@ -173,6 +204,7 @@ A previous run of this attempt was cut off by a rate limit; your changes so far 
   [ -z "$session" ] || grep -qxF "$session" "$logs/sessions.before" ||
     stop=$(grep -o '"stopReason":"[A-Za-z]*"' "$logs/sessions/$session" | tail -n 1 | cut -d'"' -f4)
   clean_strays
+  adv_sync
   [ "$(git branch --show-current)" = "$branch" ] && git merge-base --is-ancestor "$base" HEAD ||
     end ESCALATE "the worker left branch $branch or rewrote its history; check $PWD by hand" 3
 }
@@ -291,7 +323,7 @@ done
   git diff "$base" >"$logs/worker.diff" 2>/dev/null
   git reset -q 2>/dev/null
   set -- $ran
-  end ESCALATE "$# attempts failed ($*); last: '$(oneline 60 <<<"$failed_cmd")' exit $failed_rc; worker changes left uncommitted in $PWD (git status --short; diff with new files in $logs/worker.diff); summary $summary" 3
+  end ESCALATE "$# attempts failed ($*); last: '$(oneline 60 <<<"$failed_cmd")' exit $failed_rc$(adv_note); worker changes left uncommitted in $PWD (git status --short; diff with new files in $logs/worker.diff); summary $summary" 3
 }
 
 sha=$(git rev-parse --short HEAD)
@@ -342,4 +374,4 @@ $acc" 2>>"$logs/pr.log" | tail -n 1)
     *) note="$note, push/PR failed (see $logs/pr.log)" ;;
   esac
 fi
-end DONE "$where, acceptance passed on attempt $attempt/$total ($model)$note; logs $logs" 0
+end DONE "$where, acceptance passed on attempt $attempt/$total ($model)$note$(adv_note); logs $logs" 0

@@ -73,6 +73,7 @@ route.sh brief  ->  pi nan/deepseek-v4-flash 0.83 jev   foreman.sh <slug> <brief
 | `MISTER_HANDY_PI_TIMEOUT` / `MISTER_HANDY_CHECK_TIMEOUT` | 1800 s per attempt / 600 s per command |
 | `MISTER_HANDY_PI_FLAGS` | extra pi flags; `-ne` (no pi extensions) is always on, and their `.atl/` + `.gitignore` lines are removed anyway |
 | `MISTER_HANDY_REVIEW` | off; a NAN model for one read-only review pass, REVISE gets one more round; set it (e.g. `nan/glm5.3-flash`) for `Risk: normal` briefs |
+| `MISTER_HANDY_ADVISOR` / `MISTER_HANDY_ADVISOR_MAX` | off; a Claude model (e.g. `opus`) the cheap worker can consult through an `advisor` tool that sees its whole conversation, max 4 calls per run; recommended for `Risk: normal` briefs |
 | `MISTER_HANDY_HEARTBEAT` | 600 s between `MILESTONE still working` lines during an attempt |
 | `MISTER_HANDY_NAN_SLOTS` | 3 pi runs at once per user, machine-wide (the NAN key allows 7 parallel requests) |
 | `MISTER_HANDY_RATE_BACKOFF` / `MISTER_HANDY_RATE_RETRIES` | 60 s doubling to 600 s / 5: a 429 is retried without using a ladder try |
