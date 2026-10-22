@@ -190,6 +190,14 @@ expect "a confident nan-flash goes to pi"       "$(route)" "foreman pi:nan/deeps
 expect "the ladder head is the pi model"        "$(MISTER_HANDY_LADDER='nan/qwen3.6 1,nan/gemma4 1' route)" "foreman pi:nan/qwen3.6 0.74 jev"
 jev cheap 0.41
 expect "low confidence goes one tier up"        "$(route)" "claude sonnet 0.41 low-confidence:cheap"
+jev cheap 0.41
+expect "an advisor keeps a 0.41 cheap answer cheap" "$(MISTER_HANDY_ADVISOR=opus route)" "foreman pi:nan/deepseek-v4-flash 0.41 jev"
+jev cheap 0.25
+expect "an advisor still lifts a cheap answer under 0.3" "$(MISTER_HANDY_ADVISOR=opus route)" "claude sonnet 0.25 low-confidence:cheap"
+jev cheap 0.41
+expect "the advised threshold is configurable"  "$(MISTER_HANDY_ADVISOR=opus MISTER_HANDY_ROUTE_THRESHOLD_ADVISED=0.5 route)" "claude sonnet 0.41 low-confidence:cheap"
+jev mid 0.41
+expect "the advised threshold applies only to cheap answers" "$(MISTER_HANDY_ADVISOR=opus route)" "claude opus 0.41 low-confidence:mid"
 jev top 0.9
 expect "Jev picks Claude"                       "$(route)" "claude opus 0.90 jev"
 expect "a Jev timeout routes to Claude"         "$(CURL_RC=28 route)" "claude sonnet 0.00 jev-timeout"

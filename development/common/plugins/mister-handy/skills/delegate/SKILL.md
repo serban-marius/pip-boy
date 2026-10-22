@@ -258,6 +258,7 @@ systems, are the real gates.
 | `rules` router, anything left (`Risk: low` or `normal` with Acceptance) | `foreman claude:haiku 1.00 rules` |
 | `jev`: missing key, timeout, HTTP error, unknown answer; an empty ladder | `claude sonnet 0.00 jev-<why>` / `empty-ladder` |
 | `jev` answer under `MISTER_HANDY_ROUTE_THRESHOLD` (0.6) | one tier up: `claude sonnet 0.41 low-confidence:cheap` |
+| `jev` answer `cheap` under `MISTER_HANDY_ROUTE_THRESHOLD_ADVISED` (0.3) when `MISTER_HANDY_ADVISOR` is set | one tier up; 0.3-0.6 stays cheap: the advisor covers it |
 | `jev` answer `cheap` / `mid` / `top` | `foreman <ladder head> 0.83 jev` / `claude sonnet ...` / `claude opus ...` |
 
 (`claude opus` / `claude sonnet` stand for `MISTER_HANDY_TOP` / `MISTER_HANDY_MID`.)

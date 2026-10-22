@@ -3,7 +3,8 @@
 # Tiers: cheap = "foreman <ladder head>", mid = MISTER_HANDY_MID (claude sonnet), top = MISTER_HANDY_TOP (claude opus).
 # Top without asking: no runnable Acceptance, Risk missing or high, a production write. Then the router,
 # MISTER_HANDY_ROUTER=jev|rules (default jev when a key is found, else rules). rules: everything left is cheap.
-# jev: an error is mid, an answer under MISTER_HANDY_ROUTE_THRESHOLD (0.6) goes one tier up.
+# jev: an error is mid, an answer under MISTER_HANDY_ROUTE_THRESHOLD (0.6) goes one tier up,
+# except a cheap answer when MISTER_HANDY_ADVISOR is set: then MISTER_HANDY_ROUTE_THRESHOLD_ADVISED (0.3).
 # Jev key: TYPESAFE_API_KEY, else the macOS keychain item "jev". Never printed.
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -74,5 +75,6 @@ case $choice in
 esac
 awk -v c="$conf" 'BEGIN { exit !(c + 0 == c && c >= 0 && c <= 1) }' || pick 1 0.00 jev-undecided
 conf=$(awk -v c="$conf" 'BEGIN { printf "%.2f", c }')
+[ "$choice" != cheap ] || [ -z "${MISTER_HANDY_ADVISOR:-}" ] || threshold=${MISTER_HANDY_ROUTE_THRESHOLD_ADVISED:-0.3}
 awk -v c="$conf" -v t="$threshold" 'BEGIN { exit !(c < t) }' && pick $((tier < 2 ? tier + 1 : 2)) "$conf" "low-confidence:$choice"
 pick "$tier" "$conf" jev
