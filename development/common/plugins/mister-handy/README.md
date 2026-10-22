@@ -125,6 +125,7 @@ route.sh brief  ->  foreman claude:haiku 1.00 rules   foreman.sh <slug> <brief> 
 | `MISTER_HANDY_ROUTER` | `jev` when a Jev key is found, else `rules` (no LLM: what passes the hard gates goes to the foreman) |
 | `MISTER_HANDY_MID` / `MISTER_HANDY_TOP` | `claude sonnet` / `claude opus` |
 | `MISTER_HANDY_ROUTE_THRESHOLD` | 0.6 Jev confidence, below it one tier up |
+| `MISTER_HANDY_ROUTE_THRESHOLD_ADVISED` | 0.3 instead for a Jev `cheap` answer when `MISTER_HANDY_ADVISOR` is set, so 0.3-0.6 stays cheap |
 | `MISTER_HANDY_PI_TIMEOUT` / `MISTER_HANDY_CHECK_TIMEOUT` | 1800 s per attempt (any runner) / 600 s per command |
 | `MISTER_HANDY_CLAUDE_MAX_TURNS` | 100 turns per `claude:` attempt |
 | `MISTER_HANDY_CLAUDE_ADVISOR` | off: `claude:` workers and reviewers run with `--settings '{"advisorModel":""}'`, so your Claude Code `advisorModel` does not bill on every attempt; `keep` leaves it on |
