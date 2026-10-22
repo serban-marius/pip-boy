@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -u
+unset MISTER_HANDY_REVIEW GIT_CONFIG_COUNT
 here=$(cd "$(dirname "$0")" && pwd)
 tmp=$(mktemp -d) && trap 'rm -rf "$tmp"' EXIT
 fails=0
@@ -89,6 +90,9 @@ git -C "$W" add . && git -C "$W" commit -qm x
 expect "a commit on no remote is kept"          "$(closable)" "KEEP commits on no remote branch and no merged PR with this head"
 git -C "$W" rev-parse HEAD >"$GH_MERGED_HEADS"
 expect "the head of a merged PR is closable"    "$(closable)" "CLOSABLE"
+mkdir -p "$tmp/notgit"
+expect "a missing worktree is already gone"    "$(bash "$here/closable.sh" "$tmp/missing" 2>&1)" "GONE $tmp/missing"
+expect "an existing non-git dir is kept"        "$(bash "$here/closable.sh" "$tmp/notgit" 2>&1)" "KEEP not a git worktree: $tmp/notgit"
 
 say "14:00 hq DISPATCHED f"
 say "14:20 f ESCALATE 3 attempts failed (nan/deepseek-v4-flash nan/deepseek-v4-flash nan/glm5.3-flash)"

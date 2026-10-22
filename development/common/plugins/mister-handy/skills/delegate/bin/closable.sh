@@ -1,7 +1,8 @@
 #!/bin/bash
-# closable.sh <worktree path>: CLOSABLE when removing it loses nothing, else KEEP <why>.
+# closable.sh <worktree path>: CLOSABLE when removing it loses nothing, GONE when it is already removed, else KEEP <why>.
 
 wt=${1:?usage: closable.sh <worktree path>}
+[ -e "$wt" ] || { echo "GONE $wt"; exit 0; }
 git -C "$wt" rev-parse --git-dir >/dev/null 2>&1 || { echo "KEEP not a git worktree: $wt"; exit 1; }
 
 head_of_merged_pr() {
