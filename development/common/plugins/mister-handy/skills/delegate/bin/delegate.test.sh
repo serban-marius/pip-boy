@@ -545,24 +545,54 @@ cat >"$SV/STATUS.md" <<'EOT'
 10:15 g MILESTONE attempt 1/2 claude $9.99
 10:20 h DONE abc on feat/h (local), acceptance passed on attempt 1/2 (pi:nan/m3), claude $0.25; logs /x
 EOT
+SV2=$tmp/sv2 && mkdir -p "$SV2"
+cat >"$SV2/STATUS.md" <<'EOT'
+11:00 i DONE abc on feat/i (local), acceptance passed on attempt 1/2 (nan/m4), advisor 1 calls $0.25; logs /x
+11:10 j ESCALATE 1 attempts failed (claude:haiku FAIL), claude $0.10; summary /x
+EOT
+LABEL=$tmp/lbl && mkdir -p "$LABEL/repo/_hq" "$LABEL/name"
+printf '08:00 x DONE p, acceptance passed on attempt 1/3 (nan/m1)\n' >"$LABEL/repo/_hq/STATUS.md"
+printf '08:01 y DONE p, acceptance passed on attempt 1/3 (nan/m1)\n' >"$LABEL/name/STATUS.md"
+ALLHOME=$tmp/allhome ALLWS=$tmp/allws && mkdir -p "$ALLHOME/.claude/hq/alpha" "$ALLHOME/.claude/hq/nostatus" "$ALLWS/repo1/_hq"
+printf '08:10 al DONE p, acceptance passed on attempt 1/2 (nan/m1), advisor 1 calls $0.10\n' >"$ALLHOME/.claude/hq/alpha/STATUS.md"
+printf '08:20 r1 DONE p, acceptance passed on attempt 1/2 (claude:haiku), claude $0.20\n' >"$ALLWS/repo1/_hq/STATUS.md"
 sv() { bash "$here/savings.sh" "$SV" "$@" | awk '{$1=$1}1'; }
-expect "savings: header"                        "$(sv | sed -n 1p)" "slug result model attempt claude baseline"
-expect "savings: DONE without advisor"          "$(sv)" 'a DONE nan/m1 1/3 $0.00 $3.16'
-expect "savings: DONE with advisor"             "$(sv)" 'b DONE nan/m2 3/3 $0.37 $3.16'
-expect "savings: ESCALATE"                      "$(sv)" 'd ESCALATE - - $0.20 $3.16'
-expect "savings: DONE with claude"              "$(sv)" 'e DONE claude:haiku 2/3 $0.30 $3.16'
-expect "savings: advisor and claude on one line" "$(sv)" 'f DONE claude:sonnet 1/2 $0.50 $3.16'
-expect "savings: ESCALATE with claude"          "$(sv)" 'g ESCALATE - - $0.50 $3.16'
+allah() { HOME=$ALLHOME MISTER_HANDY_WORKSPACES=$ALLWS bash "$here/savings.sh" --all </dev/null | awk '{$1=$1}1'; }
+emptyall() { HOME=$tmp/emptyhome MISTER_HANDY_WORKSPACES=$tmp/emptyws bash "$here/savings.sh" --all </dev/null | awk '{$1=$1}1'; }
+expect "savings: header"                        "$(sv | sed -n 1p)" "hq slug result model attempt claude baseline"
+expect "savings: DONE without advisor"          "$(sv)" 'sv a DONE nan/m1 1/3 $0.00 $3.16'
+expect "savings: DONE with advisor"             "$(sv)" 'sv b DONE nan/m2 3/3 $0.37 $3.16'
+expect "savings: ESCALATE"                      "$(sv)" 'sv d ESCALATE - - $0.20 $3.16'
+expect "savings: DONE with claude"              "$(sv)" 'sv e DONE claude:haiku 2/3 $0.30 $3.16'
+expect "savings: advisor and claude on one line" "$(sv)" 'sv f DONE claude:sonnet 1/2 $0.50 $3.16'
+expect "savings: ESCALATE with claude"          "$(sv)" 'sv g ESCALATE - - $0.50 $3.16'
 expect "savings: noise lines are ignored"       "$(sv | wc -l | tr -d ' ')" "11"
-expect "savings: TOTAL"                         "$(sv | tail -n 1)" 'TOTAL - - - $2.12 $22.12 saving $20.00'
-expect "savings: baseline override"             "$(MISTER_HANDY_BASELINE_USD=10 sv | tail -n 1)" 'TOTAL - - - $2.12 $70.00 saving $67.88'
-expect "savings: no foreman rows"               "$(printf '# x\n' >"$tmp/sv0.md"; mkdir -p "$tmp/sv0" && cp "$tmp/sv0.md" "$tmp/sv0/STATUS.md"; bash "$here/savings.sh" "$tmp/sv0" | awk '{$1=$1}1' | tail -n 1)" 'TOTAL - - - $0.00 $0.00 saving $0.00'
-expect "savings: SUBTOTAL pi"                   "$(sv)" 'SUBTOTAL pi - - - $0.62 $9.48 saving $8.86'
-expect "savings: SUBTOTAL claude"               "$(sv)" 'SUBTOTAL claude - - - $0.80 $6.32 saving $5.52'
-expect "savings: pi: prefix counts as pi"       "$(sv)" 'h DONE pi:nan/m3 1/2 $0.25 $3.16'
-expect "savings: subtotals before TOTAL"        "$(sv | tail -n 3 | awk '{ print $1, $2 }' | paste -sd'|' -)" 'SUBTOTAL pi|SUBTOTAL claude|TOTAL -'
-expect "savings: no foreman rows subtotals"     "$(mkdir -p "$tmp/sv-nof"; printf '# x\n' >"$tmp/sv-nof/STATUS.md"; bash "$here/savings.sh" "$tmp/sv-nof" | awk '{$1=$1}1' | sed -n '2,3p' | paste -sd'|' -)" 'SUBTOTAL pi - - - $0.00 $0.00 saving $0.00|SUBTOTAL claude - - - $0.00 $0.00 saving $0.00'
+expect "savings: TOTAL"                         "$(sv | tail -n 1)" '- TOTAL - - - $2.12 $22.12 saving $20.00'
+expect "savings: baseline override"             "$(MISTER_HANDY_BASELINE_USD=10 sv | tail -n 1)" '- TOTAL - - - $2.12 $70.00 saving $67.88'
+expect "savings: no foreman rows"               "$(printf '# x\n' >"$tmp/sv0.md"; mkdir -p "$tmp/sv0" && cp "$tmp/sv0.md" "$tmp/sv0/STATUS.md"; bash "$here/savings.sh" "$tmp/sv0" | awk '{$1=$1}1' | tail -n 1)" '- TOTAL - - - $0.00 $0.00 saving $0.00'
+expect "savings: SUBTOTAL pi"                   "$(sv)" '- SUBTOTAL pi - - - $0.62 $9.48 saving $8.86'
+expect "savings: SUBTOTAL claude"               "$(sv)" '- SUBTOTAL claude - - - $0.80 $6.32 saving $5.52'
+expect "savings: pi: prefix counts as pi"       "$(sv)" 'sv h DONE pi:nan/m3 1/2 $0.25 $3.16'
+expect "savings: subtotals before TOTAL"        "$(sv | tail -n 3 | awk '{ print $2, $3 }' | paste -sd'|' -)" 'SUBTOTAL pi|SUBTOTAL claude|TOTAL -'
+expect "savings: no foreman rows subtotals"     "$(mkdir -p "$tmp/sv-nof"; printf '# x\n' >"$tmp/sv-nof/STATUS.md"; bash "$here/savings.sh" "$tmp/sv-nof" | awk '{$1=$1}1' | sed -n '2,3p' | paste -sd'|' -)" '- SUBTOTAL pi - - - $0.00 $0.00 saving $0.00|- SUBTOTAL claude - - - $0.00 $0.00 saving $0.00'
 expect "savings: missing STATUS exits 2"        "$(bash "$here/savings.sh" "$tmp/nope" 2>/dev/null; echo $?)" "2"
+expect "savings: no args exits 2"               "$(bash "$here/savings.sh" </dev/null 2>/dev/null; echo $?)" "2"
+expect "savings: usage mentions --all"           "$(bash "$here/savings.sh" </dev/null 2>&1 >/dev/null | grep -cF -- 'usage: savings.sh [--all] [<hq dir>...]')" "1"
+expect "savings: two dirs rows"                 "$(sv "$SV2")" 'sv2 i DONE nan/m4 1/2 $0.25 $3.16'
+expect "savings: two dirs TOTAL sums both"      "$(sv "$SV2" | tail -n 1)" '- TOTAL - - - $2.47 $28.44 saving $25.97'
+expect "savings: two dirs pi subtotal"          "$(sv "$SV2")" '- SUBTOTAL pi - - - $0.87 $12.64 saving $11.77'
+expect "savings: two dirs claude subtotal"      "$(sv "$SV2")" '- SUBTOTAL claude - - - $0.80 $6.32 saving $5.52'
+expect "savings: hq label for repo/_hq"         "$(sv "$LABEL/repo/_hq")" 'repo x DONE nan/m1 1/3 $0.00 $3.16'
+expect "savings: hq label for plain dir"        "$(sv "$LABEL/name")" 'name y DONE nan/m1 1/3 $0.00 $3.16'
+expect "savings --all: claude hq row"           "$(allah)" 'alpha al DONE nan/m1 1/2 $0.10 $3.16'
+expect "savings --all: workspaces hq row"       "$(allah)" 'repo1 r1 DONE claude:haiku 1/2 $0.20 $3.16'
+expect "savings --all: TOTAL"                   "$(allah | tail -n 1)" '- TOTAL - - - $0.30 $6.32 saving $6.02'
+expect "savings --all: skips dir without STATUS" "$(allah | grep -c nostatus)" "0"
+expect "savings --all: exit 0 with a bare dir"  "$(HOME=$ALLHOME MISTER_HANDY_WORKSPACES=$ALLWS bash "$here/savings.sh" --all </dev/null >/dev/null; echo $?)" "0"
+expect "savings --all: positional dedup"        "$(HOME=$ALLHOME MISTER_HANDY_WORKSPACES=$ALLWS bash "$here/savings.sh" --all "$ALLHOME/.claude/hq/alpha/" </dev/null | awk '{$1=$1}1' | grep -c '^alpha ')" "1"
+expect "savings --all: nothing found lines"     "$(emptyall | wc -l | tr -d ' ')" "4"
+expect "savings --all: nothing found TOTAL"     "$(emptyall | tail -n 1)" '- TOTAL - - - $0.00 $0.00 saving $0.00'
+expect "savings: --all with missing positional exits 2" "$(HOME=$ALLHOME MISTER_HANDY_WORKSPACES=$ALLWS bash "$here/savings.sh" --all "$tmp/nope" 2>/dev/null; echo $?)" "2"
 
 expect "the HQ note tells HQ to route code tasks" "$(MISTER_HANDY=hq CLAUDE_PROJECT_DIR=$tmp bash "$here/../../../hooks/role.sh" | grep -c 'run bin/route.sh, and launch what it prints')" "1"
 
