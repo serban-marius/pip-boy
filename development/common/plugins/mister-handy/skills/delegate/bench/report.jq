@@ -8,7 +8,7 @@ def usd: if . == null then "–" else "$\(. * 100 | round / 100)" end;
 def row: "| " + join(" | ") + " |";
 
 . as $raw
-| ([$raw[] | select(.infra != true and .superseded == null)] | group_by([.task, .arm, .rep]) | map(sort_by(.ts) | first)) as $all
+| ([$raw[] | select(.infra != true and .superseded == null)] | group_by([.task, .arm, .rep]) | map(sort_by(.ts) | last)) as $all
 | ($order + ([$all[].task] | unique - $order)) as $tasks
 | ((["claude-opus", "claude-sonnet"] | map(select(. as $a | $all | any(.arm == $a))))
    + ([$all[].arm | select(startswith("pi-"))] | unique)
@@ -28,7 +28,7 @@ def row: "| " + join(" | ") + " |";
 
   "# Bench results",
   "",
-  "\($all | length) runs, \($tasks | length) tasks, \($arms | length) arms. Each task × arm × rep counts its first attempt that was not cut short by NAN throttling or an API error (\([$raw[] | select(.infra == true)] | length) such attempts re-run, not counted; \([$raw[] | select(.infra != true and .superseded == null)] | length - ($all | length)) later attempts of an already counted run, not counted either; \([$raw[] | select(.superseded)] | length) superseded by a harness change and re-run). Cell: passes/runs (mean fraction of the merged commit's new tests passing).",
+  "\($all | length) runs, \($tasks | length) tasks, \($arms | length) arms. Each task × arm × rep counts its last run that was not cut short by NAN throttling or an API error (\([$raw[] | select(.infra == true)] | length) such runs re-run, not counted; \([$raw[] | select(.infra != true and .superseded == null)] | length - ($all | length)) earlier runs of the same task × arm × rep, not counted; \([$raw[] | select(.superseded)] | length) superseded by a harness change and re-run). Cell: passes/runs (mean fraction of the merged commit's new tests passing).",
   "",
   "## Pass rate by task × arm",
   "",

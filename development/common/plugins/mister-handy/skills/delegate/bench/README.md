@@ -58,8 +58,8 @@ output cap, a model failure), `infra` (failed and ended on an API error or throt
 
 `protocol_score` = share of: START, DONE, a commit, no push/PR, no bare stash, no stray files.
 
-`report.sh` counts, per task × arm × rep, the first line that is not `infra`; later lines for the same
-run (re-runs) are kept in the file but not counted, so retrying cannot turn a failure into a pass.
+`report.sh` counts, per task × arm × rep, the last line (by `ts`) that is not `infra` or `superseded`;
+earlier lines stay in the file and are counted in the header.
 
 ## Add a task
 
