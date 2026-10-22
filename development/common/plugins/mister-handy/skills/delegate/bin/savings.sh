@@ -13,6 +13,9 @@ $3 == "ESCALATE" || ($3 == "DONE" && index($0, "acceptance passed on attempt "))
   if (match($0, /advisor [0-9]+ calls \$[0-9.]+/)) {
     t = substr($0, RSTART, RLENGTH); sub(/.*\$/, "", t); cost = t + 0
   }
+  if (match($0, /, claude \$[0-9.]+/)) {
+    t = substr($0, RSTART, RLENGTH); sub(/.*\$/, "", t); cost += t + 0
+  }
   printf "%-24s %-9s %-26s %-7s %8s %9s\n", $2, $3, model, att, sprintf("$%.2f", cost), sprintf("$%.2f", base)
   claude += cost; total += base
 }

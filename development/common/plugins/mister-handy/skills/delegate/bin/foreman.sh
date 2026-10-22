@@ -162,10 +162,19 @@ adv_sync() {
   done <"$logs/advisor.log"
   adv_seen=$n
 }
+claude_total=0
+claude_sync() {
+  local c
+  c=$(jq -r '.total_cost_usd // 0 | tostring' "$logs/claude.out" 2>/dev/null)
+  case $c in '' | *[!0-9.]* | *.*.*) c=0 ;; esac
+  claude_total=$(awk -v a="$claude_total" -v b="$c" 'BEGIN { printf "%.4f", a + b }')
+}
 adv_note() {
   adv_sync
   [ "$adv_seen" -eq 0 ] || printf ', advisor %s calls $%.2f' "$adv_seen" "$adv_total"
+  claude_note
 }
+claude_note() { awk -v c="$claude_total" 'BEGIN { if (c > 0) printf ", claude $%.2f", c }'; }
 
 sandboxed() {
   env -u GH_TOKEN -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN -u TYPESAFE_API_KEY -u CLAUDECODE PATH="$logs/bin:$PATH" \
@@ -210,6 +219,7 @@ run_worker() {
         --max-turns "${MISTER_HANDY_CLAUDE_MAX_TURNS:-100}" "${args[@]}" <"$pf" >"$logs/claude.out"
       rc=$?
       release
+      claude_sync
       cat "$logs/claude.out"
       [ -n "$ro" ] || stop=$(jq -r 'if .stop_reason == "max_tokens" or .subtype == "error_max_turns" then "length" else .subtype // empty end' "$logs/claude.out" 2>/dev/null)
       [ "$rc" -ne 0 ] || ! jq -e '.is_error == true' "$logs/claude.out" >/dev/null 2>&1 || rc=1
@@ -249,7 +259,7 @@ work() {
   unbeat
   adv_sync
   [ "$(git branch --show-current)" = "$branch" ] && git merge-base --is-ancestor "$base" HEAD ||
-    end ESCALATE "the worker left branch $branch or rewrote its history; check $PWD by hand" 3
+    end ESCALATE "the worker left branch $branch or rewrote its history$(claude_note); check $PWD by hand" 3
 }
 
 check() {
@@ -295,7 +305,7 @@ commit() {
     case $f in *.env.example | *.env.sample | *.env.template) ;; .env* | */.env*) hits="$hits $f"; continue ;; esac
     git diff --cached -U0 "$base" -- "$f" | grep '^+' | grep -qiE "$secret_text" && hits="$hits $f"
   done < <(git -c core.quotePath=false diff --cached --name-only "$base")
-  [ -z "$hits" ] || { git reset -q; end ESCALATE "possible secret in:$hits; nothing committed, check $PWD by hand" 3; }
+  [ -z "$hits" ] || { git reset -q; end ESCALATE "possible secret in:$hits$(claude_note); nothing committed, check $PWD by hand" 3; }
   git diff --cached --quiet || git commit -qm "$title" >>"$logs/commit.log" 2>&1
 }
 
@@ -368,7 +378,8 @@ done
 sha=$(git rev-parse --short HEAD)
 note=""
 if [ -n "${MISTER_HANDY_REVIEW:-}" ]; then
-  verdict=$(review)
+  review >"$logs/verdict.txt"
+  verdict=$(<"$logs/verdict.txt")
   case $verdict in
     PASS) note=", review PASS" ;;
     REVISE*)
