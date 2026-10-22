@@ -402,4 +402,26 @@ brief "Risk: low" "$ACC"
 fresh "" branchy
 expect "a worker that switches branch ESCALATEs" "$(foreman >/dev/null; grep -c 'ESCALATE the worker left branch feat/t' "$FHQ/STATUS.md")" "1"
 
+SV=$tmp/sv && mkdir -p "$SV"
+cat >"$SV/STATUS.md" <<'EOT'
+# append-only
+08:30 hq DISPATCHED a
+08:53 a DONE https://github.com/o/r/pull/1, acceptance passed on attempt 1/3 (nan/m1), review PASS
+09:10 b MILESTONE advisor call 1/4 ($0.15)
+09:12 b DONE abc on feat/b (local), acceptance passed on attempt 3/3 (nan/m2), review PASS, advisor 2 calls $0.37; logs /x
+09:20 c DONE https://github.com/o/r/pull/2 e280862
+09:30 d MILESTONE advisor call 1/4 ($0.20)
+09:40 d ESCALATE 3 attempts failed (nan/m1 FAIL); advisor 1 calls $0.20; summary /x
+EOT
+sv() { bash "$here/savings.sh" "$SV" "$@" | awk '{$1=$1}1'; }
+expect "savings: header"                        "$(sv | sed -n 1p)" "slug result model attempt claude baseline"
+expect "savings: DONE without advisor"          "$(sv)" 'a DONE nan/m1 1/3 $0.00 $3.16'
+expect "savings: DONE with advisor"             "$(sv)" 'b DONE nan/m2 3/3 $0.37 $3.16'
+expect "savings: ESCALATE"                      "$(sv)" 'd ESCALATE - - $0.20 $3.16'
+expect "savings: noise lines are ignored"       "$(sv | wc -l | tr -d ' ')" "5"
+expect "savings: TOTAL"                         "$(sv | tail -n 1)" 'TOTAL - - - $0.57 $9.48 saving $8.91'
+expect "savings: baseline override"             "$(MISTER_HANDY_BASELINE_USD=10 sv | tail -n 1)" 'TOTAL - - - $0.57 $30.00 saving $29.43'
+expect "savings: no foreman rows"               "$(printf '# x\n' >"$tmp/sv0.md"; mkdir -p "$tmp/sv0" && cp "$tmp/sv0.md" "$tmp/sv0/STATUS.md"; bash "$here/savings.sh" "$tmp/sv0" | awk '{$1=$1}1' | tail -n 1)" 'TOTAL - - - $0.00 $0.00 saving $0.00'
+expect "savings: missing STATUS exits 2"        "$(bash "$here/savings.sh" "$tmp/nope" 2>/dev/null; echo $?)" "2"
+
 [ "$fails" -eq 0 ] && echo "all green" || { echo "$fails failing"; exit 1; }
