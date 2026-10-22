@@ -74,6 +74,37 @@ route.sh brief  ->  foreman claude:haiku 1.00 rules   foreman.sh <slug> <brief> 
 | + any pi provider | `pi` with the provider set up in pi | e.g. `pi:nan/deepseek-v4-flash 2`, `pi:nan/glm5.3-flash 1` (benchmarked), `pi:openrouter/<vendor>/<model>`, `pi:ollama/<model>` | rules or Jev |
 | + Jev router | `TYPESAFE_API_KEY` (or the macOS keychain item `jev`) | any | Jev |
 
+### Recommended setup (measured)
+
+Measured on this repo, 2026-10-22: replayed tasks with their merged commit's tests hidden from the
+worker ([`bench/RESULTS.md`](skills/delegate/bench/RESULTS.md)), plus fresh interactive HQ sessions on real tasks.
+
+| Implementer | Hidden tests | Claude per task |
+|-------------|--------------|-----------------|
+| Claude Opus | 6/6 | ~$3.16 (with Claude Code's `advisorModel`) |
+| Claude Sonnet | 6/6 | ~$0.33 |
+| Claude Haiku | 12/12 | cents once `advisorModel` is off |
+| Foreman, `pi:nan/deepseek-v4-flash 2` then `pi:nan/glm5.3-flash 1` | 12/12 | $0 (plus advisor calls) |
+
+| HQ that delegates to the NAN foreman, `MISTER_HANDY_ADVISOR=opus` | HQ | Advisor | Brief |
+|-------------------------------------------------------------------|----|---------|-------|
+| Opus | ~$2.2 | ~$0.4 | 10 Acceptance commands, first attempt passed |
+| Sonnet | ~$1.0 | ~$1.4 | 1 Acceptance command, a retry and more advisor calls |
+
+The implementation costs no Claude once it runs on a cheap ladder; what is left is the HQ deciding and
+writing the brief, and the brief's Acceptance block decides how well the cheap worker does. For the
+quality you get today, keep the HQ on Opus with the rules router and an Opus advisor:
+
+```text
+~/.config/mister-handy/ladder   pi:nan/deepseek-v4-flash 2
+                                pi:nan/glm5.3-flash 1
+~/.config/mister-handy/env      MISTER_HANDY_ROUTER=rules
+                                MISTER_HANDY_ADVISOR=opus
+```
+
+Jev routed most real tasks to Sonnet (confidence 0.3-0.67) that the NAN foreman passed in the
+benchmark, so `rules` sends more work to the cheap ladder; the ladder escalates to Claude when it fails.
+
 ### Keys and setup
 
 - **Claude**: `claude` logged in (subscription or API key); nothing else. `claude:` workers use
