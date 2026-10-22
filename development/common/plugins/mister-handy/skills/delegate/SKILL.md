@@ -366,11 +366,12 @@ that gives a DONE worker new work is a REOPENED line too, so the watcher tracks 
 For each task in `SESSIONS.md` (or each worktree the user named):
 
 1. Done means: a DONE line, and its PR merged or closed (or `no-code`), and
-   `bash <skill dir>/bin/closable.sh <path>` prints `CLOSABLE`: a clean tree, and every commit on
-   a remote branch or the head of a merged PR.
-2. Done → copy anything worth keeping out of the worktree first (reports already live in
-   `_hq/`), then `orca worktree rm --worktree path:<path> --force --json`, and append
-   `HH:MM hq CLOSED <slug>`. `--force` is safe only after `CLOSABLE`.
+   `bash <skill dir>/bin/closable.sh <path>` prints `CLOSABLE` (a clean tree, and every commit on
+   a remote branch or the head of a merged PR) or `GONE` (the worktree is already removed).
+2. Done → `GONE`: append `HH:MM hq CLOSED <slug> already removed` and do not run
+   `orca worktree rm`. Otherwise, copy anything worth keeping out of the worktree first (reports
+   already live in `_hq/`), then `orca worktree rm --worktree path:<path> --force --json`, and
+   append `HH:MM hq CLOSED <slug>`. `--force` is safe only after `CLOSABLE`.
 3. Not done → do not remove it. List it with what is missing (`KEEP <why>`, open PR, no DONE
    line). A task you meant to close but cannot gets `HH:MM hq KEPT <slug> <why>`.
 
