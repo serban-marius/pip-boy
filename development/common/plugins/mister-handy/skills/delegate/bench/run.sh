@@ -1,6 +1,6 @@
 #!/bin/bash
 # run.sh <task-id> <arm> [rep]: one headless worker on one replay task, scored, one line to results/results.jsonl
-# Arms: claude-<model> (opus, sonnet, ...), pi-<nan model id>[-ne], pipeline ($BENCH_PIPELINE).
+# Arms: claude-<model> (opus, sonnet, ...), pi-<nan model id>[-ne], pipeline[-<ladders/ file>] ($BENCH_PIPELINE).
 
 set -u
 . "$(dirname "$0")/lib.sh"
@@ -65,7 +65,7 @@ log=$run/agent.log
 err=$run/agent.err
 child_env=(env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_CODE_SESSION_ID -u CLAUDE_CODE_CHILD_SESSION
   -u CLAUDE_CODE_SESSION_ATTENDED -u CLAUDE_CODE_MESSAGING_SOCKET -u CLAUDE_CODE_MESSAGING_TOKEN -u CLAUDE_PID
-  -u CLAUDE_EFFORT -u CLAUDE_PROJECT_DIR -u CLAUDE_CODE_EXECPATH $(env | sed -n 's/^\(ORCA_[A-Z_]*\)=.*/-u \1/p'))
+  -u CLAUDE_EFFORT -u CLAUDE_PROJECT_DIR -u CLAUDE_CODE_EXECPATH -u MISTER_HANDY_LADDER $(env | sed -n 's/^\(ORCA_[A-Z_]*\)=.*/-u \1/p'))
 
 case $arm in
   claude-*) kind=claude model=${arm#claude-}
@@ -74,13 +74,21 @@ case $arm in
     cmd=(pi -p --no-session --mode json --model "nan/$model" -ne "$prompt") ;;
   pi-*) kind=pi model=${arm#pi-}
     cmd=(pi -p --no-session --mode json --model "nan/$model" "$prompt") ;;
-  pipeline) kind=pipeline model=pipeline
+  pipeline | pipeline-*) kind=pipeline model=$arm ladder=
     [ -n "${BENCH_PIPELINE:-}" ] || { echo "pipeline arm needs BENCH_PIPELINE" >&2; exit 2; }
-    cmd=(bash -c "$BENCH_PIPELINE" pipeline "$brief" "$repo" "$status" "$prompt") ;;
+    if [ "$arm" != pipeline ]; then
+      [ -s "$bench/ladders/${arm#pipeline-}" ] || { echo "no ladder $bench/ladders/${arm#pipeline-}" >&2; exit 2; }
+      ladder=$(grep -v '^$' "$bench/ladders/${arm#pipeline-}" | paste -sd, -)
+    fi
+    cmd=(MISTER_HANDY_LADDER="$ladder" bash -c "$BENCH_PIPELINE" pipeline "$brief" "$repo" "$status" "$prompt")
+    [ -n "$ladder" ] || cmd=("${cmd[@]:1}") ;;
   *) echo "unknown arm $arm" >&2; exit 2 ;;
 esac
 
 t0=$(date +%s)
+ended_on_error=false
+stop=
+S='[0-9]{1,2}:[0-9]{2}'
 (cd "$repo" && with_timeout "$BENCH_TIMEOUT" "${child_env[@]}" BENCH_RUN=1 "${cmd[@]}" </dev/null >"$log" 2>"$err")
 exit_code=$?
 wall=$(( $(date +%s) - t0 ))
@@ -90,18 +98,34 @@ case $kind in
     usage=$(jq -c 'select(.type=="result") | {cost_usd: .total_cost_usd, turns: .num_turns, is_error, subtype,
       tokens: {in: .usage.input_tokens, out: .usage.output_tokens, cache_read: .usage.cache_read_input_tokens,
       cache_write: .usage.cache_creation_input_tokens}}' "$log" 2>/dev/null | tail -1)
+    errors=$(jq -r 'select(.type=="result" and .is_error) | .result // .subtype' "$log" 2>/dev/null | head -3)
+    jq -e 'select(.type=="result")' "$log" >/dev/null 2>&1 || ended_on_error=true ;;
+  pipeline) commands=$(jq -r 'select(.type=="assistant") | .message.content[]? | select(.type=="tool_use" and .name=="Bash") | .input.command' "$log" 2>/dev/null)
+    usage=$(jq -sc '([.[] | select(.type=="result")] | last) as $r | [.[] | select(.type=="pipeline_step")] as $s |
+      {cost_usd: ($r.total_cost_usd // 0), turns: ($r.num_turns // 0),
+       tokens: {in: $r.usage.input_tokens, out: $r.usage.output_tokens, cache_read: $r.usage.cache_read_input_tokens,
+       cache_write: $r.usage.cache_creation_input_tokens},
+       pipeline: {route: ([$s[] | select(.step=="route") | .detail] | first), foreman: ([$s[] | select(.step=="foreman") | .detail] | first),
+       claude: ([$s[] | select(.step=="claude") | .detail] | first)}}' "$log" 2>/dev/null)
+    sessions=$(for f in "$hq/logs/$task"/sessions/*.jsonl; do [ -f "$f" ] && jq -sc '[.[] | select(.type=="message" and .message.role=="assistant") | .message]
+      | {model: (.[0].model // null), stop: (last.stopReason // "none"), turns: length, tokens: (map(.usage.totalTokens // 0) | add // 0),
+         output_cap_turns: (map(select(.stopReason=="length")) | length)}' "$f"; done | jq -sc .)
+    usage=$(jq -c --arg l "${ladder:-default}" --argjson s "${sessions:-[]}" '.pipeline.ladder = $l | .pipeline.sessions = $s | .pipeline.output_cap = ([$s[] | select(.stop=="length")] | length)
+      | .tokens.total = ([$s[].tokens] | add // 0)' <<<"$usage")
+    usage=$(jq -c --argjson a "$(grep -cE "^$S $task MILESTONE attempt [0-9]+/[0-9]+ [^ ]+ (PASS|FAIL) " "$status")" '.pipeline.attempts = $a' <<<"$usage")
     errors=$(jq -r 'select(.type=="result" and .is_error) | .result // .subtype' "$log" 2>/dev/null | head -3) ;;
   *) commands=$(jq -r 'select(.type=="tool_execution_start" and .toolName=="bash") | .args.command // empty' "$log" 2>/dev/null)
     usage=$(jq -sc '[.[] | select(.type=="message_end" and .message.role=="assistant") | .message] |
       {cost_usd: 0, turns: length, models: ([.[].model] | unique),
       tokens: {in: (map(.usage.input // 0) | add // 0), out: (map(.usage.output // 0) | add // 0),
       cache_read: (map(.usage.cacheRead // 0) | add // 0), total: (map(.usage.totalTokens // 0) | add // 0)}}' "$log" 2>/dev/null)
-    errors=$(jq -r 'select(.type=="message_end" and .message.stopReason=="error") | .message.errorMessage // "error"' "$log" 2>/dev/null | sort | uniq -c | head -5) ;;
+    errors=$(jq -r 'select(.type=="message_end" and .message.stopReason=="error") | .message.errorMessage // "error"' "$log" 2>/dev/null | sort | uniq -c | head -5)
+    stop=$(jq -rs '[.[] | select(.type=="message_end" and .message.role=="assistant")] | last | .message.stopReason // "none"' "$log" 2>/dev/null)
+    [[ ${stop:-none} =~ ^(error|aborted|none)$ ]] && ended_on_error=true ;;
 esac
 [ -n "$usage" ] || usage='{}'
 http429=$(cat <(printf '%s\n' "$errors") "$err" | grep -ciE '429|rate.?limit|too many requests')
 
-S='[0-9]{1,2}:[0-9]{2}'
 mine=$(grep -E "^$S $task " "$status")
 start_ok=false; grep -qE "^$S $task START( |$)" <<<"$mine" && start_ok=true
 done_sha=$(grep -E "^$S $task DONE " <<<"$mine" | tail -1 | awk '{print $4}')
@@ -111,8 +135,8 @@ if [[ $done_sha =~ ^[0-9a-f]{7,40}$ ]] && git -C "$repo" merge-base --is-ancesto
   done_ok=true
   [ "$(git -C "$repo" rev-parse "$done_sha")" = "$(git -C "$repo" rev-parse HEAD)" ] && done_head=true
 fi
-final=$(grep -oE "^$S $task (DONE|FAILED|BLOCKED) " <<<"$mine" | tail -1 | awk '{print $3}')
-malformed=$(sed 1d "$status" | grep -vcE "^$S $task (START|MILESTONE|ANSWER|BLOCKED|HANDOFF|HANDOFF-FYI|REVISED|DONE-STEP|DONE|FAILED)( |$)")
+final=$(grep -oE "^$S $task (DONE|FAILED|BLOCKED|ESCALATE) " <<<"$mine" | tail -1 | awk '{print $3}')
+malformed=$(sed 1d "$status" | grep -vcE "^$S $task (START|MILESTONE|ANSWER|BLOCKED|HANDOFF|HANDOFF-FYI|REVISED|DONE-STEP|DONE|FAILED|ESCALATE)( |$)")
 commits=$(git -C "$repo" rev-list --count "$start_sha..HEAD")
 branch_now=$(git -C "$repo" branch --show-current)
 dirty=$(git -C "$repo" status --porcelain --untracked-files=no | wc -l | tr -d ' ')
@@ -125,11 +149,12 @@ changed=$( { git -C "$repo" diff --name-only "$start_sha" HEAD; git -C "$repo" d
 stray=$( { git -C "$repo" status --porcelain --ignored -uall | sed -nE 's/^(\?\?|!!) //p' | grep -vE '(^|/)__pycache__/|\.pyc$'
   grep -E '(^|/)\.atl/' <<<"$changed"
   ls -A "$run" | grep -vxE "$task|_hq|origin.git|agent.log|agent.err" | sed 's|^|../|'
-  ls -A "$hq" | grep -vxE 'briefs|STATUS.md' | sed 's|^|../_hq/|'; } | sort -u | head -40)
+  ls -A "$hq" | grep -vxE "briefs|STATUS.md$([ "$kind" = pipeline ] && echo '|logs')" | sed 's|^|../_hq/|'; } | sort -u | head -40)
 out_of_scope=$(grep -v '^$' <<<"$changed" | grep -vE "^($(paste -sd'|' "$tdir/scope"))" | head -40)
 
 check_out=$("$tdir/check.sh" "$repo" 2>&1); check_code=$?
 pass=false; [ "$check_code" -eq 0 ] && pass=true
+infra=false; [ "$pass" = false ] && [ "$ended_on_error" = true ] && [ "$exit_code" -ne 124 ] && infra=true
 read -r tp tt < <(grep '^BENCH-SCORE ' <<<"$check_out" | tail -1 | cut -d' ' -f2-)
 read -r base_tp expected < <(cat "$tdir/tests" 2>/dev/null || echo 0 0)
 [ "${tt:-0}" -lt "$expected" ] && tt=$expected
@@ -148,9 +173,9 @@ line=$(jq -nc \
   --argjson malformed "$malformed" --argjson commits "$commits" --arg branch "$branch_now" --argjson dirty "$dirty" \
   --argjson pushed "$pushed" --argjson pr "$pr_attempt" --argjson stash "$bare_stash" \
   --argjson stray "$(j "$stray")" --argjson scope "$(j "$out_of_scope")" --argjson errors "$(j "$errors")" \
-  --argjson http429 "$http429" --arg ts "$(date -u +%FT%TZ)" '
+  --argjson http429 "$http429" --argjson infra "$infra" --arg stop "$stop" --arg ts "$(date -u +%FT%TZ)" '
   {ts: $ts, task: $task, arm: $arm, rep: $rep, kind: $kind, model: $model, base: $base,
-   pass: $pass, tests_passed: $tp, tests_total: $tt, tests_base: $btp,
+   pass: $pass, escalated: ($final == "ESCALATE"), tests_passed: $tp, tests_total: $tt, tests_base: $btp,
    new_tests_frac: (if $tt > $btp then ([($tp - $btp), 0] | max) / ($tt - $btp) * 100 | round / 100 else 0 end), wall_s: $wall, exit: $exit, timed_out: ($exit == 124)}
   + $usage
   + {protocol: {start: $start, done: $done, done_is_head: $done_head, final: $final, malformed_lines: $malformed,
@@ -158,7 +183,8 @@ line=$(jq -nc \
        stray: $stray, out_of_scope: $scope},
      protocol_score: (([$start, $done, ($commits > 0), ($pushed or $pr | not), ($stash | not), ($stray | length == 0)]
        | map(select(.)) | length) / 6 * 100 | round / 100),
-     errors: $errors, http429: $http429}')
+     errors: $errors, http429: $http429, infra: $infra}
+  + (if $stop == "" then {} else {stop: $stop} end)')
 [ -n "$line" ] || { echo "no result line for $id" >&2; exit 3; }
 until mkdir "$results.lock" 2>/dev/null; do sleep 0.2; done
 printf '%s\n' "$line" >>"$results"

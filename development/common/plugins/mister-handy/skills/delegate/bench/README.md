@@ -21,7 +21,8 @@ Arms:
 | `claude-<model>` | `claude -p --model <model> --permission-mode auto --output-format stream-json --verbose` (the user's plugins and hooks load, as for a real worker) |
 | `pi-<nan model id>` | `pi -p --no-session --mode json --model nan/<id>` (the user's pi extensions load) |
 | `pi-<nan model id>-ne` | same with `--no-extensions` |
-| `pipeline` | `BENCH_PIPELINE='bash bench/pipeline.sh "$@"' BENCH_CHEAP_DIR=<delegate dir>`: route.sh, then foreman.sh or a Claude worker, escalation included |
+| `pipeline` | `BENCH_PIPELINE='bash bench/pipeline.sh "$@"' BENCH_CHEAP_DIR=<cheap-mvp delegate dir>`: route.sh's pick is recorded, then foreman.sh runs its NAN ladder; `ESCALATE` ends the run and is scored `escalated` |
+| `pipeline-<name>` | same, with foreman's ladder from `ladders/<name>` (`<model> <tries>` per line, passed as `MISTER_HANDY_LADDER`); the run records each pi session's model, last stopReason and tokens |
 
 Limits used for the published numbers: ≤3 pi runs and ≤2 Claude runs at once (NAN throttles),
 25 min per run (`BENCH_TIMEOUT`, seconds).
@@ -39,7 +40,9 @@ gitignored.
 `pass` (hidden tests exit 0), `tests_passed/tests_total/tests_base` and `new_tests_frac` (share of
 the tests the base did not already pass), `wall_s`, `exit`, `timed_out`, `cost_usd` and `tokens`
 (Claude from the stream's `result` event; NAN summed from pi's `message_end` usage, `cost_usd` 0),
-`turns`, `errors`, `http429`, and `protocol`:
+`turns`, `errors`, `http429`, `escalated` (final line ESCALATE), `pipeline` (pipeline arm: `route` = route.sh output, `foreman` = its exit, `attempts` = foreman attempt MILESTONEs), `stop` (pi: the last assistant stopReason; `length` = the model hit its
+output cap, a model failure), `infra` (failed and ended on an API error or throttling, not a timeout:
+`campaign.sh` re-runs it, `report.sh` skips it), and `protocol`:
 
 | Field | Meaning |
 |---|---|
@@ -54,6 +57,9 @@ the tests the base did not already pass), `wall_s`, `exit`, `timed_out`, `cost_u
 | `out_of_scope` | changed paths outside `tasks/<id>/scope` |
 
 `protocol_score` = share of: START, DONE, a commit, no push/PR, no bare stash, no stray files.
+
+`report.sh` counts, per task × arm × rep, the first line that is not `infra`; later lines for the same
+run (re-runs) are kept in the file but not counted, so retrying cannot turn a failure into a pass.
 
 ## Add a task
 

@@ -6,7 +6,7 @@ set -u
 cheap=$(cd "${1:?usage: jev.sh <cheap-mvp delegate dir> [task-id...]}" && pwd); shift
 [ $# -gt 0 ] || set -- $(cat "$bench/tasks/order")
 out=$bench/results/jev.jsonl
-sha=$(git -C "$cheap" rev-parse --short HEAD 2>/dev/null)
+sha=${BENCH_CHEAP_SHA:-$(git -C "$cheap" rev-parse --short HEAD 2>/dev/null)}
 tmp=$(mktemp -d) && trap 'rm -rf "$tmp"' EXIT
 for task in "$@"; do
   { cat "$bench/tasks/$task/brief.md"; printf '\n## Rules\n- Commit on the branch; never push.\n'; } >"$tmp/w.md"

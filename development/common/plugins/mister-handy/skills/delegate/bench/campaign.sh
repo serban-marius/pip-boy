@@ -10,7 +10,7 @@ touch "$results"
 for task in $tasks; do
   for arm in "$@"; do
     for rep in $(seq 1 "$reps"); do
-      jq -e --arg t "$task" --arg a "$arm" --argjson r "$rep" 'select(.task == $t and .arm == $a and .rep == $r)' \
+      jq -e --arg t "$task" --arg a "$arm" --argjson r "$rep" 'select(.task == $t and .arm == $a and .rep == $r and (.infra | not) and (.superseded | not))' \
         "$results" >/dev/null 2>&1 || echo "$task $arm $rep"
     done
   done
