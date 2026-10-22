@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -u
-unset MISTER_HANDY_REVIEW GIT_CONFIG_COUNT
+while IFS= read -r v; do
+  case $v in
+    MISTER_HANDY_* | GIT_CONFIG_COUNT | GIT_CONFIG_KEY_* | GIT_CONFIG_VALUE_* | GIT_TERMINAL_PROMPT) unset "$v" ;;
+  esac
+done < <(compgen -e)
 here=$(cd "$(dirname "$0")" && pwd)
 tmp=$(mktemp -d) && trap 'rm -rf "$tmp"' EXIT
 fails=0
@@ -211,6 +215,12 @@ expect "DONE carries the commit sha"            "$(awk '$3 == "DONE" { print $4 
 expect "the worker's change is committed"       "$(git -C "$R" log -1 --format=%s) $(git -C "$R" status --porcelain | wc -l | tr -d ' ')" "write ok to done.txt 0"
 expect "the worker never sees Reporting"        "$(grep -c 'STATUS.md' "$PI_LAST_PROMPT")" "1"
 expect "per-attempt logs are kept"              "$(ls "$FHQ/logs/t" | grep -c '^attempt-1\.')" "3"
+
+fresh "" pass
+brief "Risk: low" '## Acceptance
+test -z "${MISTER_HANDY_FOO:-}${GIT_CONFIG_COUNT:-}"'
+expect "acceptance runs without MISTER_HANDY_ or GIT_CONFIG_ vars" "$(export MISTER_HANDY_FOO=x GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=mister.handy.test GIT_CONFIG_VALUE_0=1; foreman; states)" "exit 0
+START MILESTONE DONE "
 
 fresh "" pass-new
 brief "Risk: low" "$ACC
