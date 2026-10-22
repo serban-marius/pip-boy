@@ -178,7 +178,14 @@ A previous run of this attempt was cut off by a rate limit; your changes so far 
 }
 
 check() {
-  local alog=$logs/$1.accept.log cmd f out=""
+  local alog=$logs/$1.accept.log cmd f n out=""
+  local clean_env=()
+  while IFS= read -r n; do
+    case $n in
+      MISTER_HANDY_* | GIT_CONFIG_COUNT | GIT_CONFIG_KEY_* | GIT_CONFIG_VALUE_* | GIT_TERMINAL_PROMPT)
+        clean_env+=(-u "$n") ;;
+    esac
+  done < <(compgen -e)
   : >"$alog"
   if [ -n "$scope" ]; then
     set -f
@@ -198,7 +205,7 @@ check() {
   beat "acceptance checks, $1"
   while IFS= read -r cmd; do
     echo "\$ $cmd" >>"$alog"
-    limit "$check_timeout" bash -c "$cmd" >>"$alog" 2>&1 </dev/null
+    limit "$check_timeout" env "${clean_env[@]}" bash -c "$cmd" >>"$alog" 2>&1 </dev/null
     failed_rc=$?
     [ "$failed_rc" -eq 0 ] || { unbeat; failed_cmd=$cmd; failure=$(tail -n 80 "$alog"); return 1; }
   done < <(brief_acceptance "$brief")
