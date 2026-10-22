@@ -203,6 +203,10 @@ when the brief can prove its own result. Three pieces, none of them spends Claud
 **The brief** needs a `Risk:` line and an `## Acceptance` section: one command per line, run from
 the worktree root, every one exits 0 = accepted. Write commands a stranger could run: tests that
 exist, or a test file the brief spells out. The worker sees them; weak checks let weak work through.
+The Acceptance block must hold the real tests for the change, the ones a reviewer would run, not a
+smoke check (`bash -n`, `--help`, one happy-path call): the foreman's DONE means only that these
+commands passed. In the benchmark (`bench/RESULTS.md`), glm5.3-flash reached DONE on a passing
+Acceptance while the hidden tests were red; Claude and deepseek under the foreman never did.
 `PR: ready <base>` (or `draft`) makes the foreman push and open the PR after a pass; without it
 the work stays as a local commit. `Scope: <globs>` (space-separated, e.g. `src/calc/* tests/test_calc.py`)
 fails any attempt that changes a file outside them. Acceptance lines that are prose or not valid
@@ -239,8 +243,13 @@ Bash tool with `run_in_background: true`:
 Record `foreman <ladder head>` as the agent in `SESSIONS.md`. The foreman starts only on a clean
 feature branch (not `main`, `master` or the `PR:` base); anything else is `FAILED`.
 
-**What the foreman does**, per attempt of the ladder (`MISTER_HANDY_LADDER="nan/glm5.3-flash 2,nan/deepseek-v4-flash 1"`,
-else the `ladder` file next to this skill, `<model> <tries>` per line):
+For `Risk: normal` briefs, add the cheap reviewer: prefix the command with
+`MISTER_HANDY_REVIEW=nan/glm5.3-flash` (a model other than the ladder head), so a second model
+reads the diff against the brief before DONE. `Risk: low` briefs can skip it.
+
+**What the foreman does**, per attempt of the ladder (`MISTER_HANDY_LADDER="nan/deepseek-v4-flash 2,nan/glm5.3-flash 1"`,
+else the `ladder` file next to this skill, `<model> <tries>` per line; deepseek first passed 12/12
+benchmark runs on the first attempt, glm first 11/12 and about 3× slower):
 
 1. `pi -p -ne --model <model>` with the brief minus its Reporting section and `PR:` line; from
    the second attempt on, with the failed command and its output appended. The tree keeps the
@@ -254,7 +263,10 @@ else the `ladder` file next to this skill, `<model> <tries>` per line):
 3. Checks `Scope:`, then runs the Acceptance commands, stops at the first failure; one
    `MILESTONE attempt n/N <model> PASS|FAIL '<command>' exit <rc> (<s>s[, pi timed out])` line,
    never the command's output (that stays in the logs, and redacted in `summary.md`). Logs
-   (prompt, pi output, acceptance output, `summary.md`) go to `<hq>/logs/<slug>/`, outside the repo.
+   (prompt, pi output, pi sessions, acceptance output, `summary.md`) go to `<hq>/logs/<slug>/`,
+   outside the repo. A failed attempt whose pi session ended on the model's output cap (stopReason
+   `length`) skips that model's remaining tries (`, output cap: next rung`): retrying the same model
+   hit the cap again 11 times out of 13 in the benchmark.
 4. Pass → scans the added lines for secrets (private keys, `sk-`, `AKIA`, `gh*_` tokens,
    `api_key|token|secret|password = <long value>`, `.env*` files): a hit is `ESCALATE` with the
    file names, nothing committed. Otherwise commits what the worker changed (not build or acceptance

@@ -56,22 +56,23 @@ hand-offs between them do not depend on HQ forwarding them; UI tasks post a runn
 
 Claude stays on deciding what to do and how; implementation goes to open-source models on the NAN
 quota when the brief can prove its result. A brief carries `Risk: low|normal|high` and an
-`## Acceptance` section (one command per line, run from the worktree root, exit 0 = accepted).
-HQ routes it, and on `pi` launches the foreman instead of Claude:
+`## Acceptance` section (one command per line, run from the worktree root, exit 0 = accepted):
+the real tests for the change, not a smoke check, because the foreman's DONE means only that they
+passed. HQ routes it, and on `pi` launches the foreman instead of Claude:
 
 ```
-route.sh brief  ->  pi nan/glm5.3-flash 0.83 jev        foreman.sh <slug> <brief> <hq dir>
+route.sh brief  ->  pi nan/deepseek-v4-flash 0.83 jev   foreman.sh <slug> <brief> <hq dir>
                     claude sonnet 0.41 low-confidence:nan-flash   (Claude, as before)
                     claude opus 1.00 risk-high
 ```
 
 | Foreman knob | Default |
 |--------------|---------|
-| `MISTER_HANDY_LADDER` | `skills/delegate/ladder`: `nan/glm5.3-flash` ×2, `nan/deepseek-v4-flash` ×1 |
+| `MISTER_HANDY_LADDER` | `skills/delegate/ladder`: `nan/deepseek-v4-flash` ×2, `nan/glm5.3-flash` ×1; an attempt cut by the model's output cap skips to the next rung |
 | `MISTER_HANDY_ROUTE_THRESHOLD` | 0.6 Jev confidence, below it one tier up |
 | `MISTER_HANDY_PI_TIMEOUT` / `MISTER_HANDY_CHECK_TIMEOUT` | 1800 s per attempt / 600 s per command |
 | `MISTER_HANDY_PI_FLAGS` | extra pi flags; `-ne` (no pi extensions) is always on, and their `.atl/` + `.gitignore` lines are removed anyway |
-| `MISTER_HANDY_REVIEW` | off; a NAN model for one read-only review pass, REVISE gets one more round |
+| `MISTER_HANDY_REVIEW` | off; a NAN model for one read-only review pass, REVISE gets one more round; set it (e.g. `nan/glm5.3-flash`) for `Risk: normal` briefs |
 | `MISTER_HANDY_HEARTBEAT` | 600 s between `MILESTONE still working` lines during an attempt |
 | `MISTER_HANDY_NAN_SLOTS` | 3 pi runs at once per user, machine-wide (the NAN key allows 7 parallel requests) |
 | `MISTER_HANDY_RATE_BACKOFF` / `MISTER_HANDY_RATE_RETRIES` | 60 s doubling to 600 s / 5: a 429 is retried without using a ladder try |

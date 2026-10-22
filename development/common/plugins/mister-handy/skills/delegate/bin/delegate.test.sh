@@ -91,8 +91,8 @@ git -C "$W" rev-parse HEAD >"$GH_MERGED_HEADS"
 expect "the head of a merged PR is closable"    "$(closable)" "CLOSABLE"
 
 say "14:00 hq DISPATCHED f"
-say "14:20 f ESCALATE 3 attempts failed (nan/glm5.3-flash nan/glm5.3-flash nan/deepseek-v4-flash)"
-expect "ESCALATE wakes HQ"                      "$(watch)" "14:20 f ESCALATE 3 attempts failed (nan/glm5.3-flash nan/glm5.3-flash nan/deepseek-v4-flash)"
+say "14:20 f ESCALATE 3 attempts failed (nan/deepseek-v4-flash nan/deepseek-v4-flash nan/glm5.3-flash)"
+expect "ESCALATE wakes HQ"                      "$(watch)" "14:20 f ESCALATE 3 attempts failed (nan/deepseek-v4-flash nan/deepseek-v4-flash nan/glm5.3-flash)"
 expect "an escalated task settles"              "$(watch)" "ALL-SETTLED"
 
 cat >"$tmp/stub/curl" <<'EOF'
@@ -104,7 +104,8 @@ EOF
 cat >"$tmp/stub/pi" <<'EOF'
 #!/bin/bash
 model=""; prev=""
-for a in "$@"; do [ "$prev" = --model ] && model=$a; prev=$a; done
+sd=""
+for a in "$@"; do [ "$prev" = --model ] && model=$a; [ "$prev" = --session-dir ] && sd=$a; prev=$a; done
 case " $* " in *" --tools "*) echo "reviewed $model" >>"$PI_CALLS"; cat "$PI_REVIEW"; exit 0 ;; esac
 echo "$model" >>"$PI_CALLS"
 case " $* " in *" -ne "*) ;; *) echo "extensions on" >>"$PI_CALLS" ;; esac
@@ -117,6 +118,7 @@ case $(sed -n "${n}p" "$PI_PLAN") in
   edits-test) echo ok >done.txt; echo x >ok.txt ;;
   pass-new) echo ok >done.txt; echo new >new.txt; mkdir __pycache__; echo x >__pycache__/c.pyc ;;
   broken) echo ko >done.txt ;;
+  capped) echo ko >done.txt; mkdir -p "$sd"; printf '{"type":"message","message":{"role":"assistant","stopReason":"length"}}\n' >"$sd/$(printf %04d "$n").jsonl" ;;
   atl) echo ok >done.txt; mkdir -p .atl; echo x >.atl/state; printf '# Local Pi runtime state\n.atl/\n' >>.gitignore ;;
   atl-and-edit) echo ok >done.txt; mkdir -p .atl; printf 'logs/\n# Local Pi runtime state\n.atl/\n' >>.gitignore ;;
   revised) echo ok >done.txt; echo renamed >notes.txt ;;
@@ -154,7 +156,7 @@ $ACC"
 expect "a production write routes to Claude"    "$(route)" "claude opus 1.00 production"
 brief "Risk: low" "Never touch prod.
 $ACC"
-expect "a confident nan-flash goes to pi"       "$(route)" "pi nan/glm5.3-flash 0.74 jev"
+expect "a confident nan-flash goes to pi"       "$(route)" "pi nan/deepseek-v4-flash 0.74 jev"
 expect "the ladder head is the pi model"        "$(MISTER_HANDY_LADDER='nan/qwen3.6 1,nan/gemma4 1' route)" "pi nan/qwen3.6 0.74 jev"
 jev nan-flash 0.41
 expect "low confidence goes one tier up"        "$(route)" "claude sonnet 0.41 low-confidence:nan-flash"
@@ -171,14 +173,14 @@ brief "Risk: low" "Never touch prod.
 $ACC"
 brief "Risk: low" "Make the production edit in src/x.ts; keep production code paths.
 $ACC"
-expect "editing production source is ordinary work" "$(route)" "pi nan/glm5.3-flash 0.74 jev"
+expect "editing production source is ordinary work" "$(route)" "pi nan/deepseek-v4-flash 0.74 jev"
 brief "Risk: low
 Prod: yes" "$ACC"
 expect "Prod: yes routes to Claude"             "$(route)" "claude opus 1.00 production"
 brief "Risk: low
 Prod: no" "Then deploy to prod after merge.
 $ACC"
-expect "Prod: no overrides the keywords"        "$(route)" "pi nan/glm5.3-flash 0.74 jev"
+expect "Prod: no overrides the keywords"        "$(route)" "pi nan/deepseek-v4-flash 0.74 jev"
 brief "Risk: low" "Never touch prod.
 $ACC"
 echo '{"answers":{}}' >"$JEV_REPLY"
@@ -216,14 +218,24 @@ fresh "" broken pass
 foreman >/dev/null
 expect "fail then pass is DONE"                 "$(states)" "START MILESTONE MILESTONE DONE "
 expect "the retry gets the failure output"      "$(grep -c '^## Previous attempt failed' "$PI_LAST_PROMPT")" "1"
-expect "a failed attempt is one MILESTONE"      "$(awk '$3 == "MILESTONE" { print $4, $5, $6, $7 }' "$FHQ/STATUS.md" | head -n 1)" "attempt 1/3 nan/glm5.3-flash FAIL"
+expect "a failed attempt is one MILESTONE"      "$(awk '$3 == "MILESTONE" { print $4, $5, $6, $7 }' "$FHQ/STATUS.md" | head -n 1)" "attempt 1/3 nan/deepseek-v4-flash FAIL"
 
 fresh "" broken broken broken
 expect "an exhausted ladder exits 3"            "$(foreman)" "exit 3"
 expect "an exhausted ladder ESCALATEs"          "$(states)" "START MILESTONE MILESTONE MILESTONE ESCALATE "
-expect "the ladder climbs"                      "$(tr '\n' ' ' <"$PI_CALLS")" "nan/glm5.3-flash nan/glm5.3-flash nan/deepseek-v4-flash "
+expect "the ladder climbs"                      "$(tr '\n' ' ' <"$PI_CALLS")" "nan/deepseek-v4-flash nan/deepseek-v4-flash nan/glm5.3-flash "
 expect "worker.diff includes new files"         "$(grep -c '^+++ b/done.txt' "$FHQ/logs/t/worker.diff")" "1"
 expect "escalated work is left uncommitted"     "$(git -C "$R" log --oneline | wc -l | tr -d ' ')" "1"
+
+fresh "" capped pass
+foreman >/dev/null
+expect "an output cap skips to the next rung"   "$(tr '\n' ' ' <"$PI_CALLS")" "nan/deepseek-v4-flash nan/glm5.3-flash "
+expect "and says so"                            "$(grep -c 'attempt 1/3 nan/deepseek-v4-flash FAIL .*output cap: next rung' "$FHQ/STATUS.md") $(grep -c 'attempt 3/3 nan/glm5.3-flash PASS' "$FHQ/STATUS.md")" "1 1"
+fresh "" capped broken broken pass
+MISTER_HANDY_LADDER="nan/a 1,nan/b 2,nan/c 1" foreman >/dev/null
+expect "an older capped session does not skip"  "$(tr '\n' ' ' <"$PI_CALLS")" "nan/a nan/b nan/b nan/c "
+fresh "" capped
+expect "a cap on the last rung ESCALATEs"       "$(MISTER_HANDY_LADDER="nan/a 2" foreman | tr '\n' ' '; awk '$3 == "ESCALATE" { print $4, $5, $6, $7 }' "$FHQ/STATUS.md")" "exit 3 1 attempts failed (nan/a);"
 
 fresh "" atl
 foreman >/dev/null
@@ -241,7 +253,7 @@ brief "Risk: low" "$ACC"
 fresh "" pass revised
 printf 'Looks fine mostly.\nREVISE\n1. add notes.txt\n' >"$PI_REVIEW"
 MISTER_HANDY_REVIEW=nan/qwen3.6 foreman >/dev/null
-expect "REVISE gets one more worker round"      "$(tr '\n' ' ' <"$PI_CALLS")" "nan/glm5.3-flash reviewed nan/qwen3.6 nan/glm5.3-flash "
+expect "REVISE gets one more worker round"      "$(tr '\n' ' ' <"$PI_CALLS")" "nan/deepseek-v4-flash reviewed nan/qwen3.6 nan/deepseek-v4-flash "
 expect "the revised round is committed"         "$(git -C "$R" ls-files notes.txt) $(grep -c 'DONE.*review items applied' "$FHQ/STATUS.md")" "notes.txt 1"
 fresh "" pass
 echo PASS >"$PI_REVIEW"
@@ -336,7 +348,7 @@ brief "Risk: low" "$ACC"
 fresh "" ratelimited pass
 foreman >/dev/null
 expect "a 429 is retried without a ladder try"  "$(states)" "START MILESTONE MILESTONE DONE "
-expect "the retry is the same attempt"          "$(grep -c 'attempt 1/3 nan/glm5.3-flash rate-limited, retry 1' "$FHQ/STATUS.md") $(grep -c 'attempt 1/3 nan/glm5.3-flash PASS' "$FHQ/STATUS.md")" "1 1"
+expect "the retry is the same attempt"          "$(grep -c 'attempt 1/3 nan/deepseek-v4-flash rate-limited, retry 1' "$FHQ/STATUS.md") $(grep -c 'attempt 1/3 nan/deepseek-v4-flash PASS' "$FHQ/STATUS.md")" "1 1"
 expect "the slot is released"                   "$(ls "$tmp/slots" | wc -l | tr -d ' ')" "0"
 fresh "" pass
 sleep 4 & holder=$!

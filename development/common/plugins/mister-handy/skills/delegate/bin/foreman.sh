@@ -9,7 +9,8 @@
 # opens a PR only when the brief has "PR: ready|draft <base>". "Scope: <globs>" limits what it may
 # change. MISTER_HANDY_REVIEW=<model> adds one read-only reviewer pass; REVISE gets one more round.
 # At most MISTER_HANDY_NAN_SLOTS (3) pi runs at once per user, machine-wide; a run cut off by a rate
-# limit (429) is retried after a backoff without using up a ladder try.
+# limit (429) is retried after a backoff without using up a ladder try. A failed attempt whose pi session
+# ended on the output cap (stopReason length) skips that model's remaining tries.
 
 here=$(cd "$(dirname "$0")" && pwd)
 . "$here/brief.sh"
@@ -149,7 +150,8 @@ work() {
     [ -z "$3" ] || printf '\n%s\n' "$3"
   } >"$pf"
   beat "attempt $attempt/$total $2"
-  local retry=0 pause note=""
+  local retry=0 pause note="" session
+  ls "$logs/sessions" >"$logs/sessions.before" 2>/dev/null
   while :; do
     pi_run --session-dir "$logs/sessions" --model "$2" "$(cat "$pf")$note" >"$logs/$1.pi.log" 2>&1
     pi_rc=$?
@@ -166,6 +168,10 @@ work() {
 A previous run of this attempt was cut off by a rate limit; your changes so far are in the tree. Carry on."
   done
   unbeat
+  stop=""
+  session=$(ls "$logs/sessions" 2>/dev/null | grep '\.jsonl$' | tail -n 1)
+  [ -z "$session" ] || grep -qxF "$session" "$logs/sessions.before" ||
+    stop=$(grep -o '"stopReason":"[A-Za-z]*"' "$logs/sessions/$session" | tail -n 1 | cut -d'"' -f4)
   clean_strays
   [ "$(git branch --show-current)" = "$branch" ] && git merge-base --is-ancestor "$base" HEAD ||
     end ESCALATE "the worker left branch $branch or rewrote its history; check $PWD by hand" 3
@@ -237,8 +243,13 @@ say "START foreman on $branch, ladder ${models[*]}, $(brief_acceptance "$brief" 
 
 failure=""
 attempt=0
+passed=""
+capped=""
+ran=""
 for model in "${models[@]}"; do
   attempt=$((attempt + 1))
+  [ "$model" != "$capped" ] || continue
+  ran="$ran $model"
   card "attempt $attempt/$total $model"
   started=$SECONDS
   extra=""
@@ -252,9 +263,10 @@ Fix what made it fail."
   secs=$((SECONDS - started))
   timed=$([ "$pi_rc" -eq 142 ] && echo ", pi timed out")
   if check "attempt-$attempt"; then
-    printf '\n## Attempt %s/%s %s: PASS (%ss, pi exit %s)\n' "$attempt" "$total" "$model" "$secs" "$pi_rc" >>"$summary"
+    printf '\n## Attempt %s/%s %s: PASS (%ss, pi exit %s%s)\n' "$attempt" "$total" "$model" "$secs" "$pi_rc" "${stop:+, stop $stop}" >>"$summary"
     say "MILESTONE attempt $attempt/$total $model PASS (${secs}s$timed)"
     commit || end FAILED "acceptance passed but the commit failed, see $logs/commit.log" 2
+    passed=1
     break
   fi
   case $failed_rc in
@@ -262,16 +274,18 @@ Fix what made it fail."
       end FAILED "acceptance not runnable: '$bad' is missing or not executable after attempt $attempt (exit $failed_rc); fix the brief or launch Claude" 2 ;;
   esac
   [ "$failed_rc" -ne 142 ] || timed="$timed, acceptance timed out"
-  printf '\n## Attempt %s/%s %s: FAIL (%ss, pi exit %s)\n`%s` exited %s:\n```\n%s\n```\n' \
-    "$attempt" "$total" "$model" "$secs" "$pi_rc" "$failed_cmd" "$failed_rc" "$(tail -n 40 <<<"$failure" | redact)" >>"$summary"
+  [ "$stop" != length ] || { capped=$model; timed="$timed, output cap: next rung"; }
+  printf '\n## Attempt %s/%s %s: FAIL (%ss, pi exit %s%s)\n`%s` exited %s:\n```\n%s\n```\n' \
+    "$attempt" "$total" "$model" "$secs" "$pi_rc" "${stop:+, stop $stop}" "$failed_cmd" "$failed_rc" "$(tail -n 40 <<<"$failure" | redact)" >>"$summary"
   say "MILESTONE attempt $attempt/$total $model FAIL '$(oneline 60 <<<"$failed_cmd")' exit $failed_rc (${secs}s$timed), log $logs/attempt-$attempt.accept.log"
-  [ "$attempt" -lt "$total" ] || {
-    git add -A -N . 2>/dev/null
-    git diff "$base" >"$logs/worker.diff" 2>/dev/null
-    git reset -q 2>/dev/null
-    end ESCALATE "$total attempts failed (${models[*]}); last: '$(oneline 60 <<<"$failed_cmd")' exit $failed_rc; worker changes left uncommitted in $PWD (git status --short; diff with new files in $logs/worker.diff); summary $summary" 3
-  }
 done
+[ -n "$passed" ] || {
+  git add -A -N . 2>/dev/null
+  git diff "$base" >"$logs/worker.diff" 2>/dev/null
+  git reset -q 2>/dev/null
+  set -- $ran
+  end ESCALATE "$# attempts failed ($*); last: '$(oneline 60 <<<"$failed_cmd")' exit $failed_rc; worker changes left uncommitted in $PWD (git status --short; diff with new files in $logs/worker.diff); summary $summary" 3
+}
 
 sha=$(git rev-parse --short HEAD)
 note=""
