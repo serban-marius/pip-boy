@@ -7,7 +7,9 @@
 # attempt (and a heartbeat every 10 min), then DONE <PR url|sha>, ESCALATE <why> (HQ relaunches on
 # Claude) or FAILED <why> (the brief or the worktree is not fit to start). Logs in <hq>/logs/<slug>/.
 # Starts only on a clean feature branch. The worker cannot push or use gh; the foreman pushes and
-# opens a PR only when the brief has "PR: ready|draft <base>". "Scope: <globs>" limits what it may
+# opens a PR only when the brief has "PR: ready|draft <base>". A push GitHub refuses for lack of the
+# workflow scope is retried once over SSH (MISTER_HANDY_PUSH_FALLBACK_URL, else
+# git@github.com:<o>/<r>.git from an https origin). "Scope: <globs>" limits what it may
 # change. MISTER_HANDY_REVIEW=<rung> adds one read-only reviewer pass; REVISE gets one more round.
 # MISTER_HANDY_ADVISOR=<claude model> gives a pi worker an `advisor` tool (bin/advisor.ts) that sends its
 # conversation to that model; up to MISTER_HANDY_ADVISOR_MAX (4) calls, each logged to <hq>/logs/<slug>/advisor.log.
@@ -46,6 +48,15 @@ oneline() { tr '\n\t' '  ' | tr -s ' ' | sed 's/^ //; s/ $//' | cut -c1-"${1:-12
 redact() {
   perl -pe 's/((?:api[_-]?key|token|secret|passw(?:or)?d|authorization)\S*\s*[=:]\s*)\S+/$1<redacted>/gi;
     s/(Bearer\s+)\S+/$1<redacted>/gi; s/sk-[A-Za-z0-9_-]{12,}/sk-<redacted>/g; s/AKIA[0-9A-Z]{16}/AKIA<redacted>/g'
+}
+fallback_push_url() {
+  local u=${MISTER_HANDY_PUSH_FALLBACK_URL:-}
+  if [ -n "$u" ]; then printf '%s\n' "$u"; return 0; fi
+  u=$(git config --get remote.origin.url 2>/dev/null) || return 1
+  case $u in
+    https://github.com/*/*) u=${u#https://github.com/}; printf 'git@github.com:%s.git\n' "${u%.git}" ;;
+    *) return 1 ;;
+  esac
 }
 end() { say "$1 $2"; card "$1 $2"; exit "$3"; }
 beat() { (while sleep "${MISTER_HANDY_HEARTBEAT:-600}"; do say "MILESTONE still working: $1"; done) 2>/dev/null & hb=$!; }
@@ -414,8 +425,23 @@ where="$sha on $branch (local)"
 if [ -n "$pr" ] && [ "$(git rev-parse HEAD)" != "$base" ]; then
   set -- $pr
   draft=$([ "$1" = draft ] && echo --draft)
-  if git push -q -u origin HEAD >>"$logs/pr.log" 2>&1; then
-    where="$sha on $branch (pushed)"
+  pushed=""
+  : >"$logs/push.log"
+  if git push -q -u origin HEAD >>"$logs/push.log" 2>&1; then
+    pushed=https
+  elif grep -qiE 'refusing to allow an OAuth App.*without .*workflow.*scope' "$logs/push.log"; then
+    fallback=$(fallback_push_url 2>/dev/null) || fallback=""
+    if [ -z "$fallback" ]; then
+      printf 'push: no fallback url for origin\n' >>"$logs/push.log"
+    elif git push -q "$fallback" "HEAD:refs/heads/$branch" >>"$logs/push.log" 2>&1; then
+      pushed=ssh
+    fi
+  fi
+  cat "$logs/push.log" >>"$logs/pr.log"
+  if [ -n "$pushed" ]; then
+    printf 'pushed over %s: %s HEAD -> %s\n' "$pushed" "${fallback:-origin}" "$branch" >>"$logs/pr.log"
+    note="$note, pushed over $pushed"
+    where="$sha on $branch (pushed over $pushed)"
     body=$logs/pr-body.md
     bash "$here/pr-body.sh" "$brief" "$base" "$body" >>"$logs/pr.log" 2>&1
     [ -s "$body" ] || printf '## What\n\n%s\n\n## Changes\n\n```text\n%s\n```\n' \

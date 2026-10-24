@@ -315,7 +315,10 @@ For `Risk: normal` briefs, add the cheap reviewer: prefix the command with
    file names, nothing committed. Otherwise commits what the worker changed (not build or acceptance
    artifacts) with the brief's title, pushes and opens the PR when the brief has `PR:`, and writes
    `DONE <PR url|sha on branch>`, naming any changed file the Acceptance commands run (a test the
-   worker edited deserves a look). Last attempt failed → `ESCALATE <why>`, changes left
+   worker edited deserves a look). A GitHub refusal for lack of the `workflow` scope (a brief
+   touching `.github/workflows/`) is retried once over SSH with `MISTER_HANDY_PUSH_FALLBACK_URL` or
+   `git@github.com:<owner>/<repo>.git` derived from the https origin. Last attempt failed →
+   `ESCALATE <why>`, changes left
    uncommitted, diff including new files in `worker.diff`. `FAILED` for a brief or worktree that
    is not fit to start (no Acceptance, prose in it, a command not found, dirty tree, wrong branch),
    and at once, without climbing the ladder, when an Acceptance command exits 126/127 because the

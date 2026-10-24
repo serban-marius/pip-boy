@@ -314,6 +314,22 @@ fresh() {
 }
 foreman() { (cd "$R" && bash "$here/foreman.sh" t "$B" "$FHQ" >/dev/null 2>&1; echo "exit $?"); }
 states() { awk '{ printf "%s ", $3 }' "$FHQ/STATUS.md"; }
+reject_workflow() {
+  cat >"$tmp/origin.git/hooks/pre-receive" <<'EOF'
+#!/bin/sh
+printf '%s\n' '! [remote rejected] HEAD -> harness-ci (refusing to allow an OAuth App to create or update workflow `.github/workflows/ci.yml` without `workflow` scope)' >&2
+exit 1
+EOF
+  chmod +x "$tmp/origin.git/hooks/pre-receive"
+}
+reject_policy() {
+  cat >"$tmp/origin.git/hooks/pre-receive" <<'EOF'
+#!/bin/sh
+printf '%s\n' 'remote: repository policy forbids this push' >&2
+exit 1
+EOF
+  chmod +x "$tmp/origin.git/hooks/pre-receive"
+}
 brief "Risk: low" "$ACC"
 
 fresh "" pass
@@ -554,6 +570,41 @@ echo "https://github.com/o/r/pull/9" >"$tmp/pr-url"
 foreman >/dev/null
 expect "PR: pushes and opens the PR"            "$(git -C "$tmp/origin.git" branch | tr -d ' *') $(grep -c 'DONE https://github.com/o/r/pull/9' "$FHQ/STATUS.md")" "feat/t 1"
 expect "the worker never sees PR:"              "$(grep -c '^PR:' "$PI_LAST_PROMPT")" "0"
+fresh "" pass
+brief "Risk: low
+PR: ready main" "$ACC"
+echo "https://github.com/o/r/pull/9" >"$tmp/pr-url"
+reject_workflow
+rm -rf "$tmp/fallback.git" && git init -q --bare "$tmp/fallback.git"
+MISTER_HANDY_PUSH_FALLBACK_URL=$tmp/fallback.git foreman >/dev/null
+expect "a workflow-scope refusal falls back to ssh" "$(git -C "$tmp/fallback.git" branch | tr -d ' *')" "feat/t"
+expect "the ssh fallback opens the PR and says so" "$(grep -c 'DONE https://github.com/o/r/pull/9.*pushed over ssh' "$FHQ/STATUS.md") $(grep -c 'pushed over ssh' "$FHQ/logs/t/pr.log")" "1 1"
+fresh "" pass
+brief "Risk: low
+PR: ready main" "$ACC"
+echo "https://github.com/o/r/pull/9" >"$tmp/pr-url"
+reject_policy
+rm -rf "$tmp/fallback.git" && git init -q --bare "$tmp/fallback.git"
+MISTER_HANDY_PUSH_FALLBACK_URL=$tmp/fallback.git foreman >/dev/null
+expect "a different push refusal does not fall back" "$(git -C "$tmp/fallback.git" branch | wc -l | tr -d ' ') $(grep -c 'push/PR failed' "$FHQ/STATUS.md")" "0 1"
+derive() {
+  fresh "" pass
+  brief "Risk: low
+PR: ready main" "$ACC"
+  echo "https://github.com/o/r/pull/9" >"$tmp/pr-url"
+  reject_workflow
+  rm -rf "$tmp/fallback.git" "$tmp/unexpected"
+  git init -q --bare "$tmp/fallback.git"
+  git -C "$R" remote set-url origin "$1"
+  git -C "$R" config url."$tmp/origin.git".insteadOf "$1"
+  git -C "$R" config url."$tmp/fallback.git".insteadOf git@github.com:o/r.git
+  git -C "$R" config url."$tmp/unexpected/".insteadOf git@github.com:
+  export GIT_SSH_COMMAND=false
+  foreman >/dev/null
+  printf '%s' "$(git -C "$tmp/fallback.git" branch | tr -d ' *')|$(grep -o 'pushed over ssh: git@github.com:o/r.git HEAD -> feat/t' "$FHQ/logs/t/pr.log" | head -n 1)"
+}
+expect "derives the ssh url from https origin with .git" "$(derive https://github.com/o/r.git)" "feat/t|pushed over ssh: git@github.com:o/r.git HEAD -> feat/t"
+expect "derives the ssh url from https origin without .git" "$(derive https://github.com/o/r)" "feat/t|pushed over ssh: git@github.com:o/r.git HEAD -> feat/t"
 brief "Risk: low" "$ACC"
 fresh "" branchy
 expect "a worker that switches branch ESCALATEs" "$(foreman >/dev/null; grep -c 'ESCALATE the worker left branch feat/t' "$FHQ/STATUS.md")" "1"
