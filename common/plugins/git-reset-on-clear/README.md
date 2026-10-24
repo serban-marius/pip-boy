@@ -11,7 +11,7 @@ On `SessionStart` with matcher `clear`, the hook:
 - leaves a linked worktree on its branch
 - leaves a detached HEAD alone
 - on a clean checkout on a non-default branch, checks out the default branch (`origin/HEAD`, else `main`, else `master`)
-- on the default branch, runs `git pull --ff-only`
+- pulls with `git pull --ff-only` only when already on the default branch
 - always exits 0 and prints one short line saying what it did
 
 ## Installation
@@ -29,7 +29,7 @@ The plugin ships its own `hooks/hooks.json`; no settings edit or `chmod` is need
 
 The hook never touches linked worktrees, so [mister-handy](../../../development/common/plugins/mister-handy/README.md) workers keep their branches and [overseer](../../../development/common/plugins/overseer/README.md) keeps its per-branch logs.
 
-A clean main checkout sitting on a feature branch is still switched to the default branch on `/clear`. That is the remaining overlap with foreman and with per-branch logs written in the shared checkout: run agent work in a linked worktree, or commit before clearing.
+A clean main checkout sitting on a feature branch is still switched to the default branch on `/clear`. That is the remaining overlap with foreman and with per-branch logs written in the shared checkout. Only running agent work in a linked worktree avoids the switch.
 
 ## Plugin structure
 
