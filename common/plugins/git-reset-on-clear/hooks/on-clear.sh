@@ -1,23 +1,66 @@
 #!/bin/bash
-# Hook: SessionStart (clear)
-# Ensures the git repo is on main with the latest code after /clear
 
-cd "$CLAUDE_PROJECT_DIR" || exit 0
+export GIT_TERMINAL_PROMPT=0
 
-# Only act if we're in a git repo
-git rev-parse --is-inside-work-tree &>/dev/null || exit 0
+cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null || exit 0
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 
-# Stash any uncommitted changes so checkout doesn't fail
-has_changes=false
-if ! git diff --quiet || ! git diff --cached --quiet; then
-  has_changes=true
-  git stash push -m "auto-stash before /clear reset" --quiet
+root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+cd "$root" 2>/dev/null || exit 0
+
+default_branch() {
+  local candidate
+  candidate=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null)
+  candidate=${candidate#origin/}
+  if [ -n "$candidate" ] && git show-ref --verify --quiet "refs/heads/$candidate"; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+  for candidate in main master; do
+    if git show-ref --verify --quiet "refs/heads/$candidate"; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+if [ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]; then
+  echo "git-reset-on-clear: working tree has changes; left it alone"
+  exit 0
 fi
 
-git checkout main --quiet 2>/dev/null || git checkout master --quiet 2>/dev/null || exit 0
-git pull --ff-only --quiet 2>/dev/null
-
-# Re-apply stashed changes if any
-if [ "$has_changes" = true ]; then
-  git stash pop --quiet 2>/dev/null
+git_dir=$(cd "$(git rev-parse --git-dir 2>/dev/null)" 2>/dev/null && pwd -P)
+common_dir=$(cd "$(git rev-parse --git-common-dir 2>/dev/null)" 2>/dev/null && pwd -P)
+if [ "$git_dir" != "$common_dir" ]; then
+  echo "git-reset-on-clear: linked worktree; left it alone"
+  exit 0
 fi
+
+current=$(git symbolic-ref -q --short HEAD 2>/dev/null)
+if [ -z "$current" ]; then
+  echo "git-reset-on-clear: detached HEAD; left it alone"
+  exit 0
+fi
+
+target=$(default_branch)
+if [ -z "$target" ]; then
+  echo "git-reset-on-clear: no default branch; left it alone"
+  exit 0
+fi
+
+if [ "$current" != "$target" ]; then
+  if git checkout --quiet "$target" 2>/dev/null; then
+    echo "git-reset-on-clear: switched $current -> $target"
+  else
+    echo "git-reset-on-clear: could not switch $current -> $target"
+  fi
+  exit 0
+fi
+
+if git pull --ff-only --quiet 2>/dev/null; then
+  echo "git-reset-on-clear: pulled $target"
+else
+  echo "git-reset-on-clear: could not fast-forward $target"
+fi
+exit 0
