@@ -90,7 +90,7 @@ git -C "$R" checkout -q -- src/Legacy.php && rm -f "$R/src/Fresh.php" "$R/NOTES.
 
 mkdir -p "$R/src/my dir" && touch "$R/src/my dir/Spaced.php"
 check "a path with spaces is still prod code"   0 post-edit "$(edit 'src/my dir/Spaced.php')"
-grep -q prod-edit "$R/.git/overseer/feat-castle.log" && tail -1 "$R/.git/overseer/feat-castle.log" | grep -q prod-edit || { echo "FAIL spaced path not logged"; fails=$((fails + 1)); }
+grep -q ' prod-edit$' "$R/.git/overseer/feat-castle.log" || { echo "FAIL spaced path not logged"; fails=$((fails + 1)); }
 git -C "$R" add -A && git -C "$R" commit -qm spaced
 git -C "$R" worktree add -q "$tmp/wt" -b feat/other
 mkdir -p "$R/.git/overseer" && touch "$R/.git/overseer/off"
@@ -125,5 +125,91 @@ check "the off switch lets everything through"  0 pre-edit "$(edit src/New.php)"
 rm "$R/.git/overseer/off"
 CLAUDE_PROJECT_DIR=$tmp check "outside a git repo nothing is guarded" 0 pre-edit '{"tool_input":{"file_path":"/x/src/A.php"}}'
 check "unknown event is a usage error"          1 nope '{}'
+
+B=$tmp/bashrepo
+export CLAUDE_PROJECT_DIR=$B R=$B
+git init -q -b main "$B" && git -C "$B" config user.email t@t && git -C "$B" config user.name t
+mkdir -p "$B/src" "$B/tests" && echo '<?php' >"$B/src/Old.php" && git -C "$B" add . && git -C "$B" commit -qm init
+git -C "$B" checkout -qb feat/bash
+
+check "touch on the off switch is blocked"      2 pre-bash "$(bash_ 'touch .git/overseer/off')" "state directory"
+check "redirect into the off switch is blocked" 2 pre-bash "$(bash_ 'echo 1 > .git/overseer/off')" "state directory"
+check "rm of the overseer dir is blocked"       2 pre-bash "$(bash_ 'rm -rf .git/overseer')" "state directory"
+check "tee into the overseer log is blocked"    2 pre-bash "$(bash_ 'echo x | tee -a .git/overseer/feat-bash.log')" "state directory"
+check "reading the overseer log is free"        0 pre-bash "$(bash_ 'cat .git/overseer/feat-bash.log')"
+check "reading it with stderr redirected is free" 0 pre-bash "$(bash_ 'cat .git/overseer/feat-bash.log 2>/dev/null')"
+check "cat > a prod file is blocked"            2 pre-bash "$(bash_ "cat > src/Castle.php <<'X'
+<?php class Castle {}
+X")" "no spec"
+check "tee into a prod file is blocked"         2 pre-bash "$(bash_ 'echo "<?php" | tee src/Castle.php')" "no spec"
+check "sed -i on a prod file is blocked"        2 pre-bash "$(bash_ "sed -i 's/php/php /' src/Old.php")" "no spec"
+check "perl -pi on a prod file is blocked"      2 pre-bash "$(bash_ "perl -pi -e 's/php/php /' src/Old.php")" "no spec"
+check "printf > a prod file is blocked"         2 pre-bash "$(bash_ "printf '<?php' > src/Castle.php")" "no spec"
+check "reading a prod file is free"             0 pre-bash "$(bash_ 'cat src/Old.php')"
+check "writing a prod file outside the repo is free" 0 pre-bash "$(bash_ "cat > /tmp/overseer-tmp.php <<'X'
+<?php
+X")"
+check "grep over prod files is free"            0 pre-bash "$(bash_ 'grep -rn php src')"
+check "writing a doc via bash is free"          0 pre-bash "$(bash_ 'echo hi > notes.md')"
+check "sed -i on a test file is free"           0 pre-bash "$(bash_ "sed -i 's/a/b/' tests/OldTest.php")"
+check "copying a prod file is free"             0 pre-bash "$(bash_ 'cp src/Old.php /tmp/overseer-backup.php')"
+check "git mv is free"                          0 pre-bash "$(bash_ 'git mv src/Old.php src/New.php')"
+check "an unrelated -i does not look like sed -i" 0 pre-bash "$(bash_ 'sed -n 1p README.md; grep -i foo src/Old.php')"
+check "a heredoc body is not a redirect"        0 pre-bash "$(bash_ "git commit -F - <<'EOF'
+moved logic -> src/Old.php
+EOF")"
+check "a quoted multiline body is not a redirect" 0 pre-bash "$(bash_ "git commit -m 'summary
+> src/Old.php'")"
+check "a quoted off-switch path is blocked"     2 pre-bash "$(bash_ 'touch ".git/overseer/off"')" "state directory"
+check "a quoted redirect into the off switch is blocked" 2 pre-bash "$(bash_ 'echo 1 > ".git/overseer/off"')" "state directory"
+check "a quoted prod path is blocked"           2 pre-bash "$(bash_ "cat > \"src/Castle.php\" <<'X'
+<?php class Castle {}
+X")" "no spec"
+check "a quoted tee path is blocked"            2 pre-bash "$(bash_ 'echo "<?php" | tee "src/Castle.php"')" "no spec"
+check "the resolved git dir is guarded"         2 pre-bash "$(bash_ 'touch "$(git rev-parse --git-common-dir)/overseer/off"')" "state directory"
+check "sed -i on the resolved git dir is blocked" 2 pre-bash "$(bash_ 'sed -i s/a/b/ "$(git rev-parse --git-common-dir)/overseer/x"')" "state directory"
+check "a quoted operator is not a redirect"     0 pre-bash "$(bash_ "grep -n '=>' src/Old.php")"
+check "a commit message is not a write"         0 pre-bash "$(bash_ 'git commit -m "touch .git/overseer"')"
+check "a relative prod target uses the tool cwd" 2 pre-bash "$(jq -nc --arg d "$B/src" --arg c "cat > Castle.php <<'X'
+<?php class Castle {}
+X" '{cwd:$d,tool_input:{command:$c}}')" "no spec"
+check "a relative overseer target uses the tool cwd" 2 pre-bash "$(jq -nc --arg d "$B/.git" --arg c 'touch overseer/off' '{cwd:$d,tool_input:{command:$c}}')" "state directory"
+check "cd into .git cannot write the state"    2 pre-bash "$(jq -nc --arg d "$B" --arg c 'cd .git/overseer && touch off' '{cwd:$d,tool_input:{command:$c}}')" "state directory"
+check "cd into .git and rm the state is blocked" 2 pre-bash "$(bash_ 'cd .git && rm -rf overseer')" "state directory"
+check "cd elsewhere and read is free"           0 pre-bash "$(bash_ 'cd src && cat Old.php')"
+
+ep=$(edit src/Castle.php)
+e1=$(printf '%s' "$ep" | bash "$S" pre-edit 2>&1 >/dev/null)
+e2=$(printf '%s' "$ep" | bash "$S" pre-edit 2>&1 >/dev/null)
+e3=$(printf '%s' "$ep" | bash "$S" pre-edit 2>&1 >/dev/null); c3=$?
+if [ -n "$e1" ] && ! grep -qi human <<<"$e1"; then echo "ok   the first edit block is plain"; else echo "FAIL first edit block: $e1"; fails=$((fails + 1)); fi
+if [ -n "$e2" ] && ! grep -qi human <<<"$e2"; then echo "ok   the second edit block is still plain"; else echo "FAIL second edit block: $e2"; fails=$((fails + 1)); fi
+if [ "$c3" -eq 2 ] && grep -qi human <<<"$e3"; then echo "ok   the third edit block escalates to the human"; else echo "FAIL third edit block (exit $c3): $e3"; fails=$((fails + 1)); fi
+L="$B/.git/overseer/feat-bash.log"
+grep -q ' block edit-spec$' "$L" && grep -q ' escalate edit-spec$' "$L" && echo "ok   blocks and escalation are logged" || { echo "FAIL block/escalation not logged"; fails=$((fails + 1)); }
+
+printf '%s' "$(edit README.md)" | bash "$S" pre-edit >/dev/null 2>&1
+e4=$(printf '%s' "$ep" | bash "$S" pre-edit 2>&1 >/dev/null)
+e5=$(printf '%s' "$ep" | bash "$S" pre-edit 2>&1 >/dev/null)
+if [ -n "$e4" ] && [ -n "$e5" ] && ! grep -qi human <<<"$e5"; then echo "ok   a pass resets the block streak"; else echo "FAIL streak reset: $e5"; fails=$((fails + 1)); fi
+
+mkdir -p "$B/specs/001-bash" && echo '# Bash' >"$B/specs/001-bash/spec.md"
+fire post-edit "$(edit tests/OldTest.php)"
+fire bash-failed "$(bash_ 'php artisan test')"
+check "sed -i on prod passes after spec and red" 0 pre-bash "$(bash_ "sed -i 's/php/php /' src/Old.php")"
+out=$(cd "$B" && bash "$S" stats </dev/null 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && grep -q 'blocks:' <<<"$out" && grep -q 'bash-overseer' <<<"$out" && grep -qE 'escalations: [1-9][0-9]*' <<<"$out" && grep -qE 'median unblock: ([0-9]+s|-)' <<<"$out"; then echo "ok   stats reports blocks, escalations and unblock time"
+else echo "FAIL stats (exit $rc): $out"; fails=$((fails + 1)); fi
+
+git -C "$B" checkout -qb feat/child
+printf '%s' "$(edit src/Child.php)" | bash "$S" pre-edit >/dev/null 2>&1
+if [ -f "$B/.git/overseer/feat-child.log" ] && ! grep -qE ' (block|escalate|pass) ' "$B/.git/overseer/feat-child.log"; then echo "ok   an inherited log drops block streaks"
+else echo "FAIL inherited log kept block state"; fails=$((fails + 1)); fi
+
+check "a worktree log is guarded"               2 pre-bash "$(jq -nc --arg d "$tmp/wt" --arg c "echo 1 >> $tmp/repo/.git/worktrees/wt/overseer/feat-other.log" '{cwd:$d,tool_input:{command:$c}}')" "state directory"
+jq -nc --arg d "$tmp/wt" --arg c 'touch .git/overseer/off' '{cwd:$d,tool_input:{command:$c}}' | bash "$S" pre-bash >/dev/null 2>&1
+out=$(cd "$tmp/repo" && bash "$S" stats </dev/null 2>&1)
+if grep -q 'bash-overseer' <<<"$out"; then echo "ok   stats reads worktree logs too"
+else echo "FAIL stats missed the worktree log: $out"; fails=$((fails + 1)); fi
 
 [ "$fails" -eq 0 ] && echo "all green" || { echo "$fails failed"; exit 1; }

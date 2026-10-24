@@ -1,6 +1,131 @@
 #!/usr/bin/env bash
 
 set -u
+mode=${1:-}
+
+abspath_from() {
+  local base=$1 p=$2 part out=()
+  case "$p" in /*) ;; *) p=$base/$p ;; esac
+  local IFS=/
+  for part in $p; do
+    case "$part" in
+      ''|.) ;;
+      ..) [ ${#out[@]} -gt 0 ] && unset "out[$((${#out[@]} - 1))]" ;;
+      *) out+=("$part") ;;
+    esac
+  done
+  if [ ${#out[@]} -gt 0 ]; then printf '/%s' "${out[@]}"; else printf '/'; fi
+}
+abspath() { abspath_from "$PWD" "$1"; }
+
+strip_quotes() { local p=$1; p=${p#[\"\']}; p=${p%[\"\']}; printf '%s' "$p"; }
+strip_heredocs() {
+  awk '
+    {
+      line=$0
+      if (pending != "") {
+        if (line == pending || line ~ ("^[ \t]*" pending "[ \t]*$")) pending=""
+        next
+      }
+      if (match(line, /<<-?[ \t]*[\"\047]?[A-Za-z_][A-Za-z0-9_]*[\"\047]?/)) {
+        tok=substr(line, RSTART, RLENGTH)
+        sub(/^<<-?[ \t]*/, "", tok)
+        gsub(/[\"\047]/, "", tok)
+        pending=tok
+      }
+      print line
+    }
+  ' <<<"$1"
+}
+strip_cmd_quotes() { tr '\n' '\036' <<<"$1" | sed -E "s/'([^' <>|;&]*)'/\1/g; s/\"([^\" <>|;&]*)\"/\1/g; s/'[^']*'//g; s/\"[^\"]*\"//g" | tr '\036' '\n'; }
+clean_cmd() { local c; c=$(strip_heredocs "$1"); strip_cmd_quotes "$c"; }
+last_word() { local w; w=$(awk '{print $NF}' <<<"$1"); w=${w%;}; w=${w%\&\&}; w=${w%|}; strip_quotes "$w"; }
+
+redir_targets() {
+  local m
+  while IFS= read -r m; do
+    m=$(sed -E 's/^[^<>&]?>>?[[:space:]]*//' <<<"$m")
+    [ -n "$m" ] && strip_quotes "$m"
+  done < <(grep -oE '(^|[^<>&])>>?[[:space:]]*[^[:space:]<>|;&]+' <<<"$1")
+}
+tee_targets() {
+  local seg a
+  while IFS= read -r seg; do
+    for a in $seg; do
+      case "$a" in -*) ;; *) strip_quotes "$a"; echo ;; esac
+    done
+  done < <(grep -oE '(^|[;&|[:space:]])tee[[:space:]][^;&|]*' <<<"$1" | sed -E 's/^[;&|[:space:]]*tee[[:space:]]+//')
+}
+inplace_targets() {
+  local seg w
+  while IFS= read -r seg; do
+    [ -n "$seg" ] || continue
+    if grep -Eq '(^|[[:space:]])sed[[:space:]]' <<<"$seg" && grep -Eq -- '(--in-place|(^|[[:space:]])-[A-Za-z]*i([^A-Za-z]|$))' <<<"$seg"; then
+      w=$(last_word "$seg"); [ -n "$w" ] && echo "$w"
+    fi
+    if grep -Eq '(^|[[:space:]])perl[[:space:]]' <<<"$seg" && grep -Eq -- '(^|[[:space:]])-[A-Za-z]*i([^A-Za-z]|$)' <<<"$seg"; then
+      w=$(last_word "$seg"); [ -n "$w" ] && echo "$w"
+    fi
+  done < <(tr ';|&' '\n' <<<"$1")
+}
+verb_targets() {
+  local v seg a
+  for v in touch rm mkdir rmdir mv cp ln truncate; do
+    while IFS= read -r seg; do
+      for a in $seg; do
+        case "$a" in -*) ;; *) strip_quotes "$a"; echo ;; esac
+      done
+    done < <(grep -oE "(^|[;&|[:space:]])${v}[[:space:]][^;&|]*" <<<"$1" | sed -E "s/^[;&|[:space:]]*${v}[[:space:]]+//")
+  done
+}
+write_targets() {
+  local c; c=$(clean_cmd "$1")
+  redir_targets "$c"
+  tee_targets "$c"
+  inplace_targets "$c"
+}
+guard_targets() {
+  write_targets "$1"
+  verb_targets "$(clean_cmd "$1")"
+}
+revparse_overseer() {
+  grep -Eq '(>>?[[:space:]]*["\047]?[$][(][[:space:]]*git rev-parse --git-(common-)?dir[^;&|]*/overseer|(^|[;&|[:space:]])(touch|rm|mkdir|rmdir|mv|cp|ln|truncate|tee)[[:space:]][^;&|]*[$][(][[:space:]]*git rev-parse --git-(common-)?dir[^;&|]*/overseer|(^|[;&|[:space:]])(sed|perl)[[:space:]][^;&|]*(-[A-Za-z]*i|--in-place)[^;&|]*[$][(][[:space:]]*git rev-parse --git-(common-)?dir[^;&|]*/overseer)' <<<"$1"
+}
+cds_git() {
+  local seg cdre="(^|[;&|[:space:]])(cd|pushd)[[:space:]][^;&|]*[\"']?[.]git([\"'[:space:]/]|$)"
+  while IFS= read -r seg; do grep -Eq "$cdre" <<<"$seg" && return 0; done < <(tr ';|&' '\n' <<<"$1")
+  return 1
+}
+
+stats() {
+  local base=$1 counts esc deltas med files=() f
+  echo "overseer stats ($base/overseer)"
+  for f in "$base"/overseer/*.log "$base"/worktrees/*/overseer/*.log; do [ -f "$f" ] && files+=("$f"); done
+  if [ "${#files[@]}" -eq 0 ]; then echo "blocks: none"; echo "escalations: 0"; echo "median unblock: -"; return 0; fi
+  counts=$(awk '$2=="block"{n[$3]++} END{for (r in n) print r, n[r]}' "${files[@]}" | sort -k2,2nr -k1,1)
+  esc=$(awk '$2=="escalate"{n++} END{print n+0}' "${files[@]}")
+  deltas=$(awk '
+    FNR==1 { np=0 }
+    $2=="block" { p[++np]=$1 }
+    $2=="pass" { for (i=1;i<=np;i++) { d=$1-p[i]; if (d>=0) print d } np=0 }
+  ' "${files[@]}" | sort -n)
+  echo "blocks:"
+  if [ -n "$counts" ]; then awk '{printf "  %-24s %d\n", $1, $2}' <<<"$counts"; else echo "  none"; fi
+  echo "escalations: $esc"
+  if [ -n "$deltas" ]; then
+    med=$(awk 'NF{a[NR]=$1} END{if(NR%2) print a[(NR+1)/2]"s"; else printf "%.0fs\n",(a[NR/2]+a[NR/2+1])/2}' <<<"$deltas")
+  else
+    med=-
+  fi
+  echo "median unblock: $med"
+}
+
+if [ "$mode" = stats ]; then
+  up=$(git rev-parse --show-cdup 2>/dev/null) && cd "./$up" || { echo "overseer: stats must run inside a git repo" >&2; exit 1; }
+  stats "$(abspath "$(git rev-parse --git-common-dir)")"
+  exit 0
+fi
+
 input=$(cat)
 workdir() {
   command -v jq >/dev/null || return
@@ -10,6 +135,7 @@ workdir() {
 }
 wd=$(workdir)
 { [ -n "$wd" ] && cd "$wd" 2>/dev/null; } || cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null || exit 0
+target_base=$(pwd)
 up=$(git rev-parse --show-cdup 2>/dev/null) && cd "./$up" || exit 0
 command -v jq >/dev/null || { echo "overseer: jq not found, rules are OFF" >&2; exit 1; }
 [ -f "$(git rev-parse --git-common-dir)/overseer/off" ] && exit 0
@@ -17,6 +143,8 @@ command -v jq >/dev/null || { echo "overseer: jq not found, rules are OFF" >&2; 
 branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
 dir="$(git rev-parse --git-dir)/overseer"
 log="$dir/${branch//\//-}.log"
+common=$(abspath "$(git rev-parse --git-common-dir)")
+gitdir=$(abspath "$(git rev-parse --git-dir)")
 ASK_PR_LINES=400 # ponytail: size only decides when to send a PR to split-pr-stack; the skill judges the cut
 NO_SPEC='Spec impact: *None *(—|–|-|:) *[^ ]'
 TESTS='\b(phpunit|pest|artisan test|pytest|vitest|jest|go test|cargo test|(npm|pnpm) (run )?test|yarn test|bun test|deno (task )?test|rspec|mix test|gradle test|mvn test)\b' # ponytail: fixed list; add a runner when a repo needs one
@@ -25,9 +153,53 @@ PR_CREATE='\bgh\s+pr\s+create\b'
 
 matches() { jq -e --arg re "$1" '.tool_input.command // "" | test($re)' <<<"$input" >/dev/null; }
 any() { local f; while read -r f; do "$@" "$f" && return 0; done; return 1; }
-block() { printf 'overseer: %s\n' "$*" >&2; exit 2; }
 note() { mkdir -p "${log%/*}" && echo "$(date +%s) $1" >>"$log"; }
 seen() { [ -f "$log" ] && awk "$1" "$log"; }
+rule_mode() {
+  case "$1" in
+    post-edit-*) echo post-edit ;;
+    edit-*) echo pre-edit ;;
+    bash-*) echo pre-bash ;;
+    commit-*|pr-*) echo post-bash ;;
+  esac
+}
+streak() {
+  [ -f "$log" ] || { echo 0; return; }
+  local m; m=$(rule_mode "$1")
+  awk -v m="$m" -v r="$1" '
+    $2=="pass" { if ($3==m) n=0; next }
+    $2=="block" { if ($3==r) n++; else n=0 }
+    END { print n+0 }
+  ' "$log"
+}
+block() {
+  local rule=$1 n; shift
+  n=$(streak "$rule"); n=$((n + 1))
+  note "block $rule"
+  if [ "$n" -ge 3 ]; then
+    [ "$n" -eq 3 ] && note "escalate $rule"
+    printf 'overseer: %s\noverseer: %s was blocked %s times in a row. Stop and ask the human before trying again.\n' "$*" "$rule" "$n" >&2
+  else
+    printf 'overseer: %s\n' "$*" >&2
+  fi
+  exit 2
+}
+outstanding() {
+  [ -f "$log" ] || return 1
+  awk -v m="$1" '
+    function mode(r) {
+      if (r ~ /^post-edit-/) return "post-edit"
+      if (r ~ /^edit-/) return "pre-edit"
+      if (r ~ /^bash-/) return "pre-bash"
+      if (r ~ /^(commit-|pr-)/) return "post-bash"
+      return ""
+    }
+    $2=="block" && mode($3)==m { p=1 }
+    $2=="pass" && $3==m { p=0 }
+    END { exit !p }
+  ' "$log"
+}
+ok() { outstanding "$mode" && note "pass $mode"; exit 0; }
 
 is_code() { case "$1" in *.php|*.js|*.jsx|*.ts|*.tsx|*.mjs|*.cjs|*.py|*.go|*.rs|*.rb|*.java|*.kt|*.swift|*.c|*.cc|*.cpp|*.h|*.cs|*.vue|*.svelte) return 0 ;; esac; return 1; }
 is_spec() { case "$1" in specs/*|openspec/*) return 0 ;; esac; return 1; }
@@ -35,6 +207,18 @@ is_test() { case "/$1" in */tests/*|*/test/*|*/__tests__/*|*/spec/*|*Test.*|*_te
 is_commented() { is_code "$1" || case "$1" in *.yaml|*.yml|*.toml|*.sh|*.bash|*Dockerfile|*Makefile) true ;; *) false ;; esac; }
 is_code_test() { is_code "$1" && is_test "$1"; }
 is_prod() { is_code "$1" && ! is_test "$1" && ! is_spec "$1"; }
+is_overseer_target() {
+  local a
+  [ -n "$1" ] || return 1
+  case "$1" in .git/overseer|.git/overseer/*|*/.git/overseer|*/.git/overseer/*|.git/worktrees/*/overseer*|*/.git/worktrees/*/overseer*) return 0 ;; esac
+  a=$(abspath_from "$target_base" "$1")
+  case "$a" in "$common/overseer"|"$common/overseer/"*|"$gitdir/overseer"|"$gitdir/overseer/"*) return 0 ;; esac
+  return 1
+}
+rel_target() {
+  local a; a=$(abspath_from "$target_base" "$1")
+  case "$a" in "$PWD"/*) printf '%s' "${a#"$PWD"/}" ;; esac
+}
 
 default_base() {
   git symbolic-ref -q --short refs/remotes/origin/HEAD && return
@@ -52,13 +236,13 @@ has_spec() {
 }
 inherit() {
   [ -f "$log" ] || [ "$branch" = HEAD ] || [ ! -d "$dir" ] && return
-  local b n best= min=
+  local b n best='' min=''
   while read -r b; do
     [ "$b" != "$branch" ] && [ -f "$dir/${b//\//-}.log" ] && git merge-base --is-ancestor "$b" HEAD 2>/dev/null || continue
     n=$(git rev-list --count "$b"..HEAD)
     [ -z "$min" ] || [ "$n" -lt "$min" ] && { min=$n; best=$b; }
   done < <(git for-each-ref --format='%(refname:short)' refs/heads)
-  [ -z "$best" ] || cp "$dir/${best//\//-}.log" "$log"
+  [ -z "$best" ] || awk '$2!="block" && $2!="escalate" && $2!="pass"' "$dir/${best//\//-}.log" >"$log"
 }
 
 rel_file() {
@@ -78,34 +262,55 @@ prose_comments() {
     grep -vE '^[0-9]+:[[:space:]]*(#!|#\[|(//|#|/\*+|\*/?|\{\{--|<!--|-->|--\}\})[[:space:]]*$)' |
     grep -vE '@[A-Za-z]|phpcs:|phpstan-|psalm-|eslint-|prettier-ignore|@ts-|noqa|type: ?ignore|pylint:|nolint|NOSONAR|//go:|(end)?region|istanbul|c8 ignore|-\*-|shellcheck|yamllint|ponytail:'
 }
+prod_gate() {
+  local f=$1 spec_rule=$2 red_rule=$3
+  has_spec || block "$spec_rule" "no spec in this branch. Write specs/NNN-<slug>/spec.md (or an openspec/changes/<name>/ proposal) before touching $f."
+  seen '$2=="test-edit"{t=1} t&&$2=="red"{r=1} END{exit !r}' || # ponytail: once per branch, not per cycle; refactoring on green is legitimate
+    block "$red_rule" "red first. Write or change a test for this behaviour, run it and watch it fail, then touch $f."
+}
+write_gate() {
+  local c=$1 ts t f
+  revparse_overseer "$(strip_heredocs "$c")" && block bash-overseer "do not write to the overseer state directory (resolved through git rev-parse). The escape hatch belongs to the human: create or remove .git/overseer/off from your own terminal."
+  ts=$(guard_targets "$c")
+  [ -n "$ts" ] && cds_git "$(clean_cmd "$c")" && block bash-overseer "do not change into .git and then write to the overseer state directory. The escape hatch belongs to the human: create or remove .git/overseer/off from your own terminal."
+  while IFS= read -r t; do
+    [ -n "$t" ] || continue
+    is_overseer_target "$t" && block bash-overseer "do not write to the overseer state directory ($t). The escape hatch belongs to the human: create or remove .git/overseer/off from your own terminal."
+  done <<<"$ts"
+  ts=$(write_targets "$c")
+  while IFS= read -r t; do
+    [ -n "$t" ] || continue
+    f=$(rel_target "$t")
+    is_prod "$f" && prod_gate "$f" bash-spec bash-red
+  done <<<"$ts"
+}
 cmd() { jq -r '.tool_input.command // ""' <<<"$input"; }
 dirty_files() { git status --porcelain --untracked-files=all | cut -c4-; }
 
 inherit
-case "${1:-}" in
+case "$mode" in
   session)
     cat "${0%/*}/../rules/overseer.md"
     ;;
   pre-edit)
-    f=$(rel_file); [ -n "$f" ] && is_prod "$f" || exit 0
-    has_spec || block "no spec in this branch. Write specs/NNN-<slug>/spec.md (or an openspec/changes/<name>/ proposal) before touching $f."
-    seen '$2=="test-edit"{t=1} t&&$2=="red"{r=1} END{exit !r}' || # ponytail: once per branch, not per cycle; refactoring on green is legitimate
-      block "red first. Write or change a test for this behaviour, run it and watch it fail, then touch $f."
+    f=$(rel_file); [ -n "$f" ] && is_prod "$f" || ok
+    prod_gate "$f" edit-spec edit-red
     ;;
   post-edit)
-    f=$(rel_file); [ -n "$f" ] || exit 0
+    f=$(rel_file); [ -n "$f" ] || ok
     if is_prod "$f"; then note prod-edit; elif is_code_test "$f"; then note test-edit; fi
-    [ -f "$f" ] && is_commented "$f" || exit 0
+    [ -f "$f" ] && is_commented "$f" || ok
     p=$(prose_comments "$f" | head -n 10)
-    [ -z "$p" ] || { note "prose $f"; block "$(printf 'prose comments added to %s. Delete them; the why of a change goes in the PR as a review comment on that line:\n%s' "$f" "$p")"; }
+    [ -z "$p" ] || { note "prose $f"; block post-edit-prose "$(printf 'prose comments added to %s. Delete them; the why of a change goes in the PR as a review comment on that line:\n%s' "$f" "$p")"; }
     ;;
   pre-bash)
     c=$(cmd)
+    write_gate "$c"
     if matches "$COMMIT"; then
-      dirty_files | any is_code || exit 0
-      matches "$TESTS" && block "run the tests in their own command, then commit in another; overseer only trusts a run it has seen finish."
+      dirty_files | any is_code || ok
+      matches "$TESTS" && block bash-tests-own "run the tests in their own command, then commit in another; overseer only trusts a run it has seen finish."
       seen '$2~/^(test-edit|prod-edit|red|green)$/{l=$2} END{exit l!="green"}' ||
-        block "the last thing that happened was not a green test run. Run the tests, get them green, then commit."
+        block bash-green "the last thing that happened was not a green test run. Run the tests, get them green, then commit."
     fi
     if matches "$PR_CREATE"; then
       b=$(grep -oE -- '(--base|-B)[ =]+[^ ]+' <<<"$c" | head -1 | sed -E 's/^(--base|-B)[ =]+//')
@@ -117,25 +322,25 @@ case "${1:-}" in
       body=$c; bf=$(grep -oE -- '(--body-file|-F)[ =]+[^ ]+' <<<"$c" | head -1 | sed -E 's/^(--body-file|-F)[ =]+//')
       [ -n "$bf" ] && [ -f "$bf" ] && body+=$(cat "$bf")
       [ "$n" -le "$ASK_PR_LINES" ] || grep -q 'Why not smaller:' <<<"$body" ||
-        block "this PR changes $n lines of production code vs $b. Cut it into a stack by function with the split-pr-stack skill (caravan): each PR builds, passes its tests and can be reviewed on its own. If it cannot be smaller, say why in the body: 'Why not smaller: ...'."
-      grep -Eq "specs/|openspec/changes/|$NO_SPEC" <<<"$body" || block "the PR body must link its spec (the specs/... or openspec/changes/... path), or say 'Spec impact: None — <why>'."
+        block bash-pr-size "this PR changes $n lines of production code vs $b. Cut it into a stack by function with the split-pr-stack skill (caravan): each PR builds, passes its tests and can be reviewed on its own. If it cannot be smaller, say why in the body: 'Why not smaller: ...'."
+      grep -Eq "specs/|openspec/changes/|$NO_SPEC" <<<"$body" || block bash-pr-spec "the PR body must link its spec (the specs/... or openspec/changes/... path), or say 'Spec impact: None — <why>'."
     fi
     ;;
   post-bash | bash-failed)
-    matches "$TESTS" && { [ "$1" = post-bash ] && note green || note red; } # ponytail: any failure is red, even command-not-found; tighten if a fake red ever slips through
-    if [ "$1" = post-bash ] && matches "$PR_CREATE" && [ -f "$log" ]; then
+    matches "$TESTS" && { [ "$mode" = post-bash ] && note green || note red; } # ponytail: any failure is red, even command-not-found; tighten if a fake red ever slips through
+    if [ "$mode" = post-bash ] && matches "$PR_CREATE" && [ -f "$log" ]; then
       w=$(awk '$2=="prose"{print $3}' "$log" | sort -u | tr '\n' ' ')
-      [ -z "$w" ] || block "PR open. Earlier you had to delete prose comments from: $w. Post the why of those changes as review comments on their lines (gh api repos/{owner}/{repo}/pulls/<number>/comments with path, line, side=RIGHT, commit_id)."
+      [ -z "$w" ] || block pr-comments "PR open. Earlier you had to delete prose comments from: $w. Post the why of those changes as review comments on their lines (gh api repos/{owner}/{repo}/pulls/<number>/comments with path, line, side=RIGHT, commit_id)."
     fi
-    if [ "$1" = post-bash ] && matches "$COMMIT"; then
+    if [ "$mode" = post-bash ] && matches "$COMMIT"; then
       files=$(git show --name-only --format= HEAD 2>/dev/null)
       any is_prod <<<"$files" && ! any is_code_test <<<"$files" &&
-        block "that commit changes production code but no test. Fine for a pure refactor; otherwise add the test that pins the behaviour."
+        block commit-test "that commit changes production code but no test. Fine for a pure refactor; otherwise add the test that pins the behaviour."
     fi
     ;;
   *)
-    echo "usage: overseer.sh session|pre-edit|post-edit|pre-bash|post-bash|bash-failed  (hook JSON on stdin)" >&2
+    echo "usage: overseer.sh session|pre-edit|post-edit|pre-bash|post-bash|bash-failed|stats  (hook JSON on stdin)" >&2
     exit 1
     ;;
 esac
-exit 0
+ok
