@@ -13,7 +13,6 @@ no agent fleet, no human gates, no per-repo config. The agent works however it l
 ## Non-goals
 
 - Human approval gates, multi-agent review, EXPLAIN checks, automatic PR splitting (the hook says *split*; how is up to the agent/user).
-- Hardening against an agent that writes production files through Bash (`cat > file`). The rule forbids it; the hook does not police it.
 - Replacing CI.
 - Model-judged checks. A Jev judge for rule 5 was built and dropped (see *Jev, tried and dropped*); the cut is left to the
   `split-pr-stack` skill.
@@ -29,6 +28,8 @@ no agent fleet, no human gates, no per-repo config. The agent works however it l
 | 5 | **Smallest PR the feature allows**: cut by function, not size. Each PR is the smallest piece that builds, passes its tests and is reviewable alone. A PR against the default branch with over ~400 prod lines (added + deleted) goes through the `split-pr-stack` skill or carries `Why not smaller: …`; PRs based on another branch are a stack and trusted | `PreToolUse` Bash `gh pr create` | block without the reason |
 | 6 | **Ship**: the PR body mentions the spec path, or `Spec impact: None — <why>` | `PreToolUse` Bash `gh pr create` | block |
 | 7 | **No prose comments**: an edit adds no explanatory comment lines to code or config (`yaml yml toml sh bash Dockerfile Makefile` too). Annotations (`@…`), tool directives (`phpcs: eslint- noqa @ts- type: ignore shellcheck`…), attributes `#[…]`, shebangs, bare delimiters and one-line `ponytail:` markers (a deliberate shortcut: what it skips, its ceiling, the upgrade path) are allowed. Only added lines count (`git diff -U0 HEAD`, whole file when untracked). The why goes in the PR as a review comment on that line | `PostToolUse` Edit/Write/MultiEdit | warn (exit 2 after the edit) |
+| 8 | **Bash writes clear the same gates**: a target taken from `>`/`>>`/`&>`, `tee [-a]`, `sed -i`/`--in-place` or `perl -i`/`-pi` on a prod file is subject to rules 1 and 2. Several file arguments and trailing redirections such as `2>&1` or `2>/dev/null` do not hide a target | `PreToolUse` Bash | block |
+| 9 | **The state belongs to the human**: a write-ish command (`touch`, redirection including `&>`, `tee`, `rm`, `mkdir`, `mv`, `cp` at its destination, `ln`, `truncate`, `sed -i`, `perl -i`, `find -delete`, `dd of=`) whose target is under `.git/overseer` is blocked, as is removing or moving `.git` itself. Reads stay free, and `mv` of the state is treated as a write on both sides | `PreToolUse` Bash | block |
 
 Block = exit 2 with a short reason on stderr (Claude sees it, the tool call does not happen). Silent on pass.
 
@@ -41,6 +42,7 @@ Block = exit 2 with a short reason on stderr (Claude sees it, the tool call does
 - **Prod file**: a code extension (`php js jsx ts tsx mjs cjs py go rs rb java kt swift c cc cpp h cs vue svelte`) that is not a test file and not under `specs/`/`openspec/`.
   Everything else (markdown, config, JSON, YAML, lockfiles) is free.
 - **Test run**: a Bash command matching `phpunit|pest|artisan test|pytest|vitest|jest|go test|cargo test|npm (run )?test|pnpm (run )?test|yarn test|bun test|rspec|mix test|gradle test|mvn test`.
+- **Bash write target**: a path after `>`/`>>`/`&>`, a `tee` argument, or any file argument of a `sed -i`/`--in-place` or `perl -i`/`-pi` segment; trailing redirections (`2>&1`, `2>/dev/null`) are dropped first. A `mv` destination and source are both targets, a `cp` only its destination, and `find -delete`/`dd of=` expose their paths. Heredoc bodies and quoted multi-line bodies are dropped before parsing, so a commit message that contains `-> file` is not a write. Quoted paths with spaces are not parsed reliably; the rail prefers missing an exotic form to blocking a read.
 
 ## How it knows red from green
 
@@ -50,13 +52,15 @@ on non-zero exit (verified against the hooks docs). A test-run command seen on t
 ## State
 
 Append-only log at `$(git rev-parse --git-dir)/overseer/<branch>.log`, one `epoch kind` line per event, with `kind` one of
-`test-edit`, `prod-edit`, `red`, `green`. Per branch and per worktree, invisible to the repo, gone when `.git` is.
+`test-edit`, `prod-edit`, `red`, `green`, `prose <file>`, `block <rule>`, `pass <mode>`, `escalate <rule>`. Per branch and per worktree, invisible to the repo, gone when `.git` is.
 
 - Rule 2 passes when there is a `red` line after some `test-edit` line. Once per branch.
 - Rule 3 passes when, among `test-edit|prod-edit|red|green`, the last line is `green`. No test re-run inside the hook, so committing is instant.
 - Rule 7 logs `prose <file>` when it fires. After a successful `gh pr create`, those files are listed back so the agent posts the why as line review comments.
+- Every block logs `block <rule>`. A pass of the same mode logs `pass <mode>` and resets that rule's streak; any pass of the same mode resets it, even when the command is unrelated to the blocked rule. The third consecutive block of a rule also logs `escalate <rule>` and the message tells the agent to stop and ask the human; further blocks keep the message but do not log another escalation.
+- `overseer.sh stats` reads every `*.log` under the repo's common `overseer` directory and every worktree's `overseer` directory, and prints blocks per rule, escalations and the median time from a block to the next `pass`. It pairs a block only with a pass of the matching mode, and counts one delta per streak: the first block is paired with the pass that ends it.
 - A branch with no log inherits a copy of the log of the closest local branch that is an ancestor of HEAD (fewest commits
-  between), within the same worktree. Detached HEAD inherits nothing.
+  between), within the same worktree. `block`, `pass` and `escalate` lines are dropped, so the child starts with a clean streak. Detached HEAD inherits nothing.
 
 ## Base branch
 
@@ -73,7 +77,7 @@ Body text = the `--body`/`-b` value in the command, or the contents of `--body-f
 
 ## Escape hatch
 
-`.git/overseer/off` (in `git rev-parse --git-common-dir`) disables every rule for the repo. The user creates and removes it by hand; the rule forbids the agent from touching it.
+`.git/overseer/off` (in `git rev-parse --git-common-dir`) disables every rule for the repo. The user creates and removes it by hand, from their own terminal; rule 9 blocks the agent from writing under `.git/overseer`, and from removing or moving `.git` itself.
 Known friction it covers: hotfixes and spikes.
 
 ## Known limits
@@ -81,6 +85,8 @@ Known friction it covers: hotfixes and spikes.
 - The test-runner list is a fixed regex; add a runner when a repo needs one.
 - Any failure of a test command counts as red, including "command not found".
 - Red is required once per branch, not once per cycle, because refactoring on green is legitimate.
+- Bash write detection covers the listed forms. It does not see writes hidden in scripts, `python -c`, `bash -c '…'`, `install`, variable indirection, exotic quoting, `find` expressions that delete through a path it cannot see, or prefix commands whose own option values hide the command (`xargs -0`, `nice -n 10`, `timeout -s KILL 5`), and it does not parse quoted paths with spaces reliably.
+- Escalation is tracked per rule, but a pass releases the whole mode. An unrelated command that passes the same hook clears the streak; the hook cannot tell which rule the next command retries.
 
 ## Jev, tried and dropped (pip-boy #25, 2026-09-28)
 
@@ -112,7 +118,7 @@ input tokens and 300–600 ms per call.
 
 A `SessionStart` hook prints `rules/overseer.md` (about 30 lines): the cycle, what each block means and how to clear it,
 four lines on writing minimal code (does it need to exist; reuse, then stdlib, then platform; shortest diff once the problem is understood; fix the cause), and
-"when a hook blocks you, fix the cause; never write a file through Bash to get around it, never touch `.git/overseer/`".
+"when a hook blocks you, fix the cause; the hook blocks production files written through Bash and anything that writes under `.git/overseer/` too".
 Repos that are not git repos are left alone (every hook exits 0).
 
 ## Layout
@@ -128,10 +134,12 @@ development/common/plugins/overseer/
 └── README.md
 ```
 
-Registered in `.claude-plugin/marketplace.json` as `overseer` 0.1.0, category "Development Tools".
+Registered in `.claude-plugin/marketplace.json` as `overseer` 0.2.0, category "Development Tools".
 
 ## Testing
 
 `overseer.test.sh` builds a throwaway git repo and drives the script with fake hook JSON, one scenario per rule, pass and block:
 prod edit with no spec blocks; with spec but no red blocks; test-edit → red unlocks; commit after a prod-edit with no later green
 blocks; green unblocks; a 401-line prod diff blocks `gh pr create`; a body without a spec path blocks; `off` lets everything through; outside a git repo everything passes.
+It also covers the Bash write rail (`cat >`, `tee`, `sed -i`, `perl -pi`, `printf >`, several files and trailing redirections blocked on prod; reads, docs, test files, `cp` and
+`git mv` free), the `.git/overseer` and `.git` guard (including `find -delete`, `dd of=`, `&>` and the `cp`/`mv` split), the three-block escalation and its log lines, a pass resetting the streak, and the `stats` summary plus a fixture log with a known median.
