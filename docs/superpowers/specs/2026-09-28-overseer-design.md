@@ -94,6 +94,7 @@ Known friction it covers: hotfixes and spikes.
 - A bare `.git` write target is treated as this checkout's git dir even after an earlier `cd` in the same command, so `cd tpl && rm -rf .git` is blocked although it names another directory's git dir; use `rm -rf tpl/.git` from the repo root. The `cd` guard itself follows the chain of `cd`s and only blocks this repo's git dir; an unresolvable `cd` target (a variable, `~` or a backtick) falls back to blocking any `.git` path component.
 - Bash write detection covers the listed forms. It does not see writes hidden in scripts, `python -c`, `bash -c '…'`, `install`, variable indirection, exotic quoting, `find` expressions that delete through a path it cannot see, or prefix commands whose own option values hide the command (`xargs -0`, `nice -n 10`, `timeout -s KILL 5`), and it does not parse quoted paths with spaces reliably. `curl -o <file>` is not seen, and a `cp`/`mv` whose destination is a directory (for example `mv /tmp/x.php src/`) is not resolved to the file it will overwrite.
 - Escalation is tracked per gate, but a pass of any mode releases every gate. An unrelated command that passes any hook clears the streaks; the hook cannot tell which rule the next command retries.
+- A `cd` target computed by a variable or a command substitution is not resolved unless it names `.git` or goes through `git rev-parse`; a later relative write is checked against the tool cwd.
 
 ## Jev, tried and dropped (pip-boy #25, 2026-09-28)
 
@@ -141,6 +142,9 @@ development/common/plugins/overseer/
 │   ├── bash-targets.sh     # redirection, tee and in-place targets, sourced by overseer.sh
 │   ├── write-targets.sh    # verb, copy/move, find and dd targets, sourced by overseer.sh
 │   ├── cd-guard.sh         # rev-parse and chained-cd git guard, sourced by overseer.sh
+│   ├── pre-bash.sh         # commit and PR checks plus the write gate, sourced in pre-bash
+│   ├── post-edit.sh        # edit logging and prose-comment check, sourced in post-edit
+│   ├── post-bash.sh        # green/red, PR reminder and commit-test check, sourced in post-bash
 │   ├── stats.sh            # stats subcommand, sourced by overseer.sh
 │   └── overseer.test.sh    # fake hook JSON in a temp git repo, asserts exit codes
 ├── rules/overseer.md

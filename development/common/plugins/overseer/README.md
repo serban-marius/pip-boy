@@ -48,6 +48,7 @@ Exit 0 is a silent pass. Exit 2 with a line starting `overseer:` blocks a Pre ho
 - Rule 7 reads line comments and docblocks. Python docstrings are not detected, and a `ponytail:` marker must fit on one line (continuation lines count as prose).
 - Bash write detection covers the forms above, not writes hidden inside scripts, `python -c`, `bash -c '…'`, `install`, variable indirection (`d=$(git rev-parse --git-dir); touch "$d/overseer/off"`), exotic quoting, `find` expressions that delete through a path it cannot see, or prefix commands whose own option values hide the command (`xargs -0`, `nice -n 10`, `timeout -s KILL 5`). `curl -o <file>` is not seen, and a `cp`/`mv` whose destination is a directory (for example `mv /tmp/x.php src/`) is not resolved to the file it will overwrite. Paths with spaces in a Bash write target are not parsed reliably. It prefers missing an unusual form to blocking a read.
 - Escalation is by gate, but a pass of any mode releases every gate. An unrelated command that passes any hook clears the streaks; this is deliberate because the hook cannot tell which rule the next command retries.
+- A `cd` target computed by a variable or a command substitution is not resolved unless it names `.git` or goes through `git rev-parse`; a later relative write is checked against the tool cwd.
 - Inherited branch logs keep the red/green history but drop `block`, `pass` and `escalate` lines, so a child branch starts with a clean streak.
 
 ## Escape hatch
@@ -76,6 +77,9 @@ hooks/target-checks.sh                   # state and git-dir target checks, sour
 hooks/bash-targets.sh                    # redirection, tee and in-place targets, sourced by overseer.sh
 hooks/write-targets.sh                   # verb, copy/move, find and dd targets, sourced by overseer.sh
 hooks/cd-guard.sh                        # rev-parse and chained-cd git guard, sourced by overseer.sh
+hooks/pre-bash.sh                        # commit and PR checks plus the write gate, sourced in pre-bash
+hooks/post-edit.sh                       # edit logging and prose-comment check, sourced in post-edit
+hooks/post-bash.sh                       # green/red, PR reminder and commit-test check, sourced in post-bash
 hooks/stats.sh                           # stats subcommand, sourced by overseer.sh
 bash hooks/overseer.sh stats </dev/null  # blocks per rule, escalations, median unblock time
 ```

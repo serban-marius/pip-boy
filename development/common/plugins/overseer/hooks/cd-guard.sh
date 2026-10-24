@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
-CD_REV="(^|[;&|[:space:]])(cd|pushd)[[:space:]]+[\"']?[$][(][[:space:]]*git[[:space:]]+rev-parse[[:space:]]+--(absolute-git-dir|git-(common-)?dir|git-path)"
+CD_REV="(^|[;&|[:space:]])(cd|pushd)[[:space:]]+[\"']?[$][(][[:space:]]*git([[:space:]]+[^;&|[:space:]]+)*[[:space:]]+rev-parse[[:space:]]+--(absolute-git-dir|git-(common-)?dir|git-path)"
 
 revparse_overseer() {
-  local rv='[$][(][[:space:]]*git[[:space:]]+rev-parse[[:space:]]+--(absolute-git-dir|git-(common-)?dir|git-path)'
+  local rv='[$][(][[:space:]]*git([[:space:]]+[^;&|[:space:]]+)*[[:space:]]+rev-parse[[:space:]]+--(absolute-git-dir|git-(common-)?dir|git-path)'
   local tail="([^;&|]*/overseer|[[:space:]]+[\"']?overseer)"
   local verb='(^|[;&|[:space:]])(touch|rm|mkdir|rmdir|mv|cp|ln|truncate|tee|find|dd)[[:space:]][^;&|]*'
   local edit='(^|[;&|[:space:]])(sed|perl)[[:space:]][^;&|]*(-[A-Za-z]*i|--in-place)[^;&|]*'

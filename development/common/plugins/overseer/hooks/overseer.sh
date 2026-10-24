@@ -169,57 +169,11 @@ rel_file() {
   local f; f=$(jq -r '.tool_input.file_path // empty' <<<"$input")
   case "$f" in "$PWD"/*) echo "${f#"$PWD"/}" ;; /*) ;; *) echo "$f" ;; esac
 }
-added_lines() {
-  if git ls-files --error-unmatch -- "$1" >/dev/null 2>&1; then
-    git diff -U0 HEAD -- "$1" | awk '/^@@/{split($3,a,","); n=substr(a[1],2)+0; next} /^\+\+\+/{next} /^\+/{print n ":" substr($0,2); n++}'
-  else
-    grep -n '' -- "$1"
-  fi
-}
-prose_comments() {
-  added_lines "$1" |
-    grep -E '^[0-9]+:[[:space:]]*(//|#|/\*|\*|\{\{--|<!--)' |
-    grep -vE '^[0-9]+:[[:space:]]*(#!|#\[|(//|#|/\*+|\*/?|\{\{--|<!--|-->|--\}\})[[:space:]]*$)' |
-    grep -vE '@[A-Za-z]|phpcs:|phpstan-|psalm-|eslint-|prettier-ignore|@ts-|noqa|type: ?ignore|pylint:|nolint|NOSONAR|//go:|(end)?region|istanbul|c8 ignore|-\*-|shellcheck|yamllint|ponytail:'
-}
 prod_gate() {
   local f=$1 spec_rule=$2 red_rule=$3
   has_spec || block "$spec_rule" "no spec in this branch. Write specs/NNN-<slug>/spec.md (or an openspec/changes/<name>/ proposal) before touching $f."
   seen '$2=="test-edit"{t=1} t&&$2=="red"{r=1} END{exit !r}' || # ponytail: once per branch, not per cycle; refactoring on green is legitimate
     block "$red_rule" "red first. Write or change a test for this behaviour, run it and watch it fail, then touch $f."
-}
-check_state() {
-  local t x
-  while IFS= read -r t; do
-    [ -n "$t" ] || continue
-    while IFS= read -r x; do
-      [ -n "$x" ] || continue
-      is_overseer_target "$x" && block bash-overseer "do not write to the overseer state directory ($x). The escape hatch belongs to the human: create or remove .git/overseer/off from your own terminal."
-      is_git_dir_target "$x" && block bash-git-dir "do not write to, remove or move the git directory itself ($x). It holds the branch, the history and the overseer state; change it only through git commands."
-    done < <(expanded_targets "$t")
-  done <<<"$1"
-}
-check_writes() {
-  local t f
-  while IFS= read -r t; do
-    [ -n "$t" ] || continue
-    f=$(rel_target "$t")
-    is_prod "$f" && prod_gate "$f" bash-spec bash-red
-  done <<<"$1"
-}
-write_gate() {
-  local c=$1 rh cc wt st state_all
-  load_targets
-  rh=$(strip_heredocs "$c")
-  cc=$(strip_cmd_quotes "$rh")
-  revparse_overseer "$rh" && block bash-overseer "do not write to the overseer state directory (resolved through git rev-parse). The escape hatch belongs to the human: create or remove .git/overseer/off from your own terminal."
-  wt=$(write_targets "$cc")
-  st=$(state_targets "$cc")
-  state_all=$wt
-  [ -n "$st" ] && state_all=$(printf '%s\n%s' "$wt" "$st")
-  [ -n "$state_all" ] && cds_git "$rh" && block bash-overseer "do not change into .git and then write to the overseer state directory. The escape hatch belongs to the human: create or remove .git/overseer/off from your own terminal."
-  check_state "$state_all"
-  check_writes "$wt"
 }
 cmd() { jq -r '.tool_input.command // ""' <<<"$input"; }
 dirty_files() { git status --porcelain --untracked-files=all | cut -c4-; }
@@ -243,46 +197,18 @@ case "$mode" in
     prod_gate "$f" edit-spec edit-red
     ;;
   post-edit)
-    f=$(rel_file); [ -n "$f" ] || ok
-    if is_prod "$f"; then note prod-edit; elif is_code_test "$f"; then note test-edit; fi
-    [ -f "$f" ] && is_commented "$f" || ok
-    p=$(prose_comments "$f" | head -n 10)
-    [ -z "$p" ] || { note "prose $f"; block post-edit-prose "$(printf 'prose comments added to %s. Delete them; the why of a change goes in the PR as a review comment on that line:\n%s' "$f" "$p")"; }
+    . "$here/post-edit.sh"
+    post_edit_check "$(rel_file)"
     ;;
   pre-bash)
+    . "$here/pre-bash.sh"
     c=$(cmd)
     if [[ $c =~ $WRITE_RE ]]; then write_gate "$c"; fi
-    if matches "$COMMIT"; then
-      dirty_files | any is_code || ok
-      matches "$TESTS" && block bash-tests-own "run the tests in their own command, then commit in another; overseer only trusts a run it has seen finish."
-      seen '$2~/^(test-edit|prod-edit|red|green)$/{l=$2} END{exit l!="green"}' ||
-        block bash-green "the last thing that happened was not a green test run. Run the tests, get them green, then commit."
-    fi
-    if matches "$PR_CREATE"; then
-      b=$(grep -oE -- '(--base|-B)[ =]+[^ ]+' <<<"$c" | head -1 | sed -E 's/^(--base|-B)[ =]+//')
-      if [ -n "$b" ]; then git rev-parse -q --verify "origin/$b" >/dev/null && b="origin/$b"; else b=$(default_base); fi
-      h=$(grep -oE -- '(--head|-H)[ =]+[^ ]+' <<<"$c" | head -1 | sed -E 's/^(--head|-H)[ =]+//')
-      [ -n "$h" ] || h=HEAD
-      n=0
-      [ "$b" = "$(default_base)" ] && while IFS=$'\t' read -r a d f; do is_prod "$f" && [ "$a" != - ] && n=$((n + a + d)); done < <(git diff --numstat "$b...$h" 2>/dev/null)
-      body=$c; bf=$(grep -oE -- '(--body-file|-F)[ =]+[^ ]+' <<<"$c" | head -1 | sed -E 's/^(--body-file|-F)[ =]+//')
-      [ -n "$bf" ] && [ -f "$bf" ] && body+=$(cat "$bf")
-      [ "$n" -le "$ASK_PR_LINES" ] || grep -q 'Why not smaller:' <<<"$body" ||
-        block bash-pr-size "this PR changes $n lines of production code vs $b. Cut it into a stack by function with the split-pr-stack skill (caravan): each PR builds, passes its tests and can be reviewed on its own. If it cannot be smaller, say why in the body: 'Why not smaller: ...'."
-      grep -Eq "specs/|openspec/changes/|$NO_SPEC" <<<"$body" || block bash-pr-spec "the PR body must link its spec (the specs/... or openspec/changes/... path), or say 'Spec impact: None — <why>'."
-    fi
+    pre_bash_checks "$c"
     ;;
   post-bash | bash-failed)
-    matches "$TESTS" && { [ "$mode" = post-bash ] && note green || note red; } # ponytail: any failure is red, even command-not-found; tighten if a fake red ever slips through
-    if [ "$mode" = post-bash ] && matches "$PR_CREATE" && [ -f "$log" ]; then
-      w=$(awk '$2=="prose"{print $3}' "$log" | sort -u | tr '\n' ' ')
-      [ -z "$w" ] || block pr-comments "PR open. Earlier you had to delete prose comments from: $w. Post the why of those changes as review comments on their lines (gh api repos/{owner}/{repo}/pulls/<number>/comments with path, line, side=RIGHT, commit_id)."
-    fi
-    if [ "$mode" = post-bash ] && matches "$COMMIT"; then
-      files=$(git show --name-only --format= HEAD 2>/dev/null)
-      any is_prod <<<"$files" && ! any is_code_test <<<"$files" &&
-        block commit-test "that commit changes production code but no test. Fine for a pure refactor; otherwise add the test that pins the behaviour."
-    fi
+    . "$here/post-bash.sh"
+    post_bash_check "$(cmd)"
     ;;
   *)
     echo "usage: overseer.sh session|pre-edit|post-edit|pre-bash|post-bash|bash-failed|stats  (hook JSON on stdin)" >&2
