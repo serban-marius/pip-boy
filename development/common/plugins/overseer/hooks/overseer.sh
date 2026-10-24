@@ -6,7 +6,11 @@ here=${0%/*}
 [ "$here" = "$0" ] && here=.
 load_targets() {
   [ -n "${_targets_loaded:-}" ] || {
+    . "$here/shell-parse.sh"
+    . "$here/target-checks.sh"
     . "$here/bash-targets.sh"
+    . "$here/write-targets.sh"
+    . "$here/cd-guard.sh"
     common=$(abspath "$(git rev-parse --git-common-dir)")
     gitdir=$(abspath "$(git rev-parse --git-dir)")
     _targets_loaded=1
@@ -15,7 +19,7 @@ load_targets() {
 
 RULE_MODES='post-edit:^post-edit- pre-edit:^edit- pre-bash:^bash- post-bash:^(commit-|pr-)'
 RULE_GATES='spec:^(edit|bash)-spec$ red:^(edit|bash)-red$ overseer:^(edit|bash)-overseer$ git-dir:^(edit|bash)-git-dir$'
-WRITE_RE='>|tee|sed|perl|rm|mv|cp|touch|mkdir|rmdir|ln|truncate|dd|find|rev-parse|cd|pushd'
+WRITE_RE='>|rev-parse|(^|[^[:alnum:]_-])(tee|sed|perl|rm|mv|cp|touch|mkdir|rmdir|ln|truncate|dd|find|cd|pushd)([^[:alnum:]_-]|$)'
 ASK_PR_LINES=400 # ponytail: size only decides when to send a PR to split-pr-stack; the skill judges the cut
 NO_SPEC='Spec impact: *None *(—|–|-|:) *[^ ]'
 TESTS='\b(phpunit|pest|artisan test|pytest|vitest|jest|go test|cargo test|(npm|pnpm) (run )?test|yarn test|bun test|deno (task )?test|rspec|mix test|gradle test|mvn test)\b' # ponytail: fixed list; add a runner when a repo needs one
@@ -74,7 +78,7 @@ streak() {
       for (i=1;i<=n;i++) { p=index(a[i],":"); if (r ~ substr(a[i],p+1)) return substr(a[i],1,p-1) }
       return r
     }
-    $2=="pass" { if ($3=="pre-edit" || $3=="pre-bash") n=0; next }
+    $2=="pass" { n=0; next }
     $2=="block" { if (gate($3)==g) n++ }
     END { print n+0 }
   ' "$log"
@@ -184,8 +188,27 @@ prod_gate() {
   seen '$2=="test-edit"{t=1} t&&$2=="red"{r=1} END{exit !r}' || # ponytail: once per branch, not per cycle; refactoring on green is legitimate
     block "$red_rule" "red first. Write or change a test for this behaviour, run it and watch it fail, then touch $f."
 }
+check_state() {
+  local t x
+  while IFS= read -r t; do
+    [ -n "$t" ] || continue
+    while IFS= read -r x; do
+      [ -n "$x" ] || continue
+      is_overseer_target "$x" && block bash-overseer "do not write to the overseer state directory ($x). The escape hatch belongs to the human: create or remove .git/overseer/off from your own terminal."
+      is_git_dir_target "$x" && block bash-git-dir "do not write to, remove or move the git directory itself ($x). It holds the branch, the history and the overseer state; change it only through git commands."
+    done < <(expanded_targets "$t")
+  done <<<"$1"
+}
+check_writes() {
+  local t f
+  while IFS= read -r t; do
+    [ -n "$t" ] || continue
+    f=$(rel_target "$t")
+    is_prod "$f" && prod_gate "$f" bash-spec bash-red
+  done <<<"$1"
+}
 write_gate() {
-  local c=$1 rh cc state_all wt st t x f
+  local c=$1 rh cc wt st state_all
   load_targets
   rh=$(strip_heredocs "$c")
   cc=$(strip_cmd_quotes "$rh")
@@ -195,19 +218,8 @@ write_gate() {
   state_all=$wt
   [ -n "$st" ] && state_all=$(printf '%s\n%s' "$wt" "$st")
   [ -n "$state_all" ] && cds_git "$rh" && block bash-overseer "do not change into .git and then write to the overseer state directory. The escape hatch belongs to the human: create or remove .git/overseer/off from your own terminal."
-  while IFS= read -r t; do
-    [ -n "$t" ] || continue
-    while IFS= read -r x; do
-      [ -n "$x" ] || continue
-      is_overseer_target "$x" && block bash-overseer "do not write to the overseer state directory ($x). The escape hatch belongs to the human: create or remove .git/overseer/off from your own terminal."
-      is_git_dir_target "$x" && block bash-git-dir "do not write to, remove or move the git directory itself ($x). It holds the branch, the history and the overseer state; change it only through git commands."
-    done < <(expanded_targets "$t")
-  done <<<"$state_all"
-  while IFS= read -r t; do
-    [ -n "$t" ] || continue
-    f=$(rel_target "$t")
-    is_prod "$f" && prod_gate "$f" bash-spec bash-red
-  done <<<"$wt"
+  check_state "$state_all"
+  check_writes "$wt"
 }
 cmd() { jq -r '.tool_input.command // ""' <<<"$input"; }
 dirty_files() { git status --porcelain --untracked-files=all | cut -c4-; }

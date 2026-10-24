@@ -14,6 +14,11 @@ check() {
 edit() { printf '{"tool_input":{"file_path":"%s"}}' "$R/$1"; }
 bash_() { jq -nc --arg c "$1" '{tool_input:{command:$c}}'; }
 fire() { printf '%s' "$2" | bash "$S" "$1" >/dev/null 2>&1; }
+write_re=$(sed -n "s/^WRITE_RE='\(.*\)'$/\1/p" "$S")
+re_fail=0
+for c in 'git add -A && git status' 'git diff --stat'; do [[ $c =~ $write_re ]] && re_fail=1; done
+for c in 'rm x' '/bin/rm x' 'git rev-parse --git-dir' 'echo > y'; do [[ $c =~ $write_re ]] || re_fail=1; done
+if [ "$re_fail" -eq 0 ]; then echo "ok   WRITE_RE uses word boundaries"; else echo "FAIL WRITE_RE boundaries"; fails=$((fails + 1)); fi
 
 export CLAUDE_PROJECT_DIR=$tmp/repo R=$tmp/repo
 git init -q -b main "$R" && git -C "$R" config user.email t@t && git -C "$R" config user.name t
@@ -139,8 +144,18 @@ check "rm of the git dir is blocked"            2 pre-bash "$(bash_ 'rm -rf .git
 check "another repo's .git is not ours"         0 pre-bash "$(bash_ 'rm -rf /tmp/scaffold/.git')"
 check "a subdir clone's .git is not ours"       0 pre-bash "$(bash_ 'rm -rf tpl/.git')"
 check "a glob around .git is blocked"           2 pre-bash "$(bash_ 'touch .g?t/overseer/off')" "state directory"
+check "a glob into an existing state dir is blocked" 2 pre-bash "$(bash_ 'touch .git/overse*/off')" "state directory"
 check "a glob behind a path prefix is blocked"  2 pre-bash "$(jq -nc --arg d "$B" --arg c "touch ../${B##*/}/.g?t/overseer/off" '{cwd:$d,tool_input:{command:$c}}')" "state directory"
 check "cd through rev-parse --git-dir is blocked" 2 pre-bash "$(bash_ 'cd "$(git rev-parse --git-dir)" && touch overseer/off')" "state directory"
+check "cd through rev-parse --git-common-dir is blocked" 2 pre-bash "$(bash_ 'cd "$(git rev-parse --git-common-dir)" && touch overseer/off')" "state directory"
+check "cd through rev-parse --absolute-git-dir is blocked" 2 pre-bash "$(bash_ 'cd "$(git rev-parse --absolute-git-dir)" && touch overseer/off')" "state directory"
+check "rev-parse --git-path into the state is blocked" 2 pre-bash "$(bash_ 'touch "$(git rev-parse --git-path overseer/off)"')" "state directory"
+check "the README off-switch command is blocked"  2 pre-bash "$(bash_ 'mkdir -p "$(git rev-parse --git-common-dir)/overseer" && touch "$_/off"')" "state directory"
+check "cd into another repo's .git is free"      0 pre-bash "$(bash_ 'cd /tmp/x/.git && echo > y')"
+check "cd into this .git then touch the state is blocked" 2 pre-bash "$(bash_ 'cd .git && touch overseer/off')" "state directory"
+check "chained cd into this .git is blocked"     2 pre-bash "$(bash_ 'cd src && cd ../.git && touch overseer/off')" "state directory"
+check "an unknown cd then this .git is blocked"  2 pre-bash "$(jq -nc --arg d "$B/src" --arg c 'cd "$(git rev-parse --show-toplevel)" && cd .git && touch overseer/off' '{cwd:$d,tool_input:{command:$c}}')" "state directory"
+check "an unknown cd to the toplevel then a read is free" 0 pre-bash "$(jq -nc --arg d "$B/src" --arg c 'cd "$(git rev-parse --show-toplevel)" && make > out' '{cwd:$d,tool_input:{command:$c}}')"
 check "cd into a bare repo elsewhere is free"   0 pre-bash "$(bash_ 'cd ../other.git && git log > /tmp/x')"
 check "mv of the git dir is blocked"            2 pre-bash "$(bash_ 'mv .git /tmp/overseer-gitbak')" "git directory"
 check "find -delete on the git dir is blocked"  2 pre-bash "$(bash_ 'find .git -delete')" "git directory"
@@ -182,6 +197,7 @@ check "sed -i on a test file is free"           0 pre-bash "$(bash_ "sed -i 's/a
 check "copying a prod file is free"             0 pre-bash "$(bash_ 'cp src/Old.php /tmp/overseer-backup.php')"
 check "cp into a prod file is blocked"          2 pre-bash "$(bash_ 'cp /tmp/overseer-off src/Castle.php')" "no spec"
 check "mv into a prod file is blocked"          2 pre-bash "$(bash_ 'mv /tmp/overseer-off src/Castle.php')" "no spec"
+check "mv into a prod directory is free"        0 pre-bash "$(bash_ 'mv /tmp/x.php src/')"
 check "copying the overseer log out is free"   0 pre-bash "$(bash_ 'cp .git/overseer/feat-bash.log /tmp/overseer-copy.log')"
 check "cp -t out of the state is free"          0 pre-bash "$(bash_ 'cp -t /tmp .git/overseer/feat-bash.log')"
 check "cp -t into the state is blocked"         2 pre-bash "$(bash_ 'cp -t .git/overseer /tmp/overseer-off')" "state directory"
@@ -234,6 +250,25 @@ check "alternating Edit and Bash blocks the same gate" 2 pre-bash "$(bash_ 'echo
 ealt=$(printf '%s' "$epA" | bash "$S" pre-edit 2>&1 >/dev/null)
 if grep -qi human <<<"$ealt"; then echo "ok   alternating Edit and Bash escalates on the third block"; else echo "FAIL alternating Edit/Bash escalation: $ealt"; fails=$((fails + 1)); fi
 git -C "$B" checkout -q feat/bash
+
+git -C "$B" checkout -qb feat/prose
+prose_clean='<?php
+class Prose {}'
+prose_bad='<?php
+// because the API is slow
+class Prose {}'
+last_prose=''
+printf '%s\n' "$prose_bad" >"$B/src/Prose.php"
+fire post-edit "$(edit src/Prose.php)"
+printf '%s\n' "$prose_clean" >"$B/src/Prose.php"
+fire post-edit "$(edit src/Prose.php)"
+printf '%s\n' "$prose_bad" >"$B/src/Prose.php"
+fire post-edit "$(edit src/Prose.php)"
+printf '%s\n' "$prose_bad" >"$B/src/Prose.php"
+last_prose=$(printf '%s' "$(edit src/Prose.php)" | bash "$S" post-edit 2>&1 >/dev/null)
+if grep -q ' pass post-edit$' "$B/.git/overseer/feat-prose.log" && ! grep -q ' escalate ' "$B/.git/overseer/feat-prose.log" && [ -n "$last_prose" ] && ! grep -qi human <<<"$last_prose"; then echo "ok   a pass of any mode resets the prose block streak"; else echo "FAIL prose block streak reset: $last_prose"; fails=$((fails + 1)); fi
+git -C "$B" checkout -q feat/bash
+git -C "$B" branch -D feat/prose >/dev/null 2>&1
 git -C "$B" branch -D feat/alt >/dev/null 2>&1
 
 mkdir -p "$B/specs/001-bash" && echo '# Bash' >"$B/specs/001-bash/spec.md"
@@ -257,6 +292,17 @@ EOF
 out=$(cd "$statrepo" && bash "$S" stats </dev/null 2>&1)
 if [ "$(grep 'median unblock:' <<<"$out")" = "median unblock: 65s" ]; then echo "ok   stats pairs a streak with its matching pass"
 else echo "FAIL stats median: $out"; fails=$((fails + 1)); fi
+statrepo2=$tmp/statrepo2
+git init -q -b main "$statrepo2" && mkdir -p "$statrepo2/.git/overseer"
+cat >"$statrepo2/.git/overseer/main.log" <<'EOF'
+100 block edit-spec
+200 pass pre-bash
+300 block bash-spec
+400 pass pre-edit
+EOF
+out=$(cd "$statrepo2" && bash "$S" stats </dev/null 2>&1)
+if [ "$(grep 'median unblock:' <<<"$out")" = "median unblock: 100s" ]; then echo "ok   stats pairs a pre block with either pre pass"
+else echo "FAIL stats cross pre-mode median: $out"; fails=$((fails + 1)); fi
 out=$(cd "$B" && bash "$S" stats </dev/null 2>&1); rc=$?
 if [ "$rc" -eq 0 ] && grep -q 'blocks:' <<<"$out" && grep -q 'bash-overseer' <<<"$out" && grep -qE 'escalations: [1-9][0-9]*' <<<"$out" && grep -qE 'median unblock: ([0-9]+s|-)' <<<"$out"; then echo "ok   stats reports blocks, escalations and unblock time"
 else echo "FAIL stats (exit $rc): $out"; fails=$((fails + 1)); fi

@@ -42,7 +42,7 @@ Block = exit 2 with a short reason on stderr (Claude sees it, the tool call does
 - **Prod file**: a code extension (`php js jsx ts tsx mjs cjs py go rs rb java kt swift c cc cpp h cs vue svelte`) that is not a test file and not under `specs/`/`openspec/`.
   Everything else (markdown, config, JSON, YAML, lockfiles) is free.
 - **Test run**: a Bash command matching `phpunit|pest|artisan test|pytest|vitest|jest|go test|cargo test|npm (run )?test|pnpm (run )?test|yarn test|bun test|rspec|mix test|gradle test|mvn test`.
-- **Bash write target**: a path after `>`/`>>`/`&>`/`>|`, a `tee` argument, any file argument of a `sed -i`/`--in-place` or `perl -i`/`-pi` segment, or the destination of a `cp`/`mv`; trailing redirections (`2>&1`, `2>/dev/null`) are dropped first. A `mv` destination and source are both targets for the state guard, a `cp` only its destination, and `find -delete`/`dd of=` expose their paths. Heredoc bodies and quoted multi-line bodies are dropped before parsing, so a commit message that contains `-> file` is not a write. Globs are expanded a path component at a time against the tool cwd before checking for `.git/overseer` or this repo's `.git`; an unresolved target that still holds a glob after `.git/` is blocked. Quoted paths with spaces are not parsed reliably; the rail prefers missing an exotic form to blocking a read.
+- **Bash write target**: a path after `>`/`>>`/`&>`/`>|`, a `tee` argument, any file argument of a `sed -i`/`--in-place` or `perl -i`/`-pi` segment, or the destination of a `cp`/`mv`; trailing redirections (`2>&1`, `2>/dev/null`) are dropped first. A `mv` destination and source are both targets for the state guard, a `cp` only its destination, and `find -delete`/`dd of=` expose their paths. Heredoc bodies and quoted multi-line bodies are dropped before parsing, so a commit message that contains `-> file` is not a write. Globs are expanded a path component at a time against the tool cwd before checking for `.git/overseer` or this repo's `.git`; an unresolved target that still holds a glob after `.git/` is blocked. A `cd`/`pushd` into this repo's git dir, following earlier `cd`s in the same command, guards a following write; so does a path resolved through `git rev-parse --git-dir`/`--git-common-dir`/`--absolute-git-dir`/`--git-path`; a target with a variable, `~` or a backtick falls back to blocking any `.git` path component. Quoted paths with spaces are not parsed reliably; the rail prefers missing an exotic form to blocking a read.
 
 ## How it knows red from green
 
@@ -57,8 +57,8 @@ Append-only log at `$(git rev-parse --git-dir)/overseer/<branch>.log`, one `epoc
 - Rule 2 passes when there is a `red` line after some `test-edit` line. Once per branch.
 - Rule 3 passes when, among `test-edit|prod-edit|red|green`, the last line is `green`. No test re-run inside the hook, so committing is instant.
 - Rule 7 logs `prose <file>` when it fires. After a successful `gh pr create`, those files are listed back so the agent posts the why as line review comments.
-- Every block logs `block <rule>`. A pass of a pre mode (`pre-edit` or `pre-bash`) logs `pass <mode>` and resets every gate's streak, even when the command is unrelated to the blocked rule. Streaks are keyed on the gate (`spec`, `red`, `overseer` state, git dir), so Edit and Bash blocks against the same gate count together. The third consecutive block of a gate also logs `escalate <rule>` and the message tells the agent to stop and ask the human; further blocks keep the message but do not log another escalation.
-- `overseer.sh stats` reads every `*.log` under the repo's common `overseer` directory and every worktree's `overseer` directory, and prints blocks per rule, escalations and the median time from a block to the next `pass`. It pairs a block only with a pass of the matching mode, and counts one delta per streak: the first block is paired with the pass that ends it.
+- Every block logs `block <rule>`. A pass of any mode (`pre-edit`, `pre-bash`, `post-edit`, `post-bash`) logs `pass <mode>` and resets every gate's streak, even when the command is unrelated to the blocked rule. Streaks are keyed on the gate (`spec`, `red`, `overseer` state, git dir), so Edit and Bash blocks against the same gate count together. The third consecutive block of a gate also logs `escalate <rule>` and the message tells the agent to stop and ask the human; further blocks keep the message but do not log another escalation.
+- `overseer.sh stats` reads every `*.log` under the repo's common `overseer` directory and every worktree's `overseer` directory, and prints blocks per rule, escalations and the median time from a block to the next `pass`. It pairs a pre block with the next pass of either pre mode, and a post block with the next pass of its mode, counting one delta per streak: the first block is paired with the pass that ends it.
 - A branch with no log inherits a copy of the log of the closest local branch that is an ancestor of HEAD (fewest commits
   between), within the same worktree. `block`, `pass` and `escalate` lines are dropped, so the child starts with a clean streak. Detached HEAD inherits nothing.
 
@@ -91,9 +91,9 @@ Known friction it covers: hotfixes and spikes.
 - The test-runner list is a fixed regex; add a runner when a repo needs one.
 - Any failure of a test command counts as red, including "command not found".
 - Red is required once per branch, not once per cycle, because refactoring on green is legitimate.
-- A bare `.git` target is treated as this checkout's git dir even after an earlier `cd` in the same command, so `cd tpl && rm -rf .git` is blocked although it names another directory's git dir; use `rm -rf tpl/.git` from the repo root.
+- A bare `.git` write target is treated as this checkout's git dir even after an earlier `cd` in the same command, so `cd tpl && rm -rf .git` is blocked although it names another directory's git dir; use `rm -rf tpl/.git` from the repo root. The `cd` guard itself follows the chain of `cd`s and only blocks this repo's git dir; an unresolvable `cd` target (a variable, `~` or a backtick) falls back to blocking any `.git` path component.
 - Bash write detection covers the listed forms. It does not see writes hidden in scripts, `python -c`, `bash -c '…'`, `install`, variable indirection, exotic quoting, `find` expressions that delete through a path it cannot see, or prefix commands whose own option values hide the command (`xargs -0`, `nice -n 10`, `timeout -s KILL 5`), and it does not parse quoted paths with spaces reliably. `curl -o <file>` is not seen, and a `cp`/`mv` whose destination is a directory (for example `mv /tmp/x.php src/`) is not resolved to the file it will overwrite.
-- Escalation is tracked per gate, but a pass of either pre mode releases every gate. An unrelated command that passes either pre hook clears the streaks; the hook cannot tell which rule the next command retries.
+- Escalation is tracked per gate, but a pass of any mode releases every gate. An unrelated command that passes any hook clears the streaks; the hook cannot tell which rule the next command retries.
 
 ## Jev, tried and dropped (pip-boy #25, 2026-09-28)
 
@@ -136,7 +136,11 @@ development/common/plugins/overseer/
 ├── hooks/
 │   ├── hooks.json          # SessionStart, PreToolUse(Edit|Write|MultiEdit, Bash), PostToolUse(Edit|Write|MultiEdit, Bash), PostToolUseFailure(Bash)
 │   ├── overseer.sh         # one script, subcommand per event
-│   ├── bash-targets.sh     # Bash target parser and target checks, sourced by overseer.sh
+│   ├── shell-parse.sh      # path, quote and segment helpers, sourced by overseer.sh
+│   ├── target-checks.sh    # state and git-dir target checks, sourced by overseer.sh
+│   ├── bash-targets.sh     # redirection, tee and in-place targets, sourced by overseer.sh
+│   ├── write-targets.sh    # verb, copy/move, find and dd targets, sourced by overseer.sh
+│   ├── cd-guard.sh         # rev-parse and chained-cd git guard, sourced by overseer.sh
 │   ├── stats.sh            # stats subcommand, sourced by overseer.sh
 │   └── overseer.test.sh    # fake hook JSON in a temp git repo, asserts exit codes
 ├── rules/overseer.md
@@ -150,4 +154,4 @@ Registered in `.claude-plugin/marketplace.json` as `overseer` 0.2.0, category "D
 `overseer.test.sh` builds a throwaway git repo and drives the script with fake hook JSON, one scenario per rule, pass and block:
 prod edit with no spec blocks; with spec but no red blocks; test-edit → red unlocks; commit after a prod-edit with no later green
 blocks; green unblocks; a 401-line prod diff blocks `gh pr create`; a body without a spec path blocks; `off` lets everything through; outside a git repo everything passes.
-It also covers the Bash write rail (`cat >`, `tee`, `sed -i`, `perl -pi`, `printf >`, `>|`, `cp`/`mv` destinations, several files and trailing redirections blocked on prod; reads, docs, test files, `cp` from prod, `grep tee`, `perl -M…` and `git mv` free), the `.git/overseer` and this repo's `.git` guard (including `find -delete`, `dd of=`, `&>`, globs, `cd` through `git rev-parse`, and the `cp`/`mv` split), the three-block escalation keyed on the gate (including alternating Edit and Bash) and its log lines, a pass resetting the streak, and the `stats` summary plus a fixture log with a known median.
+It also covers the Bash write rail (`cat >`, `tee`, `sed -i`, `perl -pi`, `printf >`, `>|`, `cp`/`mv` destinations, several files and trailing redirections blocked on prod; reads, docs, test files, `cp` from prod, `grep tee`, `perl -M…`, `mv` into a prod directory and `git mv` free), the `.git/overseer` and this repo's `.git` guard (including `find -delete`, `dd of=`, `&>`, globs around an existing state dir, `cd` through `git rev-parse`, a chained `cd` into this `.git`, another repo's `.git`, and the `cp`/`mv` split), the three-block escalation keyed on the gate (including alternating Edit and Bash) and its log lines, a pass of any mode resetting the streak, and the `stats` summary plus fixture logs with known medians, including a pre block that pairs with a pass of the other pre mode.
