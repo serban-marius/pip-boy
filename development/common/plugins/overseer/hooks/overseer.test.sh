@@ -135,6 +135,15 @@ git -C "$B" checkout -qb feat/bash
 check "touch on the off switch is blocked"      2 pre-bash "$(bash_ 'touch .git/overseer/off')" "state directory"
 check "redirect into the off switch is blocked" 2 pre-bash "$(bash_ 'echo 1 > .git/overseer/off')" "state directory"
 check "rm of the overseer dir is blocked"       2 pre-bash "$(bash_ 'rm -rf .git/overseer')" "state directory"
+check "rm of the git dir is blocked"            2 pre-bash "$(bash_ 'rm -rf .git')" "git directory"
+check "mv of the git dir is blocked"            2 pre-bash "$(bash_ 'mv .git /tmp/overseer-gitbak')" "git directory"
+check "find -delete on the git dir is blocked"  2 pre-bash "$(bash_ 'find .git -delete')" "git directory"
+check "find -delete on the overseer dir is blocked" 2 pre-bash "$(bash_ 'find .git/overseer -delete')" "state directory"
+check "dd of= into the off switch is blocked"   2 pre-bash "$(bash_ 'dd of=.git/overseer/off if=/dev/null')" "state directory"
+check "&> into the off switch is blocked"       2 pre-bash "$(bash_ 'echo x &> .git/overseer/off')" "state directory"
+check "&>> into the off switch is blocked"      2 pre-bash "$(bash_ 'echo x &>> .git/overseer/off')" "state directory"
+check "a write after then is blocked"           2 pre-bash "$(bash_ 'if true; then touch .git/overseer/off; fi')" "state directory"
+check "a write in a subshell is blocked"        2 pre-bash "$(bash_ '(rm -rf .git/overseer)')" "state directory"
 check "tee into the overseer log is blocked"    2 pre-bash "$(bash_ 'echo x | tee -a .git/overseer/feat-bash.log')" "state directory"
 check "reading the overseer log is free"        0 pre-bash "$(bash_ 'cat .git/overseer/feat-bash.log')"
 check "reading it with stderr redirected is free" 0 pre-bash "$(bash_ 'cat .git/overseer/feat-bash.log 2>/dev/null')"
@@ -143,6 +152,11 @@ check "cat > a prod file is blocked"            2 pre-bash "$(bash_ "cat > src/C
 X")" "no spec"
 check "tee into a prod file is blocked"         2 pre-bash "$(bash_ 'echo "<?php" | tee src/Castle.php')" "no spec"
 check "sed -i on a prod file is blocked"        2 pre-bash "$(bash_ "sed -i 's/php/php /' src/Old.php")" "no spec"
+check "sed -i with stderr redirected is blocked" 2 pre-bash "$(bash_ "sed -i 's/php/php /' src/Old.php 2>&1")" "no spec"
+check "sed -i with stderr discarded is blocked" 2 pre-bash "$(bash_ "sed -i 's/php/php /' src/Old.php 2>/dev/null")" "no spec"
+check "sed -i on two files is blocked"          2 pre-bash "$(bash_ "sed -i 's/php/php /' notes.md src/Old.php")" "no spec"
+check "perl -pi with stderr redirected is blocked" 2 pre-bash "$(bash_ "perl -pi -e 's/php/php /' src/Old.php 2>&1")" "no spec"
+check "perl -pi on two files is blocked"        2 pre-bash "$(bash_ "perl -pi -e 's/php/php /' notes.md src/Old.php")" "no spec"
 check "perl -pi on a prod file is blocked"      2 pre-bash "$(bash_ "perl -pi -e 's/php/php /' src/Old.php")" "no spec"
 check "printf > a prod file is blocked"         2 pre-bash "$(bash_ "printf '<?php' > src/Castle.php")" "no spec"
 check "reading a prod file is free"             0 pre-bash "$(bash_ 'cat src/Old.php')"
@@ -153,6 +167,11 @@ check "grep over prod files is free"            0 pre-bash "$(bash_ 'grep -rn ph
 check "writing a doc via bash is free"          0 pre-bash "$(bash_ 'echo hi > notes.md')"
 check "sed -i on a test file is free"           0 pre-bash "$(bash_ "sed -i 's/a/b/' tests/OldTest.php")"
 check "copying a prod file is free"             0 pre-bash "$(bash_ 'cp src/Old.php /tmp/overseer-backup.php')"
+check "copying the overseer log out is free"   0 pre-bash "$(bash_ 'cp .git/overseer/feat-bash.log /tmp/overseer-copy.log')"
+check "cp -t out of the state is free"          0 pre-bash "$(bash_ 'cp -t /tmp .git/overseer/feat-bash.log')"
+check "cp -t into the state is blocked"         2 pre-bash "$(bash_ 'cp -t .git/overseer /tmp/overseer-off')" "state directory"
+check "copying into the off switch is blocked"  2 pre-bash "$(bash_ 'cp /tmp/overseer-off .git/overseer/off')" "state directory"
+check "moving the overseer log away is blocked" 2 pre-bash "$(bash_ 'mv .git/overseer/feat-bash.log /tmp/overseer-moved.log')" "state directory"
 check "git mv is free"                          0 pre-bash "$(bash_ 'git mv src/Old.php src/New.php')"
 check "an unrelated -i does not look like sed -i" 0 pre-bash "$(bash_ 'sed -n 1p README.md; grep -i foo src/Old.php')"
 check "a heredoc body is not a redirect"        0 pre-bash "$(bash_ "git commit -F - <<'EOF'
@@ -197,6 +216,23 @@ mkdir -p "$B/specs/001-bash" && echo '# Bash' >"$B/specs/001-bash/spec.md"
 fire post-edit "$(edit tests/OldTest.php)"
 fire bash-failed "$(bash_ 'php artisan test')"
 check "sed -i on prod passes after spec and red" 0 pre-bash "$(bash_ "sed -i 's/php/php /' src/Old.php")"
+statrepo=$tmp/statrepo
+git init -q -b main "$statrepo" && mkdir -p "$statrepo/.git/overseer"
+cat >"$statrepo/.git/overseer/main.log" <<'EOF'
+100 block bash-spec
+110 pass post-bash
+120 pass pre-bash
+200 block edit-spec
+240 pass pre-edit
+300 block bash-green
+310 block bash-green
+390 pass pre-bash
+400 block commit-test
+500 pass post-bash
+EOF
+out=$(cd "$statrepo" && bash "$S" stats </dev/null 2>&1)
+if [ "$(grep 'median unblock:' <<<"$out")" = "median unblock: 65s" ]; then echo "ok   stats pairs a streak with its matching pass"
+else echo "FAIL stats median: $out"; fails=$((fails + 1)); fi
 out=$(cd "$B" && bash "$S" stats </dev/null 2>&1); rc=$?
 if [ "$rc" -eq 0 ] && grep -q 'blocks:' <<<"$out" && grep -q 'bash-overseer' <<<"$out" && grep -qE 'escalations: [1-9][0-9]*' <<<"$out" && grep -qE 'median unblock: ([0-9]+s|-)' <<<"$out"; then echo "ok   stats reports blocks, escalations and unblock time"
 else echo "FAIL stats (exit $rc): $out"; fails=$((fails + 1)); fi

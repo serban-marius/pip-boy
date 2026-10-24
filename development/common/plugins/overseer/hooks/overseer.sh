@@ -37,45 +37,194 @@ strip_heredocs() {
     }
   ' <<<"$1"
 }
-strip_cmd_quotes() { tr '\n' '\036' <<<"$1" | sed -E "s/'([^' <>|;&]*)'/\1/g; s/\"([^\" <>|;&]*)\"/\1/g; s/'[^']*'//g; s/\"[^\"]*\"//g" | tr '\036' '\n'; }
+strip_cmd_quotes() { tr '\n' '\036' <<<"$1" | sed -E "s/'([^' <>|;&]*)'/\1/g; s/\"([^\" <>|;&]*)\"/\1/g; s/'[^']*'/__OVERSEER_ARG__/g; s/\"[^\"]*\"/__OVERSEER_ARG__/g" | tr '\036' '\n'; }
 clean_cmd() { local c; c=$(strip_heredocs "$1"); strip_cmd_quotes "$c"; }
-last_word() { local w; w=$(awk '{print $NF}' <<<"$1"); w=${w%;}; w=${w%\&\&}; w=${w%|}; strip_quotes "$w"; }
 
 redir_targets() {
   local m
   while IFS= read -r m; do
-    m=$(sed -E 's/^[^<>&]?>>?[[:space:]]*//' <<<"$m")
-    [ -n "$m" ] && strip_quotes "$m"
-  done < <(grep -oE '(^|[^<>&])>>?[[:space:]]*[^[:space:]<>|;&]+' <<<"$1")
+    m=$(sed -E 's/^[^<>&]*&?>>?[[:space:]]*//' <<<"$m")
+    [ -n "$m" ] && printf '%s\n' "$(strip_quotes "$m")"
+  done < <(grep -oE '(^|[^<>=])>>?[[:space:]]*[^[:space:]<>|;&]+|(^|[^<>])&>>?[[:space:]]*[^[:space:]<>|;&]+' <<<"$1")
+}
+strip_redirect_words() {
+  local a out="" skip=0
+  local -a words
+  local bare='^[0-9]*(>>?|<<?|>&|<&)$|^&>>?$'
+  local attached='^[0-9]*(>>?|<<?|>&|<&)|^&>>?'
+  read -r -a words <<<"$1"
+  [ "${#words[@]}" -gt 0 ] || return
+  for a in "${words[@]}"; do
+    if [ "$skip" -eq 1 ]; then skip=0; continue; fi
+    if [[ $a =~ $bare ]]; then skip=1; continue; fi
+    if [[ $a =~ $attached ]]; then continue; fi
+    out=${out:+$out }$a
+  done
+  printf '%s' "$out"
+}
+split_segments() {
+  awk '{
+    gsub(/\|\||&&|;|\|/, "\n")
+    gsub(/(^|[ \t])&([ \t]|$)/, "\n")
+    print
+  }' <<<"$1"
+}
+strip_shell_prefix() {
+  local seg=$1 w
+  while :; do
+    seg=${seg#"${seg%%[![:space:]]*}"}
+    case "$seg" in
+      \(*|\{*) seg=${seg#?}; continue ;;
+    esac
+    case "$seg" in
+      *')'|*'}') seg=${seg%?}; continue ;;
+    esac
+    w=${seg%%[[:space:]]*}
+    case "$w" in
+      '') break ;;
+      [A-Za-z_]*=*) seg=${seg#"$w"} ;;
+      then|do|else|elif|if|while|until|'!'|time|exec|xargs|sudo|command|builtin|env|nohup|nice) seg=${seg#"$w"} ;;
+      timeout)
+        seg=${seg#"$w"}
+        while :; do
+          seg=${seg#"${seg%%[![:space:]]*}"}
+          w=${seg%%[[:space:]]*}
+          seg=${seg#"$w"}
+          case "$w" in -*) continue ;; *) break ;; esac
+        done
+        ;;
+      *) break ;;
+    esac
+  done
+  printf '%s' "$seg"
 }
 tee_targets() {
   local seg a
   while IFS= read -r seg; do
-    for a in $seg; do
+    local -a words
+    read -r -a words <<<"$seg"
+    [ "${#words[@]}" -gt 0 ] || continue
+    for a in "${words[@]}"; do
       case "$a" in -*) ;; *) strip_quotes "$a"; echo ;; esac
     done
   done < <(grep -oE '(^|[;&|[:space:]])tee[[:space:]][^;&|]*' <<<"$1" | sed -E 's/^[;&|[:space:]]*tee[[:space:]]+//')
 }
 inplace_targets() {
-  local seg w
+  local seg
   while IFS= read -r seg; do
+    seg=$(strip_shell_prefix "$seg")
     [ -n "$seg" ] || continue
-    if grep -Eq '(^|[[:space:]])sed[[:space:]]' <<<"$seg" && grep -Eq -- '(--in-place|(^|[[:space:]])-[A-Za-z]*i([^A-Za-z]|$))' <<<"$seg"; then
-      w=$(last_word "$seg"); [ -n "$w" ] && echo "$w"
-    fi
-    if grep -Eq '(^|[[:space:]])perl[[:space:]]' <<<"$seg" && grep -Eq -- '(^|[[:space:]])-[A-Za-z]*i([^A-Za-z]|$)' <<<"$seg"; then
-      w=$(last_word "$seg"); [ -n "$w" ] && echo "$w"
-    fi
-  done < <(tr ';|&' '\n' <<<"$1")
+    seg=$(strip_redirect_words "$seg")
+    local -a w files
+    read -r -a w <<<"$seg"
+    [ "${#w[@]}" -gt 0 ] || continue
+    local cmd=${w[0]} i=1 a have_script=0 inplace=0
+    [ "$cmd" = sed ] || [ "$cmd" = perl ] || continue
+    files=()
+    while [ "$i" -lt "${#w[@]}" ]; do
+      a=${w[$i]}
+      case "$a" in
+        -*)
+          case "$a" in
+            -i|--in-place|-i.*|--in-place=*) inplace=1 ;;
+            -*) [[ $a =~ ^-[A-Za-z]*i ]] && inplace=1 ;;
+          esac
+          if [ "$cmd" = sed ]; then
+            case "$a" in
+              -e|--expression|-f|--file) have_script=1; i=$((i+1)) ;;
+              --expression=*|--file=*) have_script=1 ;;
+              -*) [[ $a =~ ^-[A-Za-z]*[eE]$ ]] && { have_script=1; i=$((i+1)); } ;;
+            esac
+          else
+            case "$a" in
+              -e|-E|-M|-I) have_script=1; i=$((i+1)) ;;
+              -*) [[ $a =~ ^-[A-Za-z]*[eE]$ ]] && { have_script=1; i=$((i+1)); } ;;
+            esac
+          fi
+          ;;
+        *)
+          if [ "$have_script" -eq 0 ]; then have_script=1
+          else files+=("$a")
+          fi
+          ;;
+      esac
+      i=$((i+1))
+    done
+    if [ "$inplace" -eq 1 ] && [ "${#files[@]}" -gt 0 ]; then printf '%s\n' "${files[@]}"; fi
+  done < <(split_segments "$1")
 }
-verb_targets() {
-  local v seg a
+verb_segment() {
+  local clean=$1 v
   for v in touch rm mkdir rmdir mv cp ln truncate; do
-    while IFS= read -r seg; do
-      for a in $seg; do
-        case "$a" in -*) ;; *) strip_quotes "$a"; echo ;; esac
-      done
-    done < <(grep -oE "(^|[;&|[:space:]])${v}[[:space:]][^;&|]*" <<<"$1" | sed -E "s/^[;&|[:space:]]*${v}[[:space:]]+//")
+    local -a w args
+    read -r -a w <<<"$clean"
+    local i=0 start=-1 j target_dir=""
+    if [ "${w[$i]:-}" = "$v" ]; then start=$((i+1))
+    elif [ "${w[$i]:-}" = git ] && [ "${w[$((i+1))]:-}" = "$v" ]; then start=$((i+2))
+    fi
+    [ "$start" -ge 0 ] || continue
+    args=()
+    j=$start
+    while [ "$j" -lt "${#w[@]}" ]; do
+      case "${w[$j]}" in
+        -t|--target-directory)
+          j=$((j+1)); target_dir=$(strip_quotes "${w[$j]:-}")
+          ;;
+        --target-directory=*) target_dir=$(strip_quotes "${w[$j]#*=}") ;;
+        -*) ;;
+        *) args+=("$(strip_quotes "${w[$j]}")") ;;
+      esac
+      j=$((j+1))
+    done
+    case "$v" in
+      cp)
+        if [ -n "$target_dir" ]; then echo "$target_dir"
+        elif [ "${#args[@]}" -gt 0 ]; then echo "${args[${#args[@]}-1]}"
+        fi
+        ;;
+      mv)
+        if [ -n "$target_dir" ]; then
+          echo "$target_dir"
+          [ "${#args[@]}" -gt 0 ] && printf '%s\n' "${args[@]}"
+        else
+          [ "${#args[@]}" -gt 0 ] && echo "${args[${#args[@]}-1]}"
+          [ "${#args[@]}" -gt 1 ] && printf '%s\n' "${args[@]:0:${#args[@]}-1}"
+        fi
+        ;;
+      *)
+        [ "${#args[@]}" -gt 0 ] && printf '%s\n' "${args[@]}"
+        ;;
+    esac
+  done
+}
+find_delete_segment() {
+  local clean=$1
+  local -a w
+  read -r -a w <<<"$clean"
+  [ "${#w[@]}" -gt 0 ] || return
+  local i=0 k del=0
+  [ "${w[$i]:-}" = find ] || return
+  for ((k=i+1; k<${#w[@]}; k++)); do [ "${w[$k]}" = -delete ] && del=1; done
+  [ "$del" -eq 1 ] || return
+  k=$((i+1))
+  while [ "$k" -lt "${#w[@]}" ]; do
+    case "${w[$k]}" in
+      -H|-L|-P) k=$((k+1)) ;;
+      -D|-O) k=$((k+2)) ;;
+      -*) break ;;
+      *) strip_quotes "${w[$k]}"; echo; k=$((k+1)) ;;
+    esac
+  done
+}
+dd_segment() {
+  local clean=$1
+  local -a w
+  read -r -a w <<<"$clean"
+  [ "${#w[@]}" -gt 0 ] || return
+  local i=0 k
+  [ "${w[$i]:-}" = dd ] || return
+  for ((k=i+1; k<${#w[@]}; k++)); do
+    case "${w[$k]}" in of=*) strip_quotes "${w[$k]#of=}"; echo ;; esac
   done
 }
 write_targets() {
@@ -85,11 +234,19 @@ write_targets() {
   inplace_targets "$c"
 }
 guard_targets() {
+  local seg clean
   write_targets "$1"
-  verb_targets "$(clean_cmd "$1")"
+  while IFS= read -r seg; do
+    seg=$(strip_shell_prefix "$seg")
+    [ -n "$seg" ] || continue
+    clean=$(strip_redirect_words "$seg")
+    verb_segment "$clean"
+    find_delete_segment "$clean"
+    dd_segment "$clean"
+  done < <(split_segments "$(clean_cmd "$1")")
 }
 revparse_overseer() {
-  grep -Eq '(>>?[[:space:]]*["\047]?[$][(][[:space:]]*git rev-parse --git-(common-)?dir[^;&|]*/overseer|(^|[;&|[:space:]])(touch|rm|mkdir|rmdir|mv|cp|ln|truncate|tee)[[:space:]][^;&|]*[$][(][[:space:]]*git rev-parse --git-(common-)?dir[^;&|]*/overseer|(^|[;&|[:space:]])(sed|perl)[[:space:]][^;&|]*(-[A-Za-z]*i|--in-place)[^;&|]*[$][(][[:space:]]*git rev-parse --git-(common-)?dir[^;&|]*/overseer)' <<<"$1"
+  grep -Eq '(>>?[[:space:]]*["\047]?[$][(][[:space:]]*git rev-parse --git-(common-)?dir[^;&|]*/overseer|(^|[;&|[:space:]])(touch|rm|mkdir|rmdir|mv|cp|ln|truncate|tee|find|dd)[[:space:]][^;&|]*[$][(][[:space:]]*git rev-parse --git-(common-)?dir[^;&|]*/overseer|(^|[;&|[:space:]])(sed|perl)[[:space:]][^;&|]*(-[A-Za-z]*i|--in-place)[^;&|]*[$][(][[:space:]]*git rev-parse --git-(common-)?dir[^;&|]*/overseer)' <<<"$1"
 }
 cds_git() {
   local seg cdre="(^|[;&|[:space:]])(cd|pushd)[[:space:]][^;&|]*[\"']?[.]git([\"'[:space:]/]|$)"
@@ -105,9 +262,26 @@ stats() {
   counts=$(awk '$2=="block"{n[$3]++} END{for (r in n) print r, n[r]}' "${files[@]}" | sort -k2,2nr -k1,1)
   esc=$(awk '$2=="escalate"{n++} END{print n+0}' "${files[@]}")
   deltas=$(awk '
-    FNR==1 { np=0 }
-    $2=="block" { p[++np]=$1 }
-    $2=="pass" { for (i=1;i<=np;i++) { d=$1-p[i]; if (d>=0) print d } np=0 }
+    function mode(r) {
+      if (r ~ /^post-edit-/) return "post-edit"
+      if (r ~ /^edit-/) return "pre-edit"
+      if (r ~ /^bash-/) return "pre-bash"
+      if (r ~ /^(commit-|pr-)/) return "post-bash"
+      return ""
+    }
+    FNR==1 { split("", pending) }
+    $2=="block" {
+      m=mode($3)
+      if (m!="" && !(m in pending)) pending[m]=$1
+      next
+    }
+    $2=="pass" {
+      if ($3 in pending) {
+        d=$1-pending[$3]
+        if (d>=0) print d
+        delete pending[$3]
+      }
+    }
   ' "${files[@]}" | sort -n)
   echo "blocks:"
   if [ -n "$counts" ]; then awk '{printf "  %-24s %d\n", $1, $2}' <<<"$counts"; else echo "  none"; fi
@@ -215,6 +389,14 @@ is_overseer_target() {
   case "$a" in "$common/overseer"|"$common/overseer/"*|"$gitdir/overseer"|"$gitdir/overseer/"*) return 0 ;; esac
   return 1
 }
+is_git_dir_target() {
+  local a
+  [ -n "$1" ] || return 1
+  case "$1" in .git|.git/|*/.git|*/.git/) return 0 ;; esac
+  a=$(abspath_from "$target_base" "$1")
+  [ "$a" = "$common" ] || [ "$a" = "$gitdir" ] && return 0
+  return 1
+}
 rel_target() {
   local a; a=$(abspath_from "$target_base" "$1")
   case "$a" in "$PWD"/*) printf '%s' "${a#"$PWD"/}" ;; esac
@@ -276,6 +458,7 @@ write_gate() {
   while IFS= read -r t; do
     [ -n "$t" ] || continue
     is_overseer_target "$t" && block bash-overseer "do not write to the overseer state directory ($t). The escape hatch belongs to the human: create or remove .git/overseer/off from your own terminal."
+    is_git_dir_target "$t" && block bash-git-dir "do not write to, remove or move the git directory itself ($t). It holds the branch, the history and the overseer state; change it only through git commands."
   done <<<"$ts"
   ts=$(write_targets "$c")
   while IFS= read -r t; do
