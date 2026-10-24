@@ -601,10 +601,19 @@ PR: ready main" "$ACC"
   git -C "$R" config url."$tmp/unexpected/".insteadOf git@github.com:
   export GIT_SSH_COMMAND=false
   foreman >/dev/null
-  printf '%s' "$(git -C "$tmp/fallback.git" branch | tr -d ' *')|$(grep -o 'pushed over ssh: git@github.com:o/r.git HEAD -> feat/t' "$FHQ/logs/t/pr.log" | head -n 1)"
+  printf '%s' "$(git -C "$tmp/fallback.git" branch | tr -d ' *')|$(grep -o 'pushed over ssh: github.com:o/r.git HEAD -> feat/t' "$FHQ/logs/t/pr.log" | head -n 1)"
 }
-expect "derives the ssh url from https origin with .git" "$(derive https://github.com/o/r.git)" "feat/t|pushed over ssh: git@github.com:o/r.git HEAD -> feat/t"
-expect "derives the ssh url from https origin without .git" "$(derive https://github.com/o/r)" "feat/t|pushed over ssh: git@github.com:o/r.git HEAD -> feat/t"
+expect "derives the ssh url from https origin with .git" "$(derive https://github.com/o/r.git)" "feat/t|pushed over ssh: github.com:o/r.git HEAD -> feat/t"
+expect "derives the ssh url from https origin without .git" "$(derive https://github.com/o/r)" "feat/t|pushed over ssh: github.com:o/r.git HEAD -> feat/t"
+fresh "" pass
+brief "Risk: low
+PR: ready main" "$ACC"
+echo "https://github.com/o/r/pull/9" >"$tmp/pr-url"
+reject_workflow
+rm -rf "$tmp/fallback.git" && git init -q --bare "$tmp/fallback.git"
+git -C "$R" config url."$tmp/fallback.git".insteadOf https://x:sekret@github.com/o/r.git
+MISTER_HANDY_PUSH_FALLBACK_URL=https://x:sekret@github.com/o/r.git foreman >/dev/null
+expect "a credentialed fallback url is not logged" "$(git -C "$tmp/fallback.git" branch | tr -d ' *') $(grep -c sekret "$FHQ/logs/t/pr.log") $(grep -c 'pushed over ssh: github.com/o/r.git HEAD -> feat/t' "$FHQ/logs/t/pr.log")" "feat/t 0 1"
 brief "Risk: low" "$ACC"
 fresh "" branchy
 expect "a worker that switches branch ESCALATEs" "$(foreman >/dev/null; grep -c 'ESCALATE the worker left branch feat/t' "$FHQ/STATUS.md")" "1"

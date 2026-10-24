@@ -58,6 +58,18 @@ fallback_push_url() {
     *) return 1 ;;
   esac
 }
+push_url_label() {
+  local u=$1 rest auth
+  case $u in
+    *://*)
+      rest=${u#*://}
+      auth=${rest%%/*}
+      u=${auth##*@}${rest#"$auth"}
+      ;;
+    *@*:*) u=${u#*@} ;;
+  esac
+  printf '%s\n' "$u"
+}
 end() { say "$1 $2"; card "$1 $2"; exit "$3"; }
 beat() { (while sleep "${MISTER_HANDY_HEARTBEAT:-600}"; do say "MILESTONE still working: $1"; done) 2>/dev/null & hb=$!; }
 unbeat() { [ -z "${hb:-}" ] || { pkill -P "$hb" 2>/dev/null; kill "$hb" 2>/dev/null; hb=""; }; }
@@ -437,9 +449,11 @@ if [ -n "$pr" ] && [ "$(git rev-parse HEAD)" != "$base" ]; then
       pushed=ssh
     fi
   fi
-  cat "$logs/push.log" >>"$logs/pr.log"
+  redact <"$logs/push.log" | perl -pe 's#(://)[^/\s]*@#$1#g' >>"$logs/pr.log"
   if [ -n "$pushed" ]; then
-    printf 'pushed over %s: %s HEAD -> %s\n' "$pushed" "${fallback:-origin}" "$branch" >>"$logs/pr.log"
+    src=origin
+    [ "$pushed" != ssh ] || src=$(push_url_label "$fallback")
+    printf 'pushed over %s: %s HEAD -> %s\n' "$pushed" "$src" "$branch" | redact >>"$logs/pr.log"
     note="$note, pushed over $pushed"
     where="$sha on $branch (pushed over $pushed)"
     body=$logs/pr-body.md
