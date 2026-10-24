@@ -33,14 +33,14 @@ Runs the stack's mutation tester (Infection, Stryker, mutmut, PIT, cargo-mutants
 /vats stats
 ```
 
-Reads the log every check leaves behind (`~/.claude/vats/log.jsonl`) and says whether the rules earn their keep: how often each one fails, how often the agent fixed it on its own, which ones never fire, and how much time they cost.
+Reads the log every check leaves behind (`~/.claude/vats/log.jsonl`) and says whether the rules earn their keep: how often each one fails, how often the agent fixed it on its own, which ones never fire, and how much time they cost. A repo+mode with at least 5 runs that all skipped is called out as a check that never ran: `  stub commit: 6 runs, all skipped: the check never ran`.
 
 ## Two ways to run it
 
 - **Personal mode** (default): the plugin ships the hooks (`hooks/hooks.json`), so installing it is all the wiring there is. You write one rules file per repo, `~/.claude/vats/<repo-name>.sh`, matched by the name of the repo's `origin`, so it covers every worktree. Nothing lands in the repo; repos without a rules file are left alone. For trialling rules on a shared codebase before proposing them.
 - **Team mode**: the script and two hook entries are committed to the repo, so everyone gets them without the plugin.
 
-Rules judge **only the lines a change adds** (`added_lines`), so legacy code that already breaks them stays out of the agent's way. A check that can't run (container down, tool missing) returns `$SKIP` and never blocks.
+Rules judge **only the lines a change adds** (`added_lines`), so legacy code that already breaks them stays out of the agent's way. A check that can't run (container down, tool missing) returns `$SKIP` and never blocks. A rules file declares an unwired cadence by leaving the function out: leave on_commit out until it is wired; a stub that returns $SKIP looks like coverage. vats exits 0 silently and logs nothing for a mode with no check.
 
 ## What lands in your repo (team mode)
 

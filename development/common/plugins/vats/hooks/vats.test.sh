@@ -34,6 +34,15 @@ check "bash, git -C path commit too"       2 "$T" commit '{"tool_input":{"comman
 check "bash, commit in another segment no" 0 "$T" commit '{"tool_input":{"command":"git status; echo commit"}}'
 check "unknown mode is a usage error"      1 "$T" nope   '{}'
 
+export CLAUDE_PROJECT_DIR=$tmp/nocommit && mkdir -p "$CLAUDE_PROJECT_DIR"
+T2=$CLAUDE_PROJECT_DIR/vats.sh
+sed '/^on_commit() {/,/^}/d' "$here/vats.sh" >"$T2"
+has "team mode template still dispatches commits" 'run on_commit' "$(grep 'run on_commit' "$T2")"
+before=$(wc -l <"$VATS_HOME/log.jsonl" 2>/dev/null || echo 0)
+check "team mode, missing on_commit lets the commit through" 0 "$T2" commit '{"tool_input":{"command":"git commit -m x"}}'
+after=$(wc -l <"$VATS_HOME/log.jsonl" 2>/dev/null || echo 0)
+[ "$before" = "$after" ] && echo "ok   team mode, missing on_commit logs nothing" || { echo "FAIL team mode, missing on_commit log grew ($before -> $after)"; fails=$((fails + 1)); }
+
 # ── personal mode: the pristine shipped script + a rules file named after the repo's origin ──
 # The script runs from wherever the plugin is cached; the rules come from $VATS_HOME (default ~/.claude/vats).
 P=$here/vats.sh
@@ -59,6 +68,25 @@ export CLAUDE_PROJECT_DIR=$tmp/other && repo "$CLAUDE_PROJECT_DIR" git@example.c
 printf 'FORBIDDEN\n' >"$tmp/other/new.php"
 check "a repo without a rules file is left alone" 0 "$P" edit "$(edit "$tmp/other/new.php")"
 
+cat >"$VATS_HOME/half.sh" <<'EOF'
+on_edit() { return 0; }
+EOF
+export CLAUDE_PROJECT_DIR=$tmp/half && repo "$CLAUDE_PROJECT_DIR" git@example.com:org/half.git
+before=$(wc -l <"$VATS_HOME/log.jsonl" 2>/dev/null || echo 0)
+check "unwired commit: a missing on_commit lets the commit through" 0 "$P" commit '{"tool_input":{"command":"git commit -m x"}}'
+after=$(wc -l <"$VATS_HOME/log.jsonl" 2>/dev/null || echo 0)
+[ "$before" = "$after" ] && echo "ok   unwired commit: nothing is logged" || { echo "FAIL unwired commit: log grew ($before -> $after)"; fails=$((fails + 1)); }
+
+cat >"$VATS_HOME/commitonly.sh" <<'EOF'
+on_commit() { return 0; }
+EOF
+export CLAUDE_PROJECT_DIR=$tmp/commitonly && repo "$CLAUDE_PROJECT_DIR" git@example.com:org/commitonly.git
+printf 'x\n' >"$tmp/commitonly/x.php"
+before=$(wc -l <"$VATS_HOME/log.jsonl")
+check "unwired edit: a missing on_edit lets the edit through" 0 "$P" edit "$(edit "$tmp/commitonly/x.php")"
+after=$(wc -l <"$VATS_HOME/log.jsonl")
+[ "$before" = "$after" ] && echo "ok   unwired edit: nothing is logged" || { echo "FAIL unwired edit: log grew ($before -> $after)"; fails=$((fails + 1)); }
+
 # ── the log: every check that ran left a line, and stats reads the story back ──
 export CLAUDE_PROJECT_DIR=$tmp/demo
 printf 'legacy FORBIDDEN line\na clean new line\n' >"$tmp/demo/old.php"
@@ -68,5 +96,18 @@ has "stats: fail then pass on a file counts as fixed" 'fail>pass): 1$' "$out"
 has "stats: failures are grouped by their first line" '1x 3:a new FORBIDDEN line' "$out"
 has "log: team mode is recorded too"                  '"repo":"team","mode":"edit".*"result":"fail".*"first":"boom"' "$(cat "$VATS_HOME/log.jsonl")"
 has "log: a repo without rules is not recorded"       '^0$' "$(grep -c '"repo":"other"' "$VATS_HOME/log.jsonl")"
+
+now=$(date +%s)
+for i in 1 2 3 4 5 6; do
+  printf '{"ts":%s,"repo":"stub","mode":"commit","file":"","result":"skip","ms":1,"session":"a%s","first":""}\n' "$now" "$i" >>"$VATS_HOME/log.jsonl"
+  printf '{"ts":%s,"repo":"real","mode":"commit","file":"","result":"%s","ms":900,"session":"b%s","first":""}\n' "$now" "$([ "$i" = 1 ] && echo skip || echo pass)" "$i" >>"$VATS_HOME/log.jsonl"
+done
+for i in 1 2 3 4; do
+  printf '{"ts":%s,"repo":"few","mode":"commit","file":"","result":"skip","ms":1,"session":"c%s","first":""}\n' "$now" "$i" >>"$VATS_HOME/log.jsonl"
+done
+out=$(bash "$P" stats </dev/null)
+has "stats: 5+ runs all skipped never ran" 'stub commit: 6 runs, all skipped: the check never ran' "$out"
+if grep -q 'real commit.*never ran' <<<"$out"; then echo "FAIL stats: a pair that ran is not flagged as never ran"; fails=$((fails + 1)); else echo "ok   stats: a pair that ran is not flagged as never ran"; fi
+if grep -q 'few commit.*never ran' <<<"$out"; then echo "FAIL stats: fewer than 5 runs is not flagged as never ran"; fails=$((fails + 1)); else echo "ok   stats: fewer than 5 runs is not flagged as never ran"; fi
 
 [ "$fails" -eq 0 ] && echo "all green" || { echo "$fails failed"; exit 1; }
