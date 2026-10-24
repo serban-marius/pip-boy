@@ -23,4 +23,4 @@ How to write the code:
 - Write the shortest diff that solves the problem, but only once you understand the problem.
 - Fix bugs at the cause, where every caller goes through, not at the symptom.
 
-Never get around a block: the hook blocks production files written through Bash (`cat >`, `tee`, `sed -i`, `perl -pi`) and anything that writes under `.git/overseer/` or removes or moves `.git`; reads are free. If the same rule blocks you 3 times in a row, stop and ask the human. The escape hatch `.git/overseer/off` belongs to the human.
+Never get around a block: the hook blocks production files written through Bash (`cat >`, `tee`, `sed -i`, `perl -pi`, `>|`, the destination of `cp`/`mv`) and anything that writes under this repo's `.git/overseer/` or removes or moves its `.git`; reads are free. If the same gate blocks you 3 times in a row, stop and ask the human. The escape hatch `.git/overseer/off` belongs to the human.
