@@ -181,7 +181,10 @@ benchmark, so `rules` sends more work to the cheap ladder; the ladder escalates 
 The foreman starts only on a clean feature branch. The worker cannot push or use `gh`; the
 foreman pushes only when the brief has `PR: ready|draft <base>`, fails attempts that touch files
 outside an optional `Scope: <globs>` line, and escalates instead of committing anything that looks
-like a secret. Provider credentials stay in pi's own config; `claude:` workers use your Claude login.
+like a secret. When GitHub refuses that push for lack of the `workflow` scope (a brief touching
+`.github/workflows/`), it retries once over SSH, using `MISTER_HANDY_PUSH_FALLBACK_URL` or
+`git@github.com:<owner>/<repo>.git` derived from an `https://github.com/<owner>/<repo>` origin.
+Provider credentials stay in pi's own config; `claude:` workers use your Claude login.
 
 ## Why not `orca orchestration`
 
