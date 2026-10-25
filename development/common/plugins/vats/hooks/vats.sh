@@ -5,7 +5,8 @@
 # Contract: exit 0 = silent pass. exit 2 + stderr = on edit, Claude gets the failure as a reminder; on commit, the commit is blocked.
 #
 # Personal mode (default): the plugin's hooks/hooks.json runs this file as shipped. The checks for each repo live in
-#   ~/.claude/vats/<repo-name>.sh, which defines on_edit/on_commit. Repos without a rules file are left alone.
+#   ~/.claude/vats/<repo-name>.sh, which defines on_edit and/or on_commit. Repos without a rules file are left alone.
+#   A mode left out is not run and not logged.
 # Team mode: a copy of this file is committed at <repo>/.claude/hooks/vats.sh with on_edit/on_commit filled in below.
 # See RUNBOOK.md.
 
@@ -25,6 +26,7 @@ stats() { # $1 = days back (default 30)
     | [$seqs[] | . as $r | range(1; $r | length) | $r[. - 1] + ">" + $r[.]] as $steps
     | "runs (repo mode: total / fail / skip, time spent)",
       ($l | group_by([.repo, .mode])[] | "  \(.[0].repo) \(.[0].mode): \(length) / \(n(.result == "fail")) / \(n(.result == "skip")), \(map(.ms) | add / 1000 | floor)s"),
+      ($l | group_by([.repo, .mode])[] | select(length >= 5 and all(.result == "skip")) | "  \(.[0].repo) \(.[0].mode): \(length) runs, all skipped: the check never ran"),
       "after a fail",
       "  fixed by the agent (fail>pass): \($steps | n(. == "fail>pass"))",
       "  failed again       (fail>fail): \($steps | n(. == "fail>fail"))",
@@ -68,9 +70,13 @@ added_lines() { # $1 = file
 repo=$(basename -s .git "$(git remote get-url origin 2>/dev/null)" 2>/dev/null)
 rules="${VATS_HOME:-$HOME/.claude/vats}/$repo.sh"
 # Log only where there are checks to judge: a rules file (personal mode) or this script living in the repo (team mode).
-active=; case "$(cd "$(dirname "$0")" && pwd -P)/" in "$(pwd -P)"/*) active=1 ;; esac
+active='' team=''
+case "$(cd "$(dirname "$0")" && pwd -P)/" in "$(pwd -P)"/*) active=1 team=1 ;; esac
 # shellcheck disable=SC1090
-[ -f "$rules" ] && ! [ "$rules" -ef "$0" ] && . "$rules" && active=1
+if [ -f "$rules" ] && ! [ "$rules" -ef "$0" ]; then
+  [ -n "$team" ] || unset -f on_edit on_commit
+  . "$rules" && active=1
+fi
 
 now_us() { local t=${EPOCHREALTIME:-0}; echo "${t/[.,]/}"; } # ponytail: needs bash 5; older bash logs ms as 0
 
@@ -99,11 +105,13 @@ case "$mode" in
   edit)
     file=$(jq -r '.tool_input.file_path // empty' <<<"$input")
     [ -n "$file" ] && [ -f "$file" ] || exit 0
+    declare -F on_edit >/dev/null || exit 0
     run on_edit "$file"
     ;;
   commit)
     # ponytail: loose match ("git ... commit" inside one command segment). A false positive only costs one extra test run.
     jq -e '.tool_input.command // "" | test("\\bgit\\b[^;&|]*\\bcommit\\b")' <<<"$input" >/dev/null || exit 0
+    declare -F on_commit >/dev/null || exit 0
     run on_commit
     ;;
   *)

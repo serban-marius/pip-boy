@@ -23,7 +23,7 @@ review. So: many small, fast checks while the agent works, instead of one big re
 - **Judge the delta, not the file.** In a legacy repo most files already break the rules (one real repo: 183 of 228 files lacked `declare(strict_types=1)`, a rule its own standards call mandatory). A whole-file check fires on every edit and pushes the agent into changes nobody asked for. Pattern rules run over `added_lines "$file"` (the lines this change adds, as `N:text`); only whole-file tools that the repo already passes clean (a formatter, a type checker) look at the full file.
 - **"Couldn't run" is not "failed".** A check that can't execute (container down, tool missing) returns `$SKIP` (75) and never blocks. Otherwise a stopped dev cluster blocks every edit.
 - **Pick where it lives (ask if unclear):**
-  - **Personal mode (default)**: nothing lands in the repo and there is nothing to wire. This plugin's `hooks/hooks.json` already runs `hooks/vats.sh` on every edit and commit; your whole job is to write ONE file, `~/.claude/vats/<repo-name>.sh`, defining `on_edit` and `on_commit`. The script finds it by the basename of `origin`'s URL, so every worktree of the repo is covered; repos without a rules file are left alone. Use it to trial rules on a shared repo before proposing them to the team.
+  - **Personal mode (default)**: nothing lands in the repo and there is nothing to wire. This plugin's `hooks/hooks.json` already runs `hooks/vats.sh` on every edit and commit; your whole job is to write ONE file, `~/.claude/vats/<repo-name>.sh`, defining the cadences you have checks for (`on_edit`, `on_commit`). Leave a cadence out until it is wired; a stub that returns `$SKIP` looks like coverage. The script finds it by the basename of `origin`'s URL, so every worktree of the repo is covered; repos without a rules file are left alone. Use it to trial rules on a shared repo before proposing them to the team.
   - **Team mode**: `<repo>/.claude/hooks/vats.sh` + two entries in `<repo>/.claude/settings.json`, committed. Teammates get the verifiers without this plugin, through Claude Code's normal hook-trust flow. Never both modes on one repo: every check would fire twice.
 - **Merge, never overwrite** `.claude/settings.json`. Show the diff.
 - **Not verified = not installed.** Step 3 is not optional.
@@ -44,10 +44,10 @@ Run each candidate once on a real file and note the time. Prefer the repo's own 
 
 ## Step 2 · install
 
-**Personal mode.** Write `~/.claude/vats/<repo-name>.sh` (name = `basename -s .git "$(git remote get-url origin)"`) defining `on_edit` and `on_commit`. That's all; the plugin's hooks are already live. The file is sourced by `hooks/vats.sh`, so it can use `added_lines FILE`, `$SKIP` and `$input` (the raw hook JSON). `RUNBOOK.md` at the plugin root has an annotated example.
+**Personal mode.** Write `~/.claude/vats/<repo-name>.sh` (name = `basename -s .git "$(git remote get-url origin)"`) defining the cadences you have checks for (`on_edit`, `on_commit`). Leave a cadence out until it is wired: a stub that returns `$SKIP` looks like coverage, and a mode with no function exits silently without logging a run. That's all; the plugin's hooks are already live. The file is sourced by `hooks/vats.sh`, so it can use `added_lines FILE`, `$SKIP` and `$input` (the raw hook JSON). `RUNBOOK.md` at the plugin root has an annotated example.
 
 **Team mode.**
-1. Copy `../../hooks/vats.sh` (relative to this file, i.e. the plugin's `hooks/vats.sh`) to `<repo>/.claude/hooks/vats.sh`, `chmod +x`, and fill in `on_edit` and `on_commit` inside it.
+1. Copy `../../hooks/vats.sh` (relative to this file, i.e. the plugin's `hooks/vats.sh`) to `<repo>/.claude/hooks/vats.sh`, `chmod +x`, and fill in the cadences you have checks for inside it (`on_edit`, `on_commit`). Leave a cadence out until it is wired; a stub that returns `$SKIP` looks like coverage.
 2. Merge the two hook entries below into `<repo>/.claude/settings.json`. Back the file up first, merge (never overwrite), and show the diff.
 3. If the user had a personal rules file for this repo, rename it so checks don't run twice.
 
@@ -111,7 +111,7 @@ Every check that runs leaves a line in `~/.claude/vats/log.jsonl` (repo, mode, f
 - **A rule that never fails** over a few weeks of real work: dead weight, or the model already does it unprompted. Propose deleting it.
 - **fail>pass**: the agent fixed itself, an interruption the human didn't have. This is the value.
 - **fail>fail, or left failing**: the agent can't satisfy the rule. It's vague or wrong; tighten it or delete it.
-- **Mostly skip**: the check never really runs (container down, tool missing). Fix the environment or move it to CI.
+- **Mostly skip**, or a repo+mode on the `all skipped: the check never ran` line (at least 5 runs, every one a skip): the check never really runs. Fix the environment or move it to CI.
 
 The log can't tell a real catch from a false alarm; say so rather than calling every fail a save. Failures group by their first output line, so a rule's message should start with its name.
 

@@ -49,7 +49,7 @@ Easiest: open a session in the repo and run `/vats`. The skill reads the repo's 
 
 **b. Find the rules before you write any.** Read the repo's own standards (`.claude/rules/`, `CLAUDE.md`, `CONTRIBUTING`, linter configs). Then measure, don't guess: run each candidate pattern over the current code and over the git history. If a rule would fire on most of the legacy code, it must be delta-only. If it fires on nothing the agent has ever written, it's not worth having.
 
-**c. Write the two functions.** The file is sourced by the script, so it has these available: `added_lines FILE` (prints `N:text` for each added line; a file git doesn't know yet counts whole), `$SKIP`, and `$input` (the raw hook JSON).
+**c. Write the functions.** The file is sourced by the script, so it has these available: `added_lines FILE` (prints `N:text` for each added line; a file git doesn't know yet counts whole), `$SKIP`, and `$input` (the raw hook JSON). Leave a cadence out until it is wired: a stub that returns `$SKIP` looks like coverage.
 
 ```bash
 # ~/.claude/vats/my-repo.sh
@@ -77,6 +77,7 @@ Writing good checks:
 - **A nudge fires once.** For soft rules ("you added a comment, keep it only if it says why"), check the text of *this* edit (`jq -r '.tool_input.new_string // .tool_input.content' <<<"$input"`) rather than the whole delta, or it repeats on every later edit of the file until commit.
 - **Tools that run in a container** must return `$SKIP` when the container isn't there, not their own error code.
 - **Only tools the repo already has.** Never install a dependency to have something to run.
+- **Unwired cadence: leave on_commit out until it is wired; a stub that returns $SKIP looks like coverage.** A rules file declares an unwired cadence by leaving the function out: vats exits 0 silently and logs nothing, so it is not counted as a run.
 
 **d. See it red, then green.** From the repo root, with a real file `F`:
 
@@ -92,7 +93,7 @@ Expect `exit=0` and no output. Now add a violation to `F`, run it again, and exp
 - **What the agent sees.** After an edit, a failing check reaches it as a reminder (the edit itself already happened) and it fixes the file on its next step. Before a commit, a failing check blocks the commit and the agent gets the tail of the test output.
 - **What you see.** Nothing, when it works. Claude Code only surfaces a hook that errors or is slow. To watch hooks run, start with `claude --debug`.
 - **A rule misfires.** Fix the pattern in the rules file; it applies on the next edit. If you can't make it precise, delete it: a verifier that cries wolf makes the agent "fix" correct code, which is worse than no verifier.
-- **Is it earning its keep?** Every check that runs is logged to `~/.claude/vats/log.jsonl`. `/vats stats` (or `vats.sh stats [days]`) reads it back: fails per rule, how often the agent fixed itself (fail>pass), rules it can't satisfy (fail>fail), checks that only ever skip, and seconds spent. A rule that never fires in a month is a candidate to delete: the point of a harness is a higher first-try success rate, not more rules. Start each rule's failure message with its name so the failures group cleanly.
+- **Is it earning its keep?** Every check that runs is logged to `~/.claude/vats/log.jsonl`. `/vats stats` (or `vats.sh stats [days]`) reads it back: fails per rule, how often the agent fixed itself (fail>pass), rules it can't satisfy (fail>fail), checks that only ever skip, and seconds spent. After the runs table, a repo+mode with at least 5 runs that all skipped gets its own line: `  stub commit: 6 runs, all skipped: the check never ran`. That is a check that never ran, not coverage. A rule that never fires in a month is a candidate to delete: the point of a harness is a higher first-try success rate, not more rules. Start each rule's failure message with its name so the failures group cleanly.
 - **Turn it off.** One repo: rename its rules file. Everything: disable the plugin in `/plugin`.
 - **Mutation testing.** `/vats mutate <path>` on a sensitive module answers a different question: do the tests the agent wrote actually assert anything? Run it now and then, not on a cadence.
 
