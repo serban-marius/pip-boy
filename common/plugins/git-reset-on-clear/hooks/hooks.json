@@ -1,0 +1,13 @@
+{
+  "description": "git-reset-on-clear: returns a clean checkout to the default branch and fast-forwards it when /clear is used. Dirty trees, detached HEADs and linked worktrees are left alone.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "clear",
+        "hooks": [
+          { "type": "command", "command": "bash", "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/on-clear.sh"], "timeout": 30 }
+        ]
+      }
+    ]
+  }
+}
