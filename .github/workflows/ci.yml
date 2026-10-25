@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  checks:
+    name: JSON and marketplace
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install missing tools
+        run: |
+          missing=()
+          for tool in jq perl python3; do
+            command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            sudo apt-get update
+            sudo apt-get install -y "${missing[@]}"
+          fi
+      - name: JSON syntax
+        run: |
+          for f in $(git ls-files '*.json'); do
+            jq empty "$f" || exit 1
+          done
+      - name: Marketplace registrations and versions
+        run: bash scripts/check-marketplace.sh
+
+  hooks:
+    name: Hook suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install missing tools
+        run: |
+          missing=()
+          for tool in jq perl python3; do
+            command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            sudo apt-get update
+            sudo apt-get install -y "${missing[@]}"
+          fi
+      - name: Overseer hooks
+        run: bash development/common/plugins/overseer/hooks/overseer.test.sh
+      - name: VATS hooks
+        run: bash development/common/plugins/vats/hooks/vats.test.sh
+      - name: Holotape Jira preview
+        run: python3 development/common/plugins/holotape/skills/jira-write/bin/test_jira_preview.py
+      - name: GitHub Janitor shims
+        run: PATH="$PWD/automation/plugins/github-janitor/guardrails:$PATH" bash automation/plugins/github-janitor/guardrails/test-shims.sh
+
+  delegate:
+    name: Mister Handy delegate
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install missing tools
+        run: |
+          missing=()
+          for tool in jq perl python3; do
+            command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            sudo apt-get update
+            sudo apt-get install -y "${missing[@]}"
+          fi
+      - name: Delegate suite
+        timeout-minutes: 20
+        run: bash development/common/plugins/mister-handy/skills/delegate/bin/delegate.test.sh
