@@ -282,6 +282,11 @@ stmts() { local i; for i in $(seq 1 "$1"); do printf '%s$x%d = %d;\n' "$2" "$i" 
 php_fn() { printf '<?php\nclass %s\n{\n    public function %s(%s)\n    {\n%s\n    }\n}\n' "$1" "$2" "$3" "$(stmts "$4" '        ')"; }
 size() { printf '%s\n' "$3" >"$B/$2"; check_note "$1" "$4" "$2" "${5:-}"; rm -f "$B/$2"; }
 
+printf '%s\n' "$(php_fn Json huge '' 31)" >"$B/src/Json.php"
+json_out=$(post_out src/Json.php)
+if printf '%s' "$json_out" | jq -e '.hookSpecificOutput.hookEventName=="PostToolUse" and (.hookSpecificOutput.additionalContext|length>0)' >/dev/null 2>&1; then echo "ok   the size note is one JSON object on stdout"; else echo "FAIL size note JSON: $json_out"; fails=$((fails + 1)); fi
+rm -f "$B/src/Json.php"
+
 printf '<?php\n// this explains why\nclass Both\n{\n    public function huge()\n    {\n%s\n    }\n}\n' "$(stmts 31 '        ')" >"$B/src/Both.php"
 check "prose and size: the prose block wins" 2 post-edit "$(edit src/Both.php)" "size note"
 rm -f "$B/src/Both.php"
@@ -306,7 +311,7 @@ DOC "@deprecated with a reason"               ' * @deprecated use build() instea
 DOC "@todo is prose"                          ' * @todo split this' 2 "@todo"
 DOC "a jsdoc param with a description"        ' * @param {string} name - the program name' 2 "program name"
 DOC "a bare jsdoc param passes"               ' * @param {Array<string>} names' 0
-printf '%s\n' '// deno-lint-ignore no-explicit-any' '// @deno-types="./x.d.ts"' '/// <reference types="vite/client" />' '// biome-ignore lint/style: generated' >"$B/src/tools.ts"
+printf '%s\n' '// deno-lint-ignore no-explicit-any' '// @deno-types="./x.d.ts"' '/// <reference types="vite/client" />' '// biome-ignore lint/style: generated' '# flake8: noqa' >"$B/src/tools.ts"
 check "deno, biome and reference directives pass" 0 post-edit "$(edit src/tools.ts)"
 printf '%s\n' '# fmt: off' 'def load(' '    *args,' '    **kwargs,' '):' '    pass' >"$B/src/star.py"
 check "python star params are code, fmt: passes" 0 post-edit "$(edit src/star.py)"
@@ -390,9 +395,22 @@ fire post-bash "$(bash_ 'vendor/bin/phpunit')"
 check "size never blocks git commit"            0 pre-bash "$(bash_ 'git commit -am big')"
 rm -f "$B/src/BigCommit.php"
 
+git -C "$B" checkout -q -b feat/cprose
+fire post-bash "$(bash_ 'vendor/bin/phpunit')"
+printf '<?php\n// first\nclass Esc {}\n' >"$B/src/Esc.php"
+check "an earlier prose edit block starts its own gate" 2 post-edit "$(edit src/Esc.php)" "prose"
+check "a second prose edit block stays on its gate" 2 post-edit "$(edit src/Esc.php)" "prose"
+check "a commit prose block starts its own streak" 2 pre-bash "$(bash_ 'git commit -am x')" "prose"
+check "a second commit prose block does not escalate" 2 pre-bash "$(bash_ 'git commit -am x')" "prose"
+c2=$(printf '%s' "$(bash_ 'git commit -am x')" | bash "$S" pre-bash 2>&1 >/dev/null); code2=$?
+if [ "$code2" -eq 2 ] && grep -qi human <<<"$c2"; then echo "ok   the third bash-prose block escalates"; else echo "FAIL bash-prose escalation (exit $code2): $c2"; fails=$((fails + 1)); fi
+grep -q ' escalate bash-prose$' "$B/.git/overseer/feat-cprose.log" && echo "ok   the bash-prose escalation is logged" || { echo "FAIL bash-prose escalation not logged"; fails=$((fails + 1)); }
+rm -f "$B/src/Esc.php"
+
 git -C "$B" checkout -q feat/bash
 git -C "$B" branch -D feat/prose >/dev/null 2>&1
 git -C "$B" branch -D feat/alt >/dev/null 2>&1
+git -C "$B" branch -D feat/cprose >/dev/null 2>&1
 
 mkdir -p "$B/specs/001-bash" && echo '# Bash' >"$B/specs/001-bash/spec.md"
 fire post-edit "$(edit tests/OldTest.php)"

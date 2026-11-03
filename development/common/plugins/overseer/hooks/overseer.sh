@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 
 set -u
-export LC_ALL=C
 mode=${1:-}
 here=${0%/*}
 [ "$here" = "$0" ] && here=.
@@ -203,19 +202,26 @@ added_lines() {
   if git ls-files --error-unmatch -- "$1" >/dev/null 2>&1; then
     git diff -U0 HEAD -- "$1" | awk '/^@@/{split($3,a,","); n=substr(a[1],2)+0; next} /^\+\+\+/{next} /^\+/{print n ":" substr($0,2); n++}'
   else
-    grep -n '' -- "$1"
+    grep -an '' -- "$1"
   fi
 }
-prose_comments() { added_lines "$1" | awk -f "$here/prose.awk"; }
+prose_comments() {
+  local f=$1 lines=${2-}
+  [ "$#" -ge 2 ] || lines=$(added_lines "$f")
+  LC_ALL=C awk -f "$here/prose.awk" <<<"$lines"
+}
 oversized() {
-  is_prod "$1" || return 0
-  LC_ALL=C awk -v changed="$(added_lines "$1" | cut -d: -f1 | tr '\n' ' ')" -f "$here/size.awk" "$1"
+  local f=$1 lines=${2-} changed
+  is_prod "$f" || return 0
+  [ "$#" -ge 2 ] || lines=$(added_lines "$f")
+  changed=$(LC_ALL=C awk -F: '{print $1}' <<<"$lines" | tr '\n' ' ')
+  LC_ALL=C awk -v changed="$changed" -f "$here/size.awk" "$f"
 }
 dirty_prose() {
   local f
   while IFS= read -r f; do
     [ -n "$f" ] && [ -f "$f" ] && is_commented "$f" || continue
-    prose_comments "$f" | sed "s|^|$f:|"
+    prose_comments "$f" | LC_ALL=C sed "s|^|$f:|"
   done < <(dirty_files)
 }
 
