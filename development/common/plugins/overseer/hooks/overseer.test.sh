@@ -14,6 +14,13 @@ check() {
 edit() { printf '{"tool_input":{"file_path":"%s"}}' "$R/$1"; }
 bash_() { jq -nc --arg c "$1" '{tool_input:{command:$c}}'; }
 fire() { printf '%s' "$2" | bash "$S" "$1" >/dev/null 2>&1; }
+post_out() { printf '%s' "$(edit "$1")" | bash "$S" post-edit 2>/dev/null; }
+check_note() {
+  local name=$1 want=$2 file=$3 re=${4:-} out code
+  out=$(post_out "$file"); code=$?
+  if [ "$code" -eq "$want" ] && { if [ -n "$re" ]; then grep -q -- "$re" <<<"$out"; else [ -z "$out" ]; fi; }; then echo "ok   $name"
+  else echo "FAIL $name (exit $code) $out"; fails=$((fails + 1)); fi
+}
 write_re=$(sed -n "s/^WRITE_RE='\(.*\)'$/\1/p" "$S")
 re_fail=0
 for c in 'git add -A && git status' 'git diff --stat'; do [[ $c =~ $write_re ]] && re_fail=1; done
@@ -269,9 +276,181 @@ fire post-edit "$(edit src/Prose.php)"
 printf '%s\n' "$prose_bad" >"$B/src/Prose.php"
 last_prose=$(printf '%s' "$(edit src/Prose.php)" | bash "$S" post-edit 2>&1 >/dev/null)
 if grep -q ' pass post-edit$' "$B/.git/overseer/feat-prose.log" && ! grep -q ' escalate ' "$B/.git/overseer/feat-prose.log" && [ -n "$last_prose" ] && ! grep -qi human <<<"$last_prose"; then echo "ok   a pass of any mode resets the prose block streak"; else echo "FAIL prose block streak reset: $last_prose"; fails=$((fails + 1)); fi
+rm -f "$B/src/Prose.php"
+
+stmts() { local i; for i in $(seq 1 "$1"); do printf '%s$x%d = %d;\n' "$2" "$i" "$i"; done; }
+php_fn() { printf '<?php\nclass %s\n{\n    public function %s(%s)\n    {\n%s\n    }\n}\n' "$1" "$2" "$3" "$(stmts "$4" '        ')"; }
+size() { printf '%s\n' "$3" >"$B/$2"; check_note "$1" "$4" "$2" "${5:-}"; rm -f "$B/$2"; }
+
+printf '%s\n' "$(php_fn Json huge '' 31)" >"$B/src/Json.php"
+json_out=$(post_out src/Json.php)
+if printf '%s' "$json_out" | jq -e '.hookSpecificOutput.hookEventName=="PostToolUse" and (.hookSpecificOutput.additionalContext|length>0)' >/dev/null 2>&1; then echo "ok   the size note is one JSON object on stdout"; else echo "FAIL size note JSON: $json_out"; fails=$((fails + 1)); fi
+rm -f "$B/src/Json.php"
+
+printf '<?php\n// this explains why\nclass Both\n{\n    public function huge()\n    {\n%s\n    }\n}\n' "$(stmts 31 '        ')" >"$B/src/Both.php"
+check "prose and size: the prose block wins" 2 post-edit "$(edit src/Both.php)" "size note"
+rm -f "$B/src/Both.php"
+
+DOC() {
+  printf '<?php\n/**\n%s\n */\n' "$2" >"$B/src/Doc.php"
+  check "$1" "$3" post-edit "$(edit src/Doc.php)" "${4:-}"
+  rm -f "$B/src/Doc.php"
+}
+DOC "a bare @param passes"                    ' * @param list<SourceSnapshot> $snapshots' 0
+DOC "a bare array-shape @return passes"       ' * @return array{0: ContextOutcome, 1: float}' 0
+DOC "a callable type passes"                  ' * @param callable(int): string $fn' 0
+DOC "a variadic by-ref @param passes"         ' * @param int &...$ids' 0
+DOC "a bare @var and @throws pass"            "$(printf ' * @var array<string, int>\n * @throws RuntimeException')" 0
+DOC "phpstan and psalm types pass"            "$(printf ' * @phpstan-param list<int> $ids\n * @psalm-return non-empty-list<string>')" 0
+DOC "directives pass whole"                   "$(printf ' * @dataProvider casesFor\n * @phpstan-ignore-next-line\n * @psalm-suppress MixedAssignment')" 0
+DOC "a bare marker tag passes"                "$(printf ' * @deprecated\n * @internal\n * {@inheritDoc}')" 0
+DOC "@param followed by prose"                ' * @param list<string> $excludedTerms facts using these terms never reach the writer' 2 "excludedTerms facts"
+DOC "@return followed by prose"               ' * @return list<string> snapshot ids where at least one quote was found' 2 "snapshot ids"
+DOC "@see with a target"                      ' * @see ContextBuilder::verify' 2 "@see"
+DOC "@deprecated with a reason"               ' * @deprecated use build() instead' 2 "use build"
+DOC "@todo is prose"                          ' * @todo split this' 2 "@todo"
+DOC "a jsdoc param with a description"        ' * @param {string} name - the program name' 2 "program name"
+DOC "a bare jsdoc param passes"               ' * @param {Array<string>} names' 0
+DOC "@template T passes"                      ' * @template T' 0
+DOC "@template T of Foo passes"               ' * @template T of Foo' 0
+DOC "@template-covariant T of Foo passes"     ' * @template-covariant T of Foo' 0
+DOC "@template-extends Foo<T> passes"          ' * @template-extends Foo<T>' 0
+DOC "@template-covariant with an explanation is prose" ' * @template-covariant T explanation' 2 "explanation"
+DOC "@template with an explanation is prose"  ' * @template T explanation' 2 "explanation"
+DOC "@method with a signature passes"         ' * @method static Foo bar()' 0
+DOC "@method with text after the signature is prose" ' * @method static Foo bar() builds one' 2 "builds one"
+DOC "@testing with prose is prose"            ' * @testing this is prose' 2 "testing this"
+DOC "argument-taking test annotations pass"   "$(printf ' * @beforeClass setUp\n * @afterClass tearDown\n * @coversDefaultClass Foo\n * @coversNothing\n * @testdox does things\n * @dependsExternal Other::test\n * @dependsUsingDeepClone testFoo')" 0
+printf '%s\n' '// deno-lint-ignore no-explicit-any' '// @deno-types="./x.d.ts"' '/// <reference types="vite/client" />' '// biome-ignore lint/style: generated' '# flake8: noqa' >"$B/src/tools.ts"
+check "deno, biome and reference directives pass" 0 post-edit "$(edit src/tools.ts)"
+printf '%s\n' '// @flow strict' '// @noflow' '// @ts-expect-error reason' '/* istanbul ignore next */' '/* jshint expr: true */' '/* jshint -W117 */' '/** @jsx h */' '// #region setup' '// endregion' '// region other' '# syntax=docker/dockerfile:1' '/* global foo, bar */' >"$B/src/directives.php"
+check "anchored directives still pass"         0 post-edit "$(edit src/directives.php)"
+rm -f "$B/src/directives.php"
+printf '<?php\n// global lock because the cache is shared\n' >"$B/src/Global.php"
+check "// global with prose is prose"           2 post-edit "$(edit src/Global.php)" "global lock because"
+printf '<?php\n# regional prices differ by store\n' >"$B/src/Region.php"
+check "# regional with prose is prose"          2 post-edit "$(edit src/Region.php)" "regional prices differ"
+rm -f "$B/src/Global.php" "$B/src/Region.php"
+printf '%s\n' '# fmt: off' 'def load(' '    *args,' '    **kwargs,' '):' '    pass' >"$B/src/star.py"
+check "python star params are code, fmt: passes" 0 post-edit "$(edit src/star.py)"
+printf '%s\n' 'package x' 'func f(s *[]int) {' '	*s = append(*s, 1)' '}' >"$B/src/star.go"
+check "a go dereference is code"                0 post-edit "$(edit src/star.go)"
+printf '%s\n' '# syntax=docker/dockerfile:1' '# yaml-language-server: $schema=x.json' >"$B/deploy.yml"
+check "dockerfile and yaml schema directives pass" 0 post-edit "$(edit deploy.yml)"
+rm -f "$B/src/tools.ts" "$B/src/star.py" "$B/src/star.go" "$B/deploy.yml"
+printf '<?php\n/** @var Foo $x */\n$x = 1;\n' >"$B/src/Doc.php"
+check "a one-line @var docblock passes"         0 post-edit "$(edit src/Doc.php)"
+printf '<?php\n// see @foo for this\n' >"$B/src/Doc.php"
+check "an @ inside prose is still prose"        2 post-edit "$(edit src/Doc.php)" "see @foo"
+printf 'x = 1  # type: ignore[attr]\n// eslint-disable-next-line no-console -- noisy\n' >"$B/src/doc.ts"
+check "directives with reasons pass"            0 post-edit "$(edit src/doc.ts)"
+printf '<?php\n/**\n *Note this explains the cache\n */\nclass Note {}\n' >"$B/src/Note.php"
+check "*Note without a space is prose"          2 post-edit "$(edit src/Note.php)" "Note this explains"
+rm -f "$B/src/Note.php"
+printf 'void f(void) {\n    int *p;\n    *p = 0;\n}\n' >"$B/src/ptr.c"
+check "a C dereference line is code, not prose" 0 post-edit "$(edit src/ptr.c)"
+rm -f "$B/src/ptr.c"
+rm -f "$B/src/Doc.php" "$B/src/doc.ts"
+
+fire post-bash "$(bash_ 'vendor/bin/phpunit')"
+printf '<?php\n// this commit adds prose\nclass CommitProse {}\n' >"$B/src/CommitProse.php"
+check "a dirty file with prose blocks the commit" 2 pre-bash "$(bash_ 'git commit -am x')" "prose comments"
+commit_err=$(printf '%s' "$(bash_ 'git commit -am x')" | bash "$S" pre-bash 2>&1 >/dev/null)
+if grep -q 'src/CommitProse.php:2:' <<<"$commit_err"; then echo "ok   the commit prose block lists file:line"; else echo "FAIL commit prose block misses file:line: $commit_err"; fails=$((fails + 1)); fi
+check "a commit from a subdirectory still sees prose" 2 pre-bash "$(jq -nc --arg d "$B/src" '{cwd:$d,tool_input:{command:"git commit -am x"}}')" "prose"
+if grep -q ' block bash-prose$' "$B/.git/overseer/feat-prose.log"; then echo "ok   the commit prose block has its own rule"; else echo "FAIL commit prose rule not logged"; fails=$((fails + 1)); fi
+rm -f "$B/src/CommitProse.php"
+printf '# Reverb resolves hosts with its own DNS\n' >"$B/config.yaml"
+check "a config-only commit with prose is blocked" 2 pre-bash "$(bash_ 'git commit -am deploy')" "Reverb resolves"
+rm -f "$B/config.yaml"
+printf '<?php\n/**\n * @param list<string> $ids\n */\nclass CommitClean {}\n' >"$B/src/CommitClean.php"
+check "a dirty file with bare annotations commits" 0 pre-bash "$(bash_ 'git commit -am clean')"
+rm -f "$B/src/CommitClean.php"
+printf '<?php\n// allow empty prose\nclass AllowEmpty {}\n' >"$B/src/AllowEmpty.php"
+check "an allow-empty commit is still blocked by prose" 2 pre-bash "$(bash_ 'git commit --allow-empty -m x')" "prose"
+check "an allow-empty commit after git add is still blocked" 2 pre-bash "$(bash_ 'git add -A && git commit --allow-empty -m x')" "prose"
+rm -f "$B/src/AllowEmpty.php"
+printf '<?php\n// prose in a weird name\nclass Weird {}\n' >"$B/src/a&b|c.php"
+check "a filename with & and | is scanned"      2 pre-bash "$(bash_ 'git commit -am weird')" 'src/a&b|c.php:2:'
+rm -f "$B/src/a&b|c.php"
+git -C "$B" mv src/Old.php src/Renamed.php
+printf '\n// rename prose\n' >>"$B/src/Renamed.php"
+check "a renamed file is scanned at its new path" 2 pre-bash "$(bash_ 'git commit -am rename')" 'src/Renamed.php:'
+git -C "$B" reset -q --hard HEAD
+
+size "a 31-line function is too long"          src/Long.php "$(php_fn Long longFn '' 31)" 0 "longFn: 31 body lines (max 30)"
+size "a 30-line function passes"               src/Long.php "$(php_fn Long longFn '' 30)" 0
+size "6 parameters are too many"                src/Wide.php "$(php_fn Wide wide '$a, $b, $c, $d, $e, $f' 1)" 0 "wide: 6 parameters (max 5)"
+size "5 parameters pass"                        src/Wide.php "$(php_fn Wide wide 'array $a, ?int $b = null, string ...$c, &$d, $e' 1)" 0
+size "a constructor takes what it needs"        src/Wired.php "$(php_fn Wired __construct 'private A $a, private B $b, private C $c, private D $d, private E $e, private F $f' 0)" 0
+size "nesting 4 is too deep"                    src/Deep.php "$(printf '<?php\nfunction deep($xs) {\n    foreach ($xs as $x) {\n        if ($x) {\n            while ($x) {\n                if ($x > 1) {\n                    echo 1;\n                }\n            }\n        }\n    }\n}')" 0 "deep: nesting 4 (max 3)"
+size "nesting 3 passes"                         src/Deep.php "$(printf '<?php\nfunction deep($xs) {\n    foreach ($xs as $x) {\n        if ($x) {\n            while ($x) {\n                echo 1;\n            }\n        }\n    }\n}')" 0
+size "a closure inside a loop is nesting"       src/Deep.php "$(printf '<?php\nfunction deep($xs) {\n    foreach ($xs as $x) {\n        array_map(function ($y) {\n            if ($y) {\n                while ($y) {\n                    echo 1;\n                }\n            }\n        }, $x);\n    }\n}')" 0 "deep: nesting 4"
+size "braces in strings and comments are not code" src/Str.php "$(printf '<?php\nfunction str() {\n    $a = "{{{";\n    $b = '\''}'\'';\n    $c = 1; /* { */\n    return $a . $b;\n}\nfunction next1($a, $b, $c, $d, $e, $f) {}')" 0 "next1: 6 parameters"
+size "js object literals are not nesting"       src/cfg.ts "$(printf 'export function cfg() {\n  return { a: { b: { c: 1 } } };\n}')" 0
+size "a js class method is measured"            src/view.ts "$(printf 'export class View {\n  render(a: Map<string, number>) {\n%s\n  }\n}' "$(stmts 31 '    ')")" 0 "render: 31 body lines"
+size "a js arrow function is measured"          src/build.js "$(printf 'export const build = async (a, b) => {\n%s\n};' "$(stmts 31 '  ')")" 0 "build: 31 body lines"
+size "destructured params do not hide a function" src/post.ts "$(printf 'export const POST: APIRoute = async ({ locals, request }) => {\n%s\n};' "$(stmts 31 '  ')")" 0 "POST: 31 body lines"
+size "a component owns its hooks"               src/Page.tsx "$(printf 'export default function Page({ items }: { items: string[] }) {\n  useEffect(() => {\n    if (a) {\n      if (b) {\n        if (c) {\n          load()\n        }\n      }\n    }\n  }, [])\n  return <ul>{items.map((i) => <li>{i}</li>)}</ul>\n}')" 0 "Page: nesting 4"
+size "no semicolons, a statement is not a header" src/limits.ts "$(printf 'foo()\nif (ready) {\n%s\n}' "$(stmts 31 '  ')")" 0
+size "object literals in calls are not blocks"  src/calls.ts "$(printf 'export function run(xs) {\n  for (const x of xs) {\n    if (x) {\n      xs.forEach((y) => send({ a: { b: y } }))\n    }\n  }\n}')" 0
+size "invalid utf-8 does not break the check"   src/bytes.ts "$(printf 'export const s = "\377"\nexport function wide(a, b, c, d, e, f) {}')" 0 "wide: 6 parameters"
+printf 'export const s = "\377"\n' >"$B/src/bytes2.ts" && git -C "$B" add src/bytes2.ts && git -C "$B" commit -qm bytes2
+printf 'export function wide(a, b, c, d, e, f) {}\n' >>"$B/src/bytes2.ts"
+check_note "a tracked invalid utf-8 file still names the touched function" 0 src/bytes2.ts "wide: 6 parameters"
+git -C "$B" checkout -q -- src/bytes2.ts
+size "a go method is measured"                  src/server.go "$(printf 'package x\n\ntype Server struct {\n\tdb DB\n}\n\nfunc (s *Server) Handle(w Writer, r *Request) {\n%s\n}' "$(stmts 31 '\t')")" 0 "Handle: 31 body lines"
+size "a python def is measured"                 src/load.py "$(printf 'class Loader:\n    def load(self, path):\n%s\n\n    def ok(self):\n        return 1' "$(for i in $(seq 1 31); do echo "        x$i = $i"; done)")" 0 "load: 31 body lines"
+size "python self and cls are not parameters"   src/load.py "$(printf 'class Loader:\n    def load(self, a, b, c, d, e):\n        return a\n')" 0
+size "python parameters are counted"            src/load.py "$(printf 'def load(a, b,\n         c, d, e, f):\n    return a\n')" 0 "load: 6 parameters"
+size "python nesting is measured"               src/load.py "$(printf 'def load(xs):\n    for x in xs:\n        if x:\n            with open(x) as f:\n                if f:\n                    f.read()\n')" 0 "load: nesting 4"
+size "python elif and else do not nest"         src/load.py "$(printf 'def load(x):\n    if x:\n        if x > 1:\n            return 1\n        elif x:\n            return 2\n        else:\n            return 3\n')" 0
+
+big_php() { local i; printf '<?php\nclass Big3\n{\n'; [ "$1" -eq 301 ] && echo '    private $p = 1;'; for i in $(seq 1 74); do printf '    public function f%d()\n    {\n        return %d;\n    }\n' "$i" "$i"; done; echo '}'; }
+size "a 301-line file is too long"              src/Big3.php "$(big_php 301)" 0 "file: 301 lines (max 300)"
+size "a 300-line file passes"                   src/Big3.php "$(big_php 300)" 0
+mkdir -p "$B/config" && seq 1 20000 | awk 'BEGIN { print "<?php"; print "return [" } { print "    \"k" $1 "\" => " $1 "," } END { print "];" }' >"$B/config/big.php"
+out=$(printf '%s' "$(edit config/big.php)" | perl -e 'alarm 5; exec @ARGV' bash "$S" post-edit 2>/dev/null); code=$?
+[ "$code" -eq 0 ] && [ -z "$out" ] && echo "ok   a huge data file is read in seconds and left alone" || { echo "FAIL a huge data file is read in seconds and left alone (exit $code) $out"; fails=$((fails + 1)); }
+rm -rf "$B/config"
+size "tests are exempt"                         tests/LongTest.php "$(php_fn LongTest testLong '$a, $b, $c, $d, $e, $f' 40)" 0
+
+printf '%s\n' "$(php_fn Legacy2 legacyLong '' 31 | sed '$d')" '    public function short()' '    {' '        return 1;' '    }' '}' >"$B/src/Legacy2.php"
+git -C "$B" add -A && git -C "$B" commit -qm legacy2
+sed -i.bak 's/return 1;/return 2;/' "$B/src/Legacy2.php" && rm "$B/src/Legacy2.php.bak"
+check_note "an untouched long legacy function is left alone" 0 src/Legacy2.php ""
+sed -i.bak 's/\$x3 = 3;/$x3 = 4;/' "$B/src/Legacy2.php" && rm "$B/src/Legacy2.php.bak"
+check_note "touching a long legacy function names it" 0 src/Legacy2.php "legacyLong: 31 body lines"
+git -C "$B" checkout -q -- src/Legacy2.php
+
+{ printf '<?php if ($show) { ?>\n<?php for ($i = 0; $i < 40; $i++) { ?>\n'; for i in $(seq 1 40); do printf '<tr><td><?= $i ?></td></tr>\n'; done; printf '<?php } ?>\n<?php } ?>\n'; } >"$B/src/tpl.php"
+check_note "an inline-HTML PHP template produces no size note" 0 src/tpl.php ""
+rm -f "$B/src/tpl.php"
+{ printf '(function () {\n'; stmts 31 '  '; printf '})();\n'; } >"$B/src/iife.js"
+check_note "a JS IIFE produces no size note" 0 src/iife.js ""
+rm -f "$B/src/iife.js"
+
+printf '%s\n' "$(php_fn BigCommit huge '' 31)" >"$B/src/BigCommit.php"
+fire post-bash "$(bash_ 'vendor/bin/phpunit')"
+check "size never blocks git commit"            0 pre-bash "$(bash_ 'git commit -am big')"
+rm -f "$B/src/BigCommit.php"
+
+git -C "$B" checkout -q -b feat/cprose
+fire post-bash "$(bash_ 'vendor/bin/phpunit')"
+printf '<?php\n// first\nclass Esc {}\n' >"$B/src/Esc.php"
+check "an earlier prose edit block starts its own gate" 2 post-edit "$(edit src/Esc.php)" "prose"
+check "a second prose edit block stays on its gate" 2 post-edit "$(edit src/Esc.php)" "prose"
+check "a commit prose block starts its own streak" 2 pre-bash "$(bash_ 'git commit -am x')" "prose"
+check "a second commit prose block does not escalate" 2 pre-bash "$(bash_ 'git commit -am x')" "prose"
+c2=$(printf '%s' "$(bash_ 'git commit -am x')" | bash "$S" pre-bash 2>&1 >/dev/null); code2=$?
+if [ "$code2" -eq 2 ] && grep -qi human <<<"$c2"; then echo "ok   the third bash-prose block escalates"; else echo "FAIL bash-prose escalation (exit $code2): $c2"; fails=$((fails + 1)); fi
+grep -q ' escalate bash-prose$' "$B/.git/overseer/feat-cprose.log" && echo "ok   the bash-prose escalation is logged" || { echo "FAIL bash-prose escalation not logged"; fails=$((fails + 1)); }
+rm -f "$B/src/Esc.php"
+
 git -C "$B" checkout -q feat/bash
 git -C "$B" branch -D feat/prose >/dev/null 2>&1
 git -C "$B" branch -D feat/alt >/dev/null 2>&1
+git -C "$B" branch -D feat/cprose >/dev/null 2>&1
 
 mkdir -p "$B/specs/001-bash" && echo '# Bash' >"$B/specs/001-bash/spec.md"
 fire post-edit "$(edit tests/OldTest.php)"

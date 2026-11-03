@@ -10,9 +10,10 @@ A very light harness: Claude Code hooks that make an agent follow **spec → red
 | 4 | A commit that changes production code also changes a test | after `git commit` | reminder |
 | 5 | Each PR is the smallest piece that builds, passes its tests and is reviewable alone. A PR against the default branch with over ~400 prod lines goes through `split-pr-stack` (caravan) or says `Why not smaller: …`; stacked PRs are trusted | `gh pr create` | block |
 | 6 | The PR body names the spec path, or `Spec impact: None — <why>` | `gh pr create` | block |
-| 7 | An edit adds no prose comments to code or config (annotations, tool directives and one-line `ponytail:` shortcut markers are fine); the why goes in the PR as a review comment, and after `gh pr create` the hook lists the files whose comments were stripped | after each edit, after `gh pr create` | reminder |
-| 8 | A Bash write to a production file (`>`, `>>`, `&>`, `>|`, `tee`, `sed -i`/`--in-place`, `perl -i`/`-pi`, the destination of `cp`/`mv` including several files and trailing redirections, or an inline `python`/`php`/`node`/`ruby`/`perl` write such as `open(..., 'w')`, `file_put_contents(...)`, `fs.writeFileSync(...)`, `File.write(...)` or `open(F, ">path")`) clears the same spec and red gates as Edit/Write | `PreToolUse` Bash | block |
-| 9 | Nothing writes under this repo's `.git/overseer` or a worktree's log directory, and nothing removes or moves this repo's `.git` itself (the off switch and the logs); reads stay free | `PreToolUse` Bash, Edit/Write/MultiEdit | block |
+| 7 | Names explain the code: no prose comments in code or config. Bare type annotations (`@param list<Item> $items`, `@return array{0: int}`, `@template T of Foo`), tool directives, attributes, bare markers (`@deprecated`), `@method` signatures that end at their `)`, and one-line `ponytail:` shortcut markers are fine; an annotation with text after it, `@see`, `@todo` or `@testing` is prose. The why goes in the PR as a review comment, and after `gh pr create` the hook lists the files whose comments were stripped. A commit that adds prose to the worktree is blocked, `--allow-empty` included, because the hook sees the command before its `git add` can run | after each edit, after `gh pr create` / `git commit` | reminder / block |
+| 8 | Size notes name each function an edit touches that is over 30 body lines, nesting 3 or 5 parameters (constructors exempt), or a file over 300 code lines that defines functions. Tests and data-only files are exempt. Advice, never a gate | after each edit | note |
+| 9 | A Bash write to a production file (`>`, `>>`, `&>`, `>|`, `tee`, `sed -i`/`--in-place`, `perl -i`/`-pi`, the destination of `cp`/`mv` including several files and trailing redirections, or an inline `python`/`php`/`node`/`ruby`/`perl` write such as `open(..., 'w')`, `file_put_contents(...)`, `fs.writeFileSync(...)`, `File.write(...)` or `open(F, ">path")`) clears the same spec and red gates as Edit/Write | `PreToolUse` Bash | block |
+| 10 | Nothing writes under this repo's `.git/overseer` or a worktree's log directory, and nothing removes or moves this repo's `.git` itself (the off switch and the logs); reads stay free | `PreToolUse` Bash, Edit/Write/MultiEdit | block |
 
 ## How it knows
 
@@ -29,9 +30,9 @@ Every block is logged as `<epoch> block <rule>`, and a pass of any mode (`pre-ed
 | Event | `overseer.sh` subcommand |
 |-------|--------------------------|
 | `SessionStart` | `session`: prints `rules/overseer.md` |
-| `PreToolUse` Edit/Write/MultiEdit | `pre-edit`: rules 1, 2, 9 |
-| `PostToolUse` Edit/Write/MultiEdit | `post-edit`: logs the edit, rule 7 |
-| `PreToolUse` Bash | `pre-bash`: rules 3, 5, 6, 8, 9 |
+| `PreToolUse` Edit/Write/MultiEdit | `pre-edit`: rules 1, 2, 10 |
+| `PostToolUse` Edit/Write/MultiEdit | `post-edit`: logs the edit, rules 7 and 8 |
+| `PreToolUse` Bash | `pre-bash`: rules 3, 5, 6, 9, 10 |
 | `PostToolUse` Bash | `post-bash`: logs the red/green verdict from the runner's output, warns on an uncounted masked run (stderr and `additionalContext`), rules 4 and 7 (the why-comments reminder) |
 | `PostToolUseFailure` Bash | `bash-failed`: logs a red run |
 
@@ -45,7 +46,8 @@ Exit 0 is a silent pass. Exit 2 with a line starting `overseer:` blocks a Pre ho
 - Rule 5 cannot judge whether a cut makes sense. It sends big PRs to `split-pr-stack`, whose judgment it trusts, and does not measure PRs based on another branch. `--head` is measured when given.
 - A new branch inherits the log of the closest local branch it grew from, so work carried on in a child branch does not have to see red again. Detached HEAD inherits nothing.
 - A bare `.git` write target is treated as this checkout's git dir even after an earlier `cd` in the same command, so `cd tpl && rm -rf .git` is blocked although it names another directory's git dir; use `rm -rf tpl/.git` from the repo root. The `cd` guard itself follows the chain of `cd`s and only blocks this repo's git dir; an unresolvable `cd` target (a variable, `~` or a backtick) falls back to blocking any `.git` path component.
-- Rule 7 reads line comments and docblocks. Python docstrings are not detected, and a `ponytail:` marker must fit on one line (continuation lines count as prose).
+- Rule 7 reads line comments and docblocks, in `hooks/prose.awk`. Python docstrings are not detected, a `ponytail:` marker must fit on one line, and so must an annotation: a type split over several lines counts as prose.
+- Rule 8 is a heuristic in `hooks/size.awk`, no parser per language: brace languages by brace matching (functions are blocks whose header has a parameter list; braces after `(`, `,`, `:`, `=` or `return` are literals, not blocks), Python by `def` and indentation. Ruby, multi-line strings, heredocs, template literals, inline-HTML PHP templates and IIFEs are not understood; anonymous blocks and control keywords are not reported as functions. The limits are fixed.
 - Bash write detection covers the forms above, not writes hidden inside script files, `bash -c '…'`, `install`, variable indirection (`d=$(git rev-parse --git-dir); touch "$d/overseer/off"`), exotic quoting, `find` expressions that delete through a path it cannot see, or prefix commands whose own option values hide the command (`xargs -0`, `nice -n 10`, `timeout -s KILL 5`). Inline interpreter writes are limited to the listed APIs and literal paths: a non-literal path (including a concatenation) is blocked, an unclosed unambiguous writer is blocked, a non-literal mode is skipped, and the mode must be a real mode string. A bare `copy`/`rename` is a write only as a function call, or on an `fs`/`require('fs')` receiver, with at least two arguments; object methods such as `d.copy()` and `df.rename(columns=...)` stay free, and `.open` counts only on `File`. Perl's two-argument `open(F, ">path")` and three-argument `open(F, ">", "path")` forms are scanned; other Perl write forms are not. `curl -o <file>` is not seen, and a `cp`/`mv` whose destination is a directory (for example `mv /tmp/x.php src/`) is not resolved to the file it will overwrite. Paths with spaces in a Bash write target are not parsed reliably. It prefers missing an unusual form to blocking a read.
 - Escalation is by gate, but a pass of any mode releases every gate. An unrelated command that passes any hook clears the streaks; this is deliberate because the hook cannot tell which rule the next command retries.
 - A `cd` target computed by a variable or a command substitution is not resolved unless it names `.git` or goes through `git rev-parse`; a later relative write is checked against the tool cwd.
@@ -66,7 +68,7 @@ That path is the common git dir, so it works from a linked worktree (where `.git
 - Human approval gates, review agents, EXPLAIN checks. Put them in a skill if you want them.
 - Model-judged checks. A Jev judge for rule 5 was built, benchmarked on the toucan stack and dropped in favour of `split-pr-stack`; see the design doc.
 
-Needs `bash`, `git`, `jq`. Design: `docs/superpowers/specs/2026-09-28-overseer-design.md`.
+Needs `bash`, `git`, `jq`, `awk`. Design: `docs/superpowers/specs/2026-09-28-overseer-design.md`, salvage: `specs/008-overseer-salvage/spec.md`.
 
 ## Development
 
@@ -77,9 +79,11 @@ hooks/target-checks.sh                   # state and git-dir target checks, sour
 hooks/bash-targets.sh                    # redirection, tee and in-place targets, sourced by overseer.sh
 hooks/write-targets.sh                   # verb, copy/move, find and dd targets, sourced by overseer.sh
 hooks/interp-targets.awk                 # inline interpreter write APIs to literal paths, used by pre-bash.sh
+hooks/prose.awk                          # prose-comment classifier, used by post-edit and pre-bash
+hooks/size.awk                           # function and file size heuristic, used by post-edit
 hooks/cd-guard.sh                        # rev-parse and chained-cd git guard, sourced by overseer.sh
 hooks/pre-bash.sh                        # commit and PR checks plus the write gate, sourced in pre-bash
-hooks/post-edit.sh                       # edit logging and prose-comment check, sourced in post-edit
+hooks/post-edit.sh                       # edit logging, prose check and size note, sourced in post-edit
 hooks/post-bash.sh                       # output verdict, masked-exit warning, PR reminder and commit-test check, sourced in post-bash
 hooks/stats.sh                           # stats subcommand, sourced by overseer.sh
 bash hooks/overseer.sh stats </dev/null  # blocks per rule, escalations, median unblock time
