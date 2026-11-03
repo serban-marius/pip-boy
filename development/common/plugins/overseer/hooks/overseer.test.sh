@@ -379,6 +379,10 @@ check "php rename onto prod is blocked"             2 pre-bash "$(bash_ "php -r 
 check "node appendFile into prod is blocked"        2 pre-bash "$(bash_ "node -e \"require('fs').appendFile('src/A.php','x',()=>{})\"")" "red first"
 check "ruby IO.write into prod is blocked"          2 pre-bash "$(bash_ "ruby -e \"IO.write('src/A.php','x')\"")" "red first"
 check "python write_bytes on prod is blocked"       2 pre-bash "$(bash_ "python3 -c \"import pathlib; pathlib.Path('src/A.php').write_bytes(b'x')\"")" "red first"
+check "an unclosed Path.write_text is blocked"      2 pre-bash "$(bash_ "python3 -c \"import pathlib; pathlib.Path('src/A.php').write_text('x'\"")" "not a string literal"
+check "perl open for read is free"                   0 pre-bash "$(bash_ "perl -e 'open(F, \"<src/Old.php\")'")"
+check "perl bare open for read is free"              0 pre-bash "$(bash_ "perl -e 'open(F, \"src/Old.php\")'")"
+check "perl writing the off switch is blocked"       2 pre-bash "$(bash_ "perl -e 'open(F, \">.git/overseer/off\")'")" "state directory"
 check "php writing the off switch is blocked"       2 pre-bash "$(bash_ "php -r \"file_put_contents('.git/overseer/off', 'x');\"")" "state directory"
 check "node writing the off switch is blocked"      2 pre-bash "$(bash_ "node -e \"require('fs').writeFileSync('.git/overseer/off','x')\"")" "state directory"
 check "ruby writing the off switch is blocked"      2 pre-bash "$(bash_ "ruby -e \"File.write('.git/overseer/off','x')\"")" "state directory"
@@ -410,7 +414,13 @@ expect_event "a masked run with no verdict is not green" ""
 err=$(printf '%s' "$(resp 'vendor/bin/phpunit | tail -2' 'Time: 00:00.010, Memory: 6.00 MB')" | bash "$S" post-bash 2>&1 >/dev/null); code=$?
 if [ "$code" -eq 0 ] && grep -q 'not counted' <<<"$err" && grep -q 'bare' <<<"$err"; then echo "ok   a masked run with no verdict says it was not counted"; else echo "FAIL masked no-verdict message (exit $code): $err"; fails=$((fails + 1)); fi
 out=$(printf '%s' "$(resp 'vendor/bin/phpunit | tail -2' 'Time: 00:00.010, Memory: 6.00 MB')" | bash "$S" post-bash 2>/dev/null)
-if grep -q '"additionalContext".*not counted' <<<"$out"; then echo "ok   the masked-run warning reaches the model as context"; else echo "FAIL masked warning context: $out"; fails=$((fails + 1)); fi
+if printf '%s' "$out" | jq -e '.hookSpecificOutput.additionalContext | test("not counted")' >/dev/null 2>&1; then echo "ok   the masked-run warning reaches the model as context"; else echo "FAIL masked warning context: $out"; fails=$((fails + 1)); fi
+resetlog
+out=$(printf '%s' "$(resp 'vendor/bin/phpunit' 'OK (3 tests, 3 assertions)')" | bash "$S" post-bash 2>/dev/null)
+if [ -z "$out" ]; then echo "ok   a passing run prints no stdout"; else echo "FAIL passing run stdout: $out"; fails=$((fails + 1)); fi
+resetlog
+out=$(printf '%s' "$(resp 'vendor/bin/phpunit' 'FAILURES!')" | bash "$S" post-bash 2>/dev/null)
+if [ -z "$out" ]; then echo "ok   a failing run prints no stdout"; else echo "FAIL failing run stdout: $out"; fails=$((fails + 1)); fi
 resetlog
 fire post-bash "$(resp 'set -o pipefail; vendor/bin/phpunit | tail -2' 'Time: 00:00.010, Memory: 6.00 MB')"
 expect_event "pipefail with | tail and no verdict is green" green
