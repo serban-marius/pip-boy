@@ -24,6 +24,12 @@ function emit(path, name) {
   if (path == BAD) print "?" name
   else if (path != "") print path
 }
+function fs_receiver(pre,   t) {
+  t = trim(pre)
+  if (t ~ /(^|[^A-Za-z0-9_])fs(p)?(\.[A-Za-z0-9_]+)*$/) return 1
+  if (t ~ /require\("fs"\)$/ || t ~ /require\('fs'\)$/) return 1
+  return 0
+}
 END {
   names = "writeFileSync|appendFileSync|createWriteStream|file_put_contents|write_bytes|write_text|FileUtils\\.cp|FileUtils\\.mv|shutil\\.copytree|shutil\\.copyfile|shutil\\.copy2|shutil\\.copy|shutil\\.move|os\\.rename|os\\.replace|copyFile|appendFile|writeFile|File\\.write|File\\.open|IO\\.write|fopen|copy|rename|open"
   pos = 1
@@ -73,10 +79,24 @@ END {
       i++
     }
     if (!closed) { pos = after; continue }
+    prev = (at > 1) ? substr(src, at - 1, 1) : ""
+    if (name == "copy" || name == "rename") {
+      if (prev == ".") {
+        pre = substr(src, 1, at - 1)
+        sub(/[ \t\r\n]*\.[ \t\r\n]*$/, "", pre)
+        if (!fs_receiver(pre)) { pos = after; continue }
+      }
+      if (nargs < 2) { pos = after; continue }
+    }
+    if (name == "open" && prev == ".") {
+      pre = substr(src, 1, at - 1)
+      sub(/[ \t\r\n]*\.[ \t\r\n]*$/, "", pre)
+      if (pre !~ /File$/) { pos = after; continue }
+    }
     if (name == "open" || name == "File.open" || name == "fopen") {
       mode = literal(args[2])
       if (mode == BAD) { pos = after; continue }
-      if (mode !~ /[waxc+]/) { pos = after; continue }
+      if (mode !~ /^[rwaxbtcU+]+$/ || mode !~ /[waxc+]/) { pos = after; continue }
       emit(literal(args[1]), name)
     } else if (name == "write_text" || name == "write_bytes") {
       emit(receiver(substr(src, 1, at - 1)), name)
