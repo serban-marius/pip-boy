@@ -5,20 +5,26 @@ function trim(s) {
   sub(/[ \t\r\n]+$/, "", s)
   return s
 }
-function literal(s,   t, q) {
+function literal(s,   t, q, inner) {
   t = trim(s)
   if (match(t, /^[A-Za-z_][A-Za-z0-9_]*[ \t]*=/)) t = trim(substr(t, RLENGTH + 1))
   q = substr(t, 1, 1)
   if (length(t) < 2 || (q != "\"" && q != "'")) return BAD
   if (substr(t, length(t), 1) != q) return BAD
-  return substr(t, 2, length(t) - 2)
+  inner = substr(t, 2, length(t) - 2)
+  if (inner ~ /["']/) return BAD
+  return inner
 }
-function receiver(pre,   t, rec) {
-  sub(/[ \t\r\n]*\.[ \t\r\n]*$/, "", pre)
-  if (!match(pre, /[A-Za-z_][A-Za-z0-9_.]*[ \t]*\([^()]*\)[ \t]*$/)) return BAD
-  rec = substr(pre, RSTART, RLENGTH)
-  if (!match(rec, /["'][^"']*["']/)) return BAD
-  return literal(substr(rec, RSTART, RLENGTH))
+function receiver(pre,   t, rec, l, r) {
+  t = trim(pre)
+  sub(/[ \t\r\n]*\.[ \t\r\n]*$/, "", t)
+  if (!match(t, /[A-Za-z_][A-Za-z0-9_.]*[ \t]*\([^()]*\)[ \t]*$/)) return BAD
+  rec = substr(t, RSTART, RLENGTH)
+  l = index(rec, "(")
+  r = length(rec)
+  while (r > l && substr(rec, r, 1) != ")") r--
+  if (r <= l) return BAD
+  return literal(substr(rec, l + 1, r - l - 1))
 }
 function emit(path, name) {
   if (path == BAD) print "?" name
@@ -31,6 +37,7 @@ function fs_receiver(pre,   t) {
   return 0
 }
 END {
+  gsub(/\\"/, "\"", src)
   names = "writeFileSync|appendFileSync|createWriteStream|file_put_contents|write_bytes|write_text|FileUtils\\.cp|FileUtils\\.mv|shutil\\.copytree|shutil\\.copyfile|shutil\\.copy2|shutil\\.copy|shutil\\.move|os\\.rename|os\\.replace|copyFile|appendFile|writeFile|File\\.write|File\\.open|IO\\.write|fopen|copy|rename|open"
   pos = 1
   while (pos <= length(src)) {
@@ -78,7 +85,11 @@ END {
       } else cur = cur ch
       i++
     }
-    if (!closed) { pos = after; continue }
+    if (!closed) {
+      if (name ~ /^(writeFileSync|appendFileSync|createWriteStream|file_put_contents|write_bytes|write_text|FileUtils\.cp|FileUtils\.mv|shutil\.(copy|move|copyfile|copy2|copytree)|os\.(rename|replace)|copyFile|appendFile|writeFile|File\.write|IO\.write)$/) print "?" name
+      pos = after
+      continue
+    }
     prev = (at > 1) ? substr(src, at - 1, 1) : ""
     if (name == "copy" || name == "rename") {
       if (prev == ".") {
@@ -96,6 +107,20 @@ END {
     if (name == "open" || name == "File.open" || name == "fopen") {
       mode = literal(args[2])
       if (mode == BAD) { pos = after; continue }
+      if (name == "open" && nargs >= 3 && (mode == ">" || mode == ">>" || mode == "+<" || mode == "+>")) {
+        emit(literal(args[3]), name)
+        pos = after
+        continue
+      }
+      if (name == "open" && mode ~ /^(>>|>|\+<|\+>)/) {
+        path = mode
+        if (substr(path, 1, 2) == ">>" || substr(path, 1, 2) == "+<" || substr(path, 1, 2) == "+>") path = substr(path, 3)
+        else path = substr(path, 2)
+        path = trim(path)
+        if (path != "") emit(path, name)
+        pos = after
+        continue
+      }
       if (mode !~ /^[rwaxbtcU+]+$/ || mode !~ /[waxc+]/) { pos = after; continue }
       emit(literal(args[1]), name)
     } else if (name == "write_text" || name == "write_bytes") {

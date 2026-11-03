@@ -6,8 +6,8 @@ response_text() {
 test_verdict() {
   local out=$1
   grep -qE 'FAILURES!|ERRORS!|test result: FAILED|^FAIL([[:space:]]|$)|^--- FAIL' <<<"$out" && { echo red; return; }
-  grep -qE 'Failures: [1-9]|Errors: [1-9]|[1-9][0-9]* (failed|errors?)|Tests:.*[1-9][0-9]* failed' <<<"$out" && { echo red; return; }
-  grep -qE 'OK \(|test result: ok|^ok([[:space:]]|$)|all green|[1-9][0-9]* passed|Tests:.*[1-9][0-9]* passed' <<<"$out" && { echo green; return; }
+  grep -qE 'Failures: [1-9]|Errors: [1-9]|Tests:.*[1-9][0-9]* failed|[1-9][0-9]* (failed|errors?)([[:space:]]*[,.]|[[:space:]]*$)' <<<"$out" && { echo red; return; }
+  grep -qE 'OK \(|test result: ok|^ok([[:space:]]|$)|all green|Tests:.*[1-9][0-9]* passed|[1-9][0-9]* passed([[:space:]]+in([[:space:]]|$)|[[:space:]]*[,.]|[[:space:]]*$)' <<<"$out" && { echo green; return; }
   echo none
 }
 exit_masked() {
@@ -21,7 +21,7 @@ exit_masked() {
   return 1
 }
 post_bash_check() {
-  local c=$1 w files out verdict
+  local c=$1 w files out verdict msg
   if matches "$TESTS"; then
     if [ "$mode" = bash-failed ]; then
       note red
@@ -31,7 +31,11 @@ post_bash_check() {
       case "$verdict" in
         red) note red ;;
         green) note green ;;
-        *) if exit_masked "$c"; then printf 'overseer: this test run was not counted: its exit is masked. Run the test bare so its failure or pass shows.\n' >&2; else note green; fi ;;
+        *) if exit_masked "$c"; then
+             msg='this test run was not counted: its exit is masked. Run the test bare so its failure or pass shows.'
+             printf 'overseer: %s\n' "$msg" >&2
+             printf '{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"overseer: %s"}}\n' "$msg"
+           else note green; fi ;;
       esac
     fi
   fi

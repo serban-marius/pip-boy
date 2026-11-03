@@ -182,8 +182,10 @@ red_evidence() {
   ' "$log")"
   [ "$le" = none ] && { printf 'last test event: none'; return; }
   age=$((now - lt)); [ "$age" -lt 0 ] && age=0
-  rel='before any test edit'
-  [ "$lte" -gt 0 ] && [ "$lt" -ge "$lte" ] && rel='after your test edit'
+  if [ "$lte" -eq 0 ]; then rel='before any test edit'
+  elif [ "$lt" -ge "$lte" ]; then rel='after your test edit'
+  else rel='before your last test edit'
+  fi
   [ "$le" = green ] && hint=' A passing or masked run does not count as red: run the failing test bare.'
   printf 'last test event: %s %s ago, %s.%s' "$le" "$(age_of "$age")" "$rel" "$hint"
 }

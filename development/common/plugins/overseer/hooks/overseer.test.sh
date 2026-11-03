@@ -364,6 +364,24 @@ check "python writing outside the repo is free"     0 pre-bash "$(bash_ "python3
 check "python running a script file is free"        0 pre-bash "$(bash_ "python3 tools/gen.py")"
 check "a non-literal python path is blocked"        2 pre-bash "$(bash_ "python3 -c \"open(path, 'w').write('x')\"")" "not a string literal"
 check "a non-literal write mode is skipped"         0 pre-bash "$(bash_ "python3 -c \"open('src/Old.php', mode)\"")"
+check "a joined python path is not a literal"       2 pre-bash "$(bash_ "python3 -c \"open('a' + 'b', 'w')\"")" "not a string literal"
+check "a joined Path receiver is not a literal"     2 pre-bash "$(bash_ "python3 -c \"import pathlib; pathlib.Path('a' + 'b').write_text('x')\"")" "not a string literal"
+check "a PHP concatenated path is not a literal"    2 pre-bash "$(bash_ "php -r \"file_put_contents('a'.\$x.'b', 'x');\"")" "not a string literal"
+check "python escaped quotes in -c are seen"        2 pre-bash "$(bash_ 'python3 -c "open(\"src/A.php\",\"w\").write(\"x\")"')" "red first"
+check "php escaped quotes in -r are seen"           2 pre-bash "$(bash_ 'php -r "file_put_contents(\"src/A.php\", \"x\");"')" "red first"
+check "python escaped-quote read is free"           0 pre-bash "$(bash_ 'python3 -c "print(open(\"src/Old.php\").read())"')"
+check "perl two-arg open write is blocked"          2 pre-bash "$(bash_ "perl -e 'open(F, \">src/A.php\")'")" "red first"
+check "perl three-arg open write is blocked"        2 pre-bash "$(bash_ "perl -e 'open(my \$fh, \">\", \"src/A.php\")'")" "red first"
+check "piped python stdin write is blocked"         2 pre-bash "$(bash_ "echo \"open('src/A.php','w').write('x')\" | python3 -")" "red first"
+check "python here-string write is blocked"         2 pre-bash "$(bash_ "python3 - <<< \"open('src/A.php','w').write('x')\"")" "red first"
+check "php copy into prod is blocked"               2 pre-bash "$(bash_ "php -r \"copy('/tmp/x', 'src/A.php');\"")" "red first"
+check "php rename onto prod is blocked"             2 pre-bash "$(bash_ "php -r \"rename('/tmp/x', 'src/A.php');\"")" "red first"
+check "node appendFile into prod is blocked"        2 pre-bash "$(bash_ "node -e \"require('fs').appendFile('src/A.php','x',()=>{})\"")" "red first"
+check "ruby IO.write into prod is blocked"          2 pre-bash "$(bash_ "ruby -e \"IO.write('src/A.php','x')\"")" "red first"
+check "python write_bytes on prod is blocked"       2 pre-bash "$(bash_ "python3 -c \"import pathlib; pathlib.Path('src/A.php').write_bytes(b'x')\"")" "red first"
+check "php writing the off switch is blocked"       2 pre-bash "$(bash_ "php -r \"file_put_contents('.git/overseer/off', 'x');\"")" "state directory"
+check "node writing the off switch is blocked"      2 pre-bash "$(bash_ "node -e \"require('fs').writeFileSync('.git/overseer/off','x')\"")" "state directory"
+check "ruby writing the off switch is blocked"      2 pre-bash "$(bash_ "ruby -e \"File.write('.git/overseer/off','x')\"")" "state directory"
 
 resetlog
 fire post-bash "$(resp 'vendor/bin/phpunit 2>&1 | tail -5' "$(printf 'There was 1 failure:\n\nFAILURES!\nTests: 3, Assertions: 3, Failures: 1.')")"
@@ -391,6 +409,26 @@ fire post-bash "$(resp 'vendor/bin/phpunit | tail -2' 'Time: 00:00.010, Memory: 
 expect_event "a masked run with no verdict is not green" ""
 err=$(printf '%s' "$(resp 'vendor/bin/phpunit | tail -2' 'Time: 00:00.010, Memory: 6.00 MB')" | bash "$S" post-bash 2>&1 >/dev/null); code=$?
 if [ "$code" -eq 0 ] && grep -q 'not counted' <<<"$err" && grep -q 'bare' <<<"$err"; then echo "ok   a masked run with no verdict says it was not counted"; else echo "FAIL masked no-verdict message (exit $code): $err"; fails=$((fails + 1)); fi
+out=$(printf '%s' "$(resp 'vendor/bin/phpunit | tail -2' 'Time: 00:00.010, Memory: 6.00 MB')" | bash "$S" post-bash 2>/dev/null)
+if grep -q '"additionalContext".*not counted' <<<"$out"; then echo "ok   the masked-run warning reaches the model as context"; else echo "FAIL masked warning context: $out"; fails=$((fails + 1)); fi
+resetlog
+fire post-bash "$(resp 'set -o pipefail; vendor/bin/phpunit | tail -2' 'Time: 00:00.010, Memory: 6.00 MB')"
+expect_event "pipefail with | tail and no verdict is green" green
+resetlog
+fire post-bash "$(resp 'set -o pipefail; vendor/bin/phpunit | tail -2' 'FAILURES!')"
+expect_event "pipefail with | tail and a failure verdict is red" red
+resetlog
+fire post-bash "$(resp $'vendor/bin/phpunit\necho done' 'Time: 00:00.010, Memory: 6.00 MB')"
+expect_event "a newline after the runner is masked and not counted" ""
+resetlog
+fire post-bash "$(bash_ 'vendor/bin/phpunit')"
+expect_event "a bare run with no tool_response is green" green
+resetlog
+fire post-bash "$(bash_ 'vendor/bin/phpunit | tail -2')"
+expect_event "a masked run with no tool_response is not counted" ""
+resetlog
+fire post-bash "$(resp 'pytest -q' "$(printf '3 passed in 0.12s\n1 failed login attempt')")"
+expect_event "unrelated failure words do not turn a pass red" green
 resetlog
 fire post-bash "$(resp 'vendor/bin/phpunit' '')"
 expect_event "a bare run with no output is green" green
@@ -436,5 +474,18 @@ resetlog
 fire post-bash "$(resp 'vendor/bin/phpunit' "$(printf 'FAILURES!\nTests: 1, Failures: 1.')")"
 msg=$(printf '%s' "$(edit src/A.php)" | bash "$S" pre-edit 2>&1 >/dev/null)
 if grep -q 'last test event: red' <<<"$msg" && grep -q 'before any test edit' <<<"$msg"; then echo "ok   edit-red after red says it was before any test edit"; else echo "FAIL red-event message: $msg"; fails=$((fails + 1)); fi
+resetlog
+printf '%s green\n' "$(($(date +%s) - 150))" >>"$TL"
+msg=$(printf '%s' "$(edit src/A.php)" | bash "$S" pre-edit 2>&1 >/dev/null)
+if grep -q 'last test event: green 2min ago' <<<"$msg"; then echo "ok   the red message reports minutes"; else echo "FAIL minutes age: $msg"; fails=$((fails + 1)); fi
+resetlog
+printf '%s green\n' "$(($(date +%s) - 7300))" >>"$TL"
+msg=$(printf '%s' "$(edit src/A.php)" | bash "$S" pre-edit 2>&1 >/dev/null)
+if grep -q 'last test event: green 2h ago' <<<"$msg"; then echo "ok   the red message reports hours"; else echo "FAIL hours age: $msg"; fails=$((fails + 1)); fi
+resetlog
+printf '%s green\n' "$(($(date +%s) - 120))" >>"$TL"
+printf '%s test-edit\n' "$(($(date +%s) - 60))" >>"$TL"
+msg=$(printf '%s' "$(edit src/A.php)" | bash "$S" pre-edit 2>&1 >/dev/null)
+if grep -q 'last test event: green 2min ago' <<<"$msg" && grep -q 'before your last test edit' <<<"$msg"; then echo "ok   a later test edit is named accurately"; else echo "FAIL later test-edit message: $msg"; fails=$((fails + 1)); fi
 
 [ "$fails" -eq 0 ] && echo "all green" || { echo "$fails failed"; exit 1; }
