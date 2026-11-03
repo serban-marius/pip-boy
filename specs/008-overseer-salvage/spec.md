@@ -41,10 +41,11 @@ grep chain, so:
 The post-edit block stays as it is today. `git commit` is also blocked while a dirty commented file
 adds prose. The message lists `file:line` and uses the same text style as the post-edit block. Its
 rule is `bash-prose`, separate from `bash-green` and the other commit rules, so stats and the
-3-strike escalation count it on its own. A `git commit --allow-empty` that does not include the
-worktree (`-a`, `--all` or a combined short flag such as `-am`) skips the prose check because it
-adds no file content. Dirty scanning reads porcelain's NUL records, so a renamed file is checked at
-its new path and a filename containing `&` or `|` is reported without breaking the message.
+3-strike escalation count it on its own. `git commit --allow-empty` is checked too, because the
+staged set cannot be known before a `git add` running in the same command; the prose check always
+covers the whole dirty worktree. Dirty scanning reads porcelain's NUL records, so a renamed file is
+checked at its new path and a filename containing `&` or `|` is reported without breaking the
+message.
 
 ### R2 · Size is a note, never a gate
 
