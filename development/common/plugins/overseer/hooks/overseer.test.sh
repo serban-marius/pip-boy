@@ -333,6 +333,7 @@ printf '<?php\n// this commit adds prose\nclass CommitProse {}\n' >"$B/src/Commi
 check "a dirty file with prose blocks the commit" 2 pre-bash "$(bash_ 'git commit -am x')" "prose comments"
 commit_err=$(printf '%s' "$(bash_ 'git commit -am x')" | bash "$S" pre-bash 2>&1 >/dev/null)
 if grep -q 'src/CommitProse.php:2:' <<<"$commit_err"; then echo "ok   the commit prose block lists file:line"; else echo "FAIL commit prose block misses file:line: $commit_err"; fails=$((fails + 1)); fi
+check "a commit from a subdirectory still sees prose" 2 pre-bash "$(jq -nc --arg d "$B/src" '{cwd:$d,tool_input:{command:"git commit -am x"}}')" "prose"
 if grep -q ' block bash-prose$' "$B/.git/overseer/feat-prose.log"; then echo "ok   the commit prose block has its own rule"; else echo "FAIL commit prose rule not logged"; fails=$((fails + 1)); fi
 rm -f "$B/src/CommitProse.php"
 printf '# Reverb resolves hosts with its own DNS\n' >"$B/config.yaml"
@@ -359,6 +360,10 @@ size "a component owns its hooks"               src/Page.tsx "$(printf 'export d
 size "no semicolons, a statement is not a header" src/limits.ts "$(printf 'foo()\nif (ready) {\n%s\n}' "$(stmts 31 '  ')")" 0
 size "object literals in calls are not blocks"  src/calls.ts "$(printf 'export function run(xs) {\n  for (const x of xs) {\n    if (x) {\n      xs.forEach((y) => send({ a: { b: y } }))\n    }\n  }\n}')" 0
 size "invalid utf-8 does not break the check"   src/bytes.ts "$(printf 'export const s = "\377"\nexport function wide(a, b, c, d, e, f) {}')" 0 "wide: 6 parameters"
+printf 'export const s = "\377"\n' >"$B/src/bytes2.ts" && git -C "$B" add src/bytes2.ts && git -C "$B" commit -qm bytes2
+printf 'export function wide(a, b, c, d, e, f) {}\n' >>"$B/src/bytes2.ts"
+check_note "a tracked invalid utf-8 file still names the touched function" 0 src/bytes2.ts "wide: 6 parameters"
+git -C "$B" checkout -q -- src/bytes2.ts
 size "a go method is measured"                  src/server.go "$(printf 'package x\n\ntype Server struct {\n\tdb DB\n}\n\nfunc (s *Server) Handle(w Writer, r *Request) {\n%s\n}' "$(stmts 31 '\t')")" 0 "Handle: 31 body lines"
 size "a python def is measured"                 src/load.py "$(printf 'class Loader:\n    def load(self, path):\n%s\n\n    def ok(self):\n        return 1' "$(for i in $(seq 1 31); do echo "        x$i = $i"; done)")" 0 "load: 31 body lines"
 size "python self and cls are not parameters"   src/load.py "$(printf 'class Loader:\n    def load(self, a, b, c, d, e):\n        return a\n')" 0

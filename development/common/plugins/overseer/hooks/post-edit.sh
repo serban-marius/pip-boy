@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 
-size_note() { jq -nc --arg m "$2" '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$m}}'; }
+size_note() {
+  local f=$1 s=$2 msg
+  msg=$(printf 'overseer size note for %s (advice, not a gate):\n%s' "$f" "$s")
+  jq -nc --arg m "$msg" '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$m}}'
+}
 post_edit_check() {
   local f=$1 p='' s='' msg lines=''
   [ -n "$f" ] || return 0
