@@ -56,6 +56,21 @@ write_gate() {
   check_state "$state_all"
   check_writes "$wt"
 }
+interp_gate() {
+  local c=$1 targets t
+  [[ $c =~ $INTERP_INLINE ]] || return 0
+  load_targets
+  targets=$(printf '%s' "$c" | awk -f "$here/interp-targets.awk")
+  [ -n "$targets" ] || return 0
+  while IFS= read -r t; do
+    [ -n "$t" ] || continue
+    case "$t" in
+      '?'*) block bash-red "cannot see where ${t#?} writes: its path is not a string literal. Use Edit/Write for repo files, or pass a literal path." ;;
+    esac
+  done <<<"$targets"
+  check_state "$targets"
+  check_writes "$targets"
+}
 pre_bash_checks() {
   check_commit "$1"
   check_pr "$1"

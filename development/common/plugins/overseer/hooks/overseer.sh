@@ -22,7 +22,8 @@ RULE_GATES='spec:^(edit|bash)-spec$ red:^(edit|bash)-red$ overseer:^(edit|bash)-
 WRITE_RE='>|rev-parse|(^|[^[:alnum:]_-])(tee|sed|perl|rm|mv|cp|touch|mkdir|rmdir|ln|truncate|dd|find|cd|pushd)([^[:alnum:]_-]|$)'
 ASK_PR_LINES=400 # ponytail: size only decides when to send a PR to split-pr-stack; the skill judges the cut
 NO_SPEC='Spec impact: *None *(—|–|-|:) *[^ ]'
-TESTS='\b(phpunit|pest|artisan test|pytest|vitest|jest|go test|cargo test|(npm|pnpm) (run )?test|yarn test|bun test|deno (task )?test|rspec|mix test|gradle test|mvn test)\b' # ponytail: fixed list; add a runner when a repo needs one
+TESTS='\b(phpunit|paratest|pest|artisan test|pytest|vitest|jest|go test|cargo test|(npm|pnpm) (run )?test|yarn test|bun test|deno (task )?test|rspec|mix test|gradle test|mvn test|composer (run(-script)? )?[a-z-]*tests?|make [a-z-]*tests?)\b|(^|[^[:alnum:]_])(bash|sh|zsh)[[:space:]]+([^[:space:];&|]+[[:space:]]+)*[^[:space:];&|]*\.test\.sh\b|(^|[^[:alnum:]_])python[0-9.]*[[:space:]]+([^[:space:];&|]+[[:space:]]+)*[^[:space:];&|]*test_[a-z0-9_]*\.py\b' # ponytail: fixed list; add a runner when a repo needs one
+INTERP_INLINE='(^|[^[:alnum:]_-])(python[0-9.]*|php|node|ruby|perl)[[:space:]]+([^;|&]*[[:space:]])?(-[A-Za-z]*[cerpCER][A-Za-z]*|-|<<<|<<)'
 COMMIT='\bgit\b[^;&|]*\bcommit\b'
 PR_CREATE='\bgh\s+pr\s+create\b'
 
@@ -169,11 +170,29 @@ rel_file() {
   local f; f=$(jq -r '.tool_input.file_path // empty' <<<"$input")
   case "$f" in "$PWD"/*) echo "${f#"$PWD"/}" ;; /*) ;; *) echo "$f" ;; esac
 }
+age_of() { local s=$1; if [ "$s" -lt 60 ]; then printf '%ss' "$s"; elif [ "$s" -lt 3600 ]; then printf '%smin' "$((s / 60))"; else printf '%sh' "$((s / 3600))"; fi; }
+red_evidence() {
+  [ -f "$log" ] || { printf 'last test event: none'; return; }
+  local now lt le lte age rel hint=''
+  now=$(date +%s)
+  read -r lt le lte <<<"$(awk '
+    $2=="green"||$2=="red" { lt=$1; le=$2 }
+    $2=="test-edit" { lte=$1 }
+    END { printf "%d %s %d", lt+0, (le==""?"none":le), lte+0 }
+  ' "$log")"
+  [ "$le" = none ] && { printf 'last test event: none'; return; }
+  age=$((now - lt)); [ "$age" -lt 0 ] && age=0
+  rel='before any test edit'
+  [ "$lte" -gt 0 ] && [ "$lt" -ge "$lte" ] && rel='after your test edit'
+  [ "$le" = green ] && hint=' A passing or masked run does not count as red: run the failing test bare.'
+  printf 'last test event: %s %s ago, %s.%s' "$le" "$(age_of "$age")" "$rel" "$hint"
+}
 prod_gate() {
-  local f=$1 spec_rule=$2 red_rule=$3
+  local f=$1 spec_rule=$2 red_rule=$3 msg
   has_spec || block "$spec_rule" "no spec in this branch. Write specs/NNN-<slug>/spec.md (or an openspec/changes/<name>/ proposal) before touching $f."
-  seen '$2=="test-edit"{t=1} t&&$2=="red"{r=1} END{exit !r}' || # ponytail: once per branch, not per cycle; refactoring on green is legitimate
-    block "$red_rule" "red first. Write or change a test for this behaviour, run it and watch it fail, then touch $f."
+  seen '$2=="test-edit"{t=1} t&&$2=="red"{r=1} END{exit !r}' && return # ponytail: once per branch, not per cycle; refactoring on green is legitimate
+  msg="red first. Write or change a test for this behaviour, run it and watch it fail, then touch $f. $(red_evidence)"
+  block "$red_rule" "$msg"
 }
 cmd() { jq -r '.tool_input.command // ""' <<<"$input"; }
 dirty_files() { git status --porcelain --untracked-files=all | cut -c4-; }
@@ -204,6 +223,7 @@ case "$mode" in
     . "$here/pre-bash.sh"
     c=$(cmd)
     if [[ $c =~ $WRITE_RE ]]; then write_gate "$c"; fi
+    interp_gate "$c"
     pre_bash_checks "$c"
     ;;
   post-bash | bash-failed)
