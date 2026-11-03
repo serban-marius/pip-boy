@@ -313,14 +313,17 @@ DOC "a jsdoc param with a description"        ' * @param {string} name - the pro
 DOC "a bare jsdoc param passes"               ' * @param {Array<string>} names' 0
 DOC "@template T passes"                      ' * @template T' 0
 DOC "@template T of Foo passes"               ' * @template T of Foo' 0
+DOC "@template-covariant T of Foo passes"     ' * @template-covariant T of Foo' 0
+DOC "@template-extends Foo<T> passes"          ' * @template-extends Foo<T>' 0
+DOC "@template-covariant with an explanation is prose" ' * @template-covariant T explanation' 2 "explanation"
 DOC "@template with an explanation is prose"  ' * @template T explanation' 2 "explanation"
 DOC "@method with a signature passes"         ' * @method static Foo bar()' 0
 DOC "@method with text after the signature is prose" ' * @method static Foo bar() builds one' 2 "builds one"
 DOC "@testing with prose is prose"            ' * @testing this is prose' 2 "testing this"
-DOC "argument-taking test annotations pass"   "$(printf ' * @beforeClass setUp\n * @afterClass tearDown\n * @coversDefaultClass Foo\n * @coversNothing\n * @testdox does things\n * @dependsExternal Other::test')" 0
+DOC "argument-taking test annotations pass"   "$(printf ' * @beforeClass setUp\n * @afterClass tearDown\n * @coversDefaultClass Foo\n * @coversNothing\n * @testdox does things\n * @dependsExternal Other::test\n * @dependsUsingDeepClone testFoo')" 0
 printf '%s\n' '// deno-lint-ignore no-explicit-any' '// @deno-types="./x.d.ts"' '/// <reference types="vite/client" />' '// biome-ignore lint/style: generated' '# flake8: noqa' >"$B/src/tools.ts"
 check "deno, biome and reference directives pass" 0 post-edit "$(edit src/tools.ts)"
-printf '%s\n' '// @flow strict' '// @noflow' '// @ts-expect-error reason' '/* istanbul ignore next */' '/* jshint expr: true */' '/** @jsx h */' '// #region setup' '// endregion' '// region other' '# syntax=docker/dockerfile:1' '/* global foo, bar */' >"$B/src/directives.php"
+printf '%s\n' '// @flow strict' '// @noflow' '// @ts-expect-error reason' '/* istanbul ignore next */' '/* jshint expr: true */' '/* jshint -W117 */' '/** @jsx h */' '// #region setup' '// endregion' '// region other' '# syntax=docker/dockerfile:1' '/* global foo, bar */' >"$B/src/directives.php"
 check "anchored directives still pass"         0 post-edit "$(edit src/directives.php)"
 rm -f "$B/src/directives.php"
 printf '<?php\n// global lock because the cache is shared\n' >"$B/src/Global.php"

@@ -24,7 +24,8 @@ grep chain, so:
 
 - bare annotations pass: `@param <type> $name`, `@return <type>`, `@var <type>`, `@throws <type>`,
   `@extends`, `@implements`, `@template T`, `@template T of Foo`, and the
-  `phpstan-`/`psalm-` typed forms;
+  `template-covariant`/`template-contravariant`/`template-extends`/`template-implements`/`template-use`
+  forms, plus the `phpstan-`/`psalm-` typed forms;
 - anything after the type or the variable is prose, including
   `@param list<string> $terms facts using these terms never reach the writer` and
   `@template T explanation`;

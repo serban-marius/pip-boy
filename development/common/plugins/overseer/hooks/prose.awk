@@ -4,10 +4,10 @@ BEGIN {
   STAR = "^[[:space:]]*\\*+[A-Za-z_$(&]"
   DOC_WORD = "^[[:space:]]*\\*+[A-Za-z][A-Za-z0-9_$]*[[:space:]]*:?[[:space:]]+[A-Za-z]"
   ID = "[A-Za-z_$][A-Za-z0-9_$]*"
-  DIRECTIVE = "^(phpcs:|phpstan-|psalm-|eslint-|prettier-ignore|@ts-|noqa|type: ?ignore|pylint:|flake8:|nolint|NOSONAR|go:|#?(end)?region([[:space:]:]|$)|istanbul[[:space:]]+ignore[[:space:]]+(if|else|next|file)|c8 ignore|-\\*-|shellcheck|yamllint|ponytail:|\\{@inheritDoc\\}|deno-(lint|fmt)-ignore|biome-ignore|fmt: ?(off|on|skip)|isort:|mypy:|pyright:|ruff:|rubocop:|jshint[[:space:]]+[A-Za-z_][A-Za-z0-9_-]*[[:space:]]*:|globals?[[:space:]]+" ID "(:[[:space:]]*[A-Za-z]+)?([[:space:]]*,[[:space:]]*" ID "(:[[:space:]]*[A-Za-z]+)?)*$|<reference |<amd-module|(syntax|escape|check)=[^[:space:]]+$|yaml-language-server:|cspell:|webpackChunkName|@vite-ignore|@jsx(Runtime|ImportSource|Frag)?([[:space:]]+[^[:space:]]+)?$|@(no)?flow([[:space:]]+strict(-local)?)?$)"
-  TYPED = "^(param|return|returns|var|throws|extends|implements|mixin|type|template|typedef|property|property-read|property-write|(phpstan|psalm)-(param|return|var|extends|implements|property|property-read|property-write|assert|assert-if-true|assert-if-false|self-out|this-out))$"
+  DIRECTIVE = "^(phpcs:|phpstan-|psalm-|eslint-|prettier-ignore|@ts-|noqa|type: ?ignore|pylint:|flake8:|nolint|NOSONAR|go:|#?(end)?region([[:space:]:]|$)|istanbul[[:space:]]+ignore[[:space:]]+(if|else|next|file)|c8 ignore|-\\*-|shellcheck|yamllint|ponytail:|\\{@inheritDoc\\}|deno-(lint|fmt)-ignore|biome-ignore|fmt: ?(off|on|skip)|isort:|mypy:|pyright:|ruff:|rubocop:|jshint[[:space:]]+(-W[0-9]+|[A-Za-z_][A-Za-z0-9_-]*[[:space:]]*:)|globals?[[:space:]]+" ID "(:[[:space:]]*[A-Za-z]+)?([[:space:]]*,[[:space:]]*" ID "(:[[:space:]]*[A-Za-z]+)?)*$|<reference |<amd-module|(syntax|escape|check)=[^[:space:]]+$|yaml-language-server:|cspell:|webpackChunkName|@vite-ignore|@jsx(Runtime|ImportSource|Frag)?([[:space:]]+[^[:space:]]+)?$|@(no)?flow([[:space:]]+strict(-local)?)?$)"
+  TYPED = "^(param|return|returns|var|throws|extends|implements|mixin|type|template(-(co|contra)variant|-extends|-implements|-use)?|typedef|property|property-read|property-write|(phpstan|psalm)-(param|return|var|extends|implements|property|property-read|property-write|assert|assert-if-true|assert-if-false|self-out|this-out))$"
   NAMED = "^(param|var|property|property-read|property-write|typedef|(phpstan|psalm)-(param|var|property|property-read|property-write|assert|assert-if-true|assert-if-false))$"
-  WHOLE = "^(phpstan-|psalm-|(dataProvider|covers|uses|group|test|depends|before|after|beforeClass|afterClass|coversDefaultClass|coversNothing|usesDefaultClass|testdox|dependsExternal|codeCoverageIgnoreStart|codeCoverageIgnoreEnd|runInSeparateProcess|runTestsInSeparateProcesses|preserveGlobalState|requires|testWith|codeCoverageIgnore|inheritDoc|jest-environment|vitest-environment|jsx|flow|deno-types)$)"
+  WHOLE = "^(phpstan-|psalm-|(dataProvider|covers|uses|group|test|depends|dependsUsingDeepClone|dependsUsingShallowClone|dependsExternal|dependsExternalUsingDeepClone|dependsExternalUsingShallowClone|before|after|beforeClass|afterClass|coversDefaultClass|coversNothing|usesDefaultClass|testdox|codeCoverageIgnoreStart|codeCoverageIgnoreEnd|runInSeparateProcess|runTestsInSeparateProcesses|preserveGlobalState|requires|testWith|codeCoverageIgnore|inheritDoc|jest-environment|jest-environment-options|vitest-environment|jsx|flow|deno-types)$)"
 }
 
 {
@@ -36,7 +36,7 @@ function is_prose(body,   tag, rest) {
 
 function has_trailing_prose(tag, rest) {
   rest = after_type(rest)
-  if (tag == "template" && rest ~ /^(of|as)[[:space:]]/) {
+  if (tag ~ /^template(-(co|contra)variant)?$/ && rest ~ /^(of|as)[[:space:]]/) {
     sub(/^(of|as)[[:space:]]+/, "", rest)
     rest = after_type(rest)
   }
