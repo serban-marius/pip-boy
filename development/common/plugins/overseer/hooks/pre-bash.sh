@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 
 check_commit() {
-  local c=$1
+  local c=$1 p
   matches "$COMMIT" || return 0
+  p=$(dirty_prose | head -n 10)
+  [ -z "$p" ] || block bash-prose "$(printf 'this commit adds prose comments. Delete them; the names explain the code, the why goes in the PR as a review comment on that line:\n%s' "$p")"
   dirty_files | any is_code || return 0
   matches "$TESTS" && block bash-tests-own "run the tests in their own command, then commit in another; overseer only trusts a run it has seen finish."
   seen '$2~/^(test-edit|prod-edit|red|green)$/{l=$2} END{exit l!="green"}' ||

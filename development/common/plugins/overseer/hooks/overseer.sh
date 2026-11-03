@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 set -u
+export LC_ALL=C
 mode=${1:-}
 here=${0%/*}
 [ "$here" = "$0" ] && here=.
@@ -198,6 +199,25 @@ prod_gate() {
 }
 cmd() { jq -r '.tool_input.command // ""' <<<"$input"; }
 dirty_files() { git status --porcelain --untracked-files=all | cut -c4-; }
+added_lines() {
+  if git ls-files --error-unmatch -- "$1" >/dev/null 2>&1; then
+    git diff -U0 HEAD -- "$1" | awk '/^@@/{split($3,a,","); n=substr(a[1],2)+0; next} /^\+\+\+/{next} /^\+/{print n ":" substr($0,2); n++}'
+  else
+    grep -n '' -- "$1"
+  fi
+}
+prose_comments() { added_lines "$1" | awk -f "$here/prose.awk"; }
+oversized() {
+  is_prod "$1" || return 0
+  LC_ALL=C awk -v changed="$(added_lines "$1" | cut -d: -f1 | tr '\n' ' ')" -f "$here/size.awk" "$1"
+}
+dirty_prose() {
+  local f
+  while IFS= read -r f; do
+    [ -n "$f" ] && [ -f "$f" ] && is_commented "$f" || continue
+    prose_comments "$f" | sed "s|^|$f:|"
+  done < <(dirty_files)
+}
 
 inherit
 case "$mode" in
