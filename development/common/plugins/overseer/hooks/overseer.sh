@@ -197,7 +197,15 @@ prod_gate() {
   block "$red_rule" "$msg"
 }
 cmd() { jq -r '.tool_input.command // ""' <<<"$input"; }
-dirty_files() { git status --porcelain --untracked-files=all | cut -c4-; }
+dirty_files() {
+  local line skip
+  while IFS= read -r -d '' line; do
+    case "$line" in
+      R*|C*) skip=''; IFS= read -r -d '' skip || skip='' ;;
+    esac
+    printf '%s\n' "${line#?? }"
+  done < <(git status --porcelain -z --untracked-files=all)
+}
 added_lines() {
   if git ls-files --error-unmatch -- "$1" >/dev/null 2>&1; then
     git diff -U0 HEAD -- "$1" | LC_ALL=C awk '/^@@/{split($3,a,","); n=substr(a[1],2)+0; next} /^\+\+\+/{next} /^\+/{print n ":" substr($0,2); n++}'
@@ -218,10 +226,10 @@ oversized() {
   LC_ALL=C awk -v changed="$changed" -f "$here/size.awk" "$f"
 }
 dirty_prose() {
-  local f
+  local f l
   while IFS= read -r f; do
     [ -n "$f" ] && [ -f "$f" ] && is_commented "$f" || continue
-    prose_comments "$f" | LC_ALL=C sed "s|^|$f:|"
+    prose_comments "$f" | while IFS= read -r l; do printf '%s:%s\n' "$f" "$l"; done
   done < <(dirty_files)
 }
 

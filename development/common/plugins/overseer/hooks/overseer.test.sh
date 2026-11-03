@@ -311,8 +311,23 @@ DOC "@deprecated with a reason"               ' * @deprecated use build() instea
 DOC "@todo is prose"                          ' * @todo split this' 2 "@todo"
 DOC "a jsdoc param with a description"        ' * @param {string} name - the program name' 2 "program name"
 DOC "a bare jsdoc param passes"               ' * @param {Array<string>} names' 0
+DOC "@template T passes"                      ' * @template T' 0
+DOC "@template T of Foo passes"               ' * @template T of Foo' 0
+DOC "@template with an explanation is prose"  ' * @template T explanation' 2 "explanation"
+DOC "@method with a signature passes"         ' * @method static Foo bar()' 0
+DOC "@method with text after the signature is prose" ' * @method static Foo bar() builds one' 2 "builds one"
+DOC "@testing with prose is prose"            ' * @testing this is prose' 2 "testing this"
+DOC "argument-taking test annotations pass"   "$(printf ' * @beforeClass setUp\n * @afterClass tearDown\n * @coversDefaultClass Foo\n * @coversNothing\n * @testdox does things\n * @dependsExternal Other::test')" 0
 printf '%s\n' '// deno-lint-ignore no-explicit-any' '// @deno-types="./x.d.ts"' '/// <reference types="vite/client" />' '// biome-ignore lint/style: generated' '# flake8: noqa' >"$B/src/tools.ts"
 check "deno, biome and reference directives pass" 0 post-edit "$(edit src/tools.ts)"
+printf '%s\n' '// @flow strict' '// @noflow' '/* istanbul ignore next */' '/* jshint expr: true */' '/** @jsx h */' '// #region setup' '// endregion' '// region other' '# syntax=docker/dockerfile:1' '/* global foo, bar */' >"$B/src/directives.php"
+check "anchored directives still pass"         0 post-edit "$(edit src/directives.php)"
+rm -f "$B/src/directives.php"
+printf '<?php\n// global lock because the cache is shared\n' >"$B/src/Global.php"
+check "// global with prose is prose"           2 post-edit "$(edit src/Global.php)" "global lock because"
+printf '<?php\n# regional prices differ by store\n' >"$B/src/Region.php"
+check "# regional with prose is prose"          2 post-edit "$(edit src/Region.php)" "regional prices differ"
+rm -f "$B/src/Global.php" "$B/src/Region.php"
 printf '%s\n' '# fmt: off' 'def load(' '    *args,' '    **kwargs,' '):' '    pass' >"$B/src/star.py"
 check "python star params are code, fmt: passes" 0 post-edit "$(edit src/star.py)"
 printf '%s\n' 'package x' 'func f(s *[]int) {' '	*s = append(*s, 1)' '}' >"$B/src/star.go"
@@ -326,6 +341,12 @@ printf '<?php\n// see @foo for this\n' >"$B/src/Doc.php"
 check "an @ inside prose is still prose"        2 post-edit "$(edit src/Doc.php)" "see @foo"
 printf 'x = 1  # type: ignore[attr]\n// eslint-disable-next-line no-console -- noisy\n' >"$B/src/doc.ts"
 check "directives with reasons pass"            0 post-edit "$(edit src/doc.ts)"
+printf '<?php\n/**\n *Note this explains the cache\n */\nclass Note {}\n' >"$B/src/Note.php"
+check "*Note without a space is prose"          2 post-edit "$(edit src/Note.php)" "Note this explains"
+rm -f "$B/src/Note.php"
+printf 'void f(void) {\n    int *p;\n    *p = 0;\n}\n' >"$B/src/ptr.c"
+check "a C dereference line is code, not prose" 0 post-edit "$(edit src/ptr.c)"
+rm -f "$B/src/ptr.c"
 rm -f "$B/src/Doc.php" "$B/src/doc.ts"
 
 fire post-bash "$(bash_ 'vendor/bin/phpunit')"
@@ -342,6 +363,20 @@ rm -f "$B/config.yaml"
 printf '<?php\n/**\n * @param list<string> $ids\n */\nclass CommitClean {}\n' >"$B/src/CommitClean.php"
 check "a dirty file with bare annotations commits" 0 pre-bash "$(bash_ 'git commit -am clean')"
 rm -f "$B/src/CommitClean.php"
+printf '<?php\n// allow empty prose\nclass AllowEmpty {}\n' >"$B/src/AllowEmpty.php"
+check "an allow-empty commit without -a is not blocked by prose" 0 pre-bash "$(bash_ 'git commit --allow-empty -m x')"
+check "an allow-empty commit with -am is still blocked" 2 pre-bash "$(bash_ 'git commit --allow-empty -am x')" "prose"
+check "an allow-empty commit with -a first is still blocked" 2 pre-bash "$(bash_ 'git commit -a --allow-empty -m x')" "prose"
+check "an allow-empty commit with --all is still blocked" 2 pre-bash "$(bash_ 'git commit --allow-empty --all -m x')" "prose"
+check "an -a inside the commit message is not a worktree commit" 0 pre-bash "$(bash_ 'git commit --allow-empty -m "add -a flag"')"
+rm -f "$B/src/AllowEmpty.php"
+printf '<?php\n// prose in a weird name\nclass Weird {}\n' >"$B/src/a&b|c.php"
+check "a filename with & and | is scanned"      2 pre-bash "$(bash_ 'git commit -am weird')" 'src/a&b|c.php:2:'
+rm -f "$B/src/a&b|c.php"
+git -C "$B" mv src/Old.php src/Renamed.php
+printf '\n// rename prose\n' >>"$B/src/Renamed.php"
+check "a renamed file is scanned at its new path" 2 pre-bash "$(bash_ 'git commit -am rename')" 'src/Renamed.php:'
+git -C "$B" reset -q --hard HEAD
 
 size "a 31-line function is too long"          src/Long.php "$(php_fn Long longFn '' 31)" 0 "longFn: 31 body lines (max 30)"
 size "a 30-line function passes"               src/Long.php "$(php_fn Long longFn '' 30)" 0

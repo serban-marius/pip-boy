@@ -10,8 +10,8 @@ post_edit_check() {
   [ -n "$f" ] || return 0
   if is_prod "$f"; then note prod-edit; elif is_code_test "$f"; then note test-edit; fi
   [ -f "$f" ] || return 0
+  lines=$(added_lines "$f")
   if is_commented "$f"; then
-    lines=$(added_lines "$f")
     p=$(prose_comments "$f" "$lines" | head -n 10)
   fi
   s=$(oversized "$f" "$lines" | head -n 10)

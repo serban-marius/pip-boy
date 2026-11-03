@@ -23,19 +23,28 @@ This spec rescues the substance of both as one change.
 grep chain, so:
 
 - bare annotations pass: `@param <type> $name`, `@return <type>`, `@var <type>`, `@throws <type>`,
-  `@extends`, `@implements`, `@template`, and the `phpstan-`/`psalm-` typed forms;
+  `@extends`, `@implements`, `@template T`, `@template T of Foo`, and the
+  `phpstan-`/`psalm-` typed forms;
 - anything after the type or the variable is prose, including
-  `@param list<string> $terms facts using these terms never reach the writer`;
+  `@param list<string> $terms facts using these terms never reach the writer` and
+  `@template T explanation`;
 - tool directives pass whole (`phpcs:`, `phpstan-`, `eslint-`, `noqa`, `@dataProvider`, `@covers`,
-  biome/deno/ruff/mypy directives, attributes and shebangs);
-- `@see`, `@todo`, `@deprecated` with text, and any other tag followed by text are prose; the same
-  tags stay allowed when bare;
+  biome/deno/ruff/mypy directives, attributes and shebangs); directive words are anchored to their
+  real shapes, so prose that merely starts with `global` or `region` is still prose;
+- `@see`, `@todo`, `@deprecated` with text, `@testing` and any other tag followed by text are prose;
+  the same tags stay allowed when bare. A `@method` signature passes while it ends in `)`, and text
+  after the closing `)` is prose;
+- a docblock line whose `*` touches its text (`*Note this explains ...`) is prose too, while code
+  lines that begin with `*` (`*args,`, `*p = 0;`) stay code;
 - a one-line `ponytail:` marker stays allowed.
 
 The post-edit block stays as it is today. `git commit` is also blocked while a dirty commented file
 adds prose. The message lists `file:line` and uses the same text style as the post-edit block. Its
 rule is `bash-prose`, separate from `bash-green` and the other commit rules, so stats and the
-3-strike escalation count it on its own.
+3-strike escalation count it on its own. A `git commit --allow-empty` that does not include the
+worktree (`-a`, `--all` or a combined short flag such as `-am`) skips the prose check because it
+adds no file content. Dirty scanning reads porcelain's NUL records, so a renamed file is checked at
+its new path and a filename containing `&` or `|` is reported without breaking the message.
 
 ### R2 · Size is a note, never a gate
 

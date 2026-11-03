@@ -1,9 +1,19 @@
 #!/usr/bin/env bash
 
+commit_words() { sed -E "s/'[^']*'//g; s/\"[^\"]*\"//g" <<<"$1"; }
+commit_includes_worktree() {
+  local c; c=$(commit_words "$1")
+  grep -Eq -- '(^|[[:space:]])--all([[:space:]]|=|$)' <<<"$c" && return 0
+  grep -Eq -- '(^|[[:space:]])-[A-Za-z]*a[A-Za-z]*([[:space:]]|$)' <<<"$c"
+}
+commit_is_empty_only() {
+  local c; c=$(commit_words "$1")
+  grep -Eq -- '(^|[[:space:]])--allow-empty([[:space:]]|=|$)' <<<"$c" && ! commit_includes_worktree "$c"
+}
 check_commit() {
   local c=$1 p
   matches "$COMMIT" || return 0
-  p=$(dirty_prose | head -n 10)
+  if commit_is_empty_only "$c"; then p=''; else p=$(dirty_prose | head -n 10); fi
   [ -z "$p" ] || block bash-prose "$(printf 'this commit adds prose comments. Delete them; the names explain the code, the why goes in the PR as a review comment on that line:\n%s' "$p")"
   dirty_files | any is_code || return 0
   matches "$TESTS" && block bash-tests-own "run the tests in their own command, then commit in another; overseer only trusts a run it has seen finish."
