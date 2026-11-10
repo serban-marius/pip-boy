@@ -8,15 +8,34 @@ A Claude Code skill that makes agents write Jira comments and descriptions that 
 first time and read like a teammate wrote them.
 
 ![Claude Code skill](https://img.shields.io/badge/Claude_Code-skill-D97757)
-![version](https://img.shields.io/badge/version-1.2.2-blue)
-![tests](https://img.shields.io/badge/tests-45_passing-brightgreen)
+![version](https://img.shields.io/badge/version-1.3.0-blue)
+![tests](https://img.shields.io/badge/tests-47_passing-brightgreen)
 ![license](https://img.shields.io/badge/license-MIT-lightgrey)
 
 </div>
 
 ---
 
-## The problem
+## Two Jira MCPs, two sets of rules
+
+An agent usually reaches Jira through one of two MCP servers, and each wants different text:
+
+| | mcp-atlassian | Atlassian's own MCP |
+|---|---|---|
+| Where it runs | [sooperset/mcp-atlassian](https://github.com/sooperset/mcp-atlassian), usually in Docker | Atlassian's remote server, the claude.ai / Claude Desktop connector |
+| Tools | `jira_add_comment`, `jira_update_issue`, `jira_get_issue` … | `addOrEditJiraIssueComment`, `editJiraIssue`, `getJiraIssue`, `executeRead` … |
+| Takes | Markdown through a regex converter (comments), wiki markup (descriptions) | Markdown, or HTML with `contentFormat: "html"`; Jira stores ADF |
+| Lozenges, mentions, checkboxes | stand-ins in wiki markup | the real elements |
+| Fix a posted comment | no | yes, by `commentId` |
+| Wiki markup | native | stored as literal text |
+
+So the skill starts by looking at the tool names, then follows that server's rules. The
+official server's are in [official-mcp.md](skills/jira-write/references/official-mcp.md),
+worked out from its tool contracts and the HTML reference it serves itself
+(`getContentFormatGuide`). How a comment should read, and the steps around posting, do not
+change with the server.
+
+## The problem with mcp-atlassian
 
 The [mcp-atlassian](https://github.com/sooperset/mcp-atlassian) server tells your agent that
 `jira_add_comment` takes *"Comment text in Markdown format"*. It doesn't, quite. The text goes
@@ -42,16 +61,19 @@ And there's more:
 
 ## What the skill does
 
-Before any Jira write, the agent loads `jira-write` and follows seven steps:
+Before any Jira write, the agent loads `jira-write`, works out which Jira MCP it is on, and
+follows seven steps:
 
 1. **Read the ticket first:** its language, its style, and what's already been said.
 2. **Draft from a template** that's been posted and checked in Jira.
 3. **Format with the subset that survives**, plus raw wiki markup where Markdown falls short.
-4. **Preview and lint**: the bundled script runs the MCP's own converter offline and points at
-   every trap.
+4. **Preview and lint** (mcp-atlassian): the bundled script runs the MCP's own converter
+   offline and points at every trap. On the official MCP, check the HTML against its nesting
+   rules instead.
 5. **Show you the exact text** and wait for a yes.
 6. **Post once.** If the call hangs, it has probably landed: never post twice.
-7. **Read it back** and compare it byte for byte with the preview.
+7. **Read it back**: byte for byte against the preview on mcp-atlassian, the echoed body and
+   `appliedContentFormat` on the official MCP, where a wrong comment can be edited in place.
 
 ## The linter
 
@@ -94,7 +116,8 @@ closest stand-in. Some of what's in there:
 
 ## Templates
 
-[Ready to use](skills/jira-write/references/templates.md), all posted and checked rendered:
+[Ready to use](skills/jira-write/references/templates.md). For mcp-atlassian, all posted and
+checked rendered:
 
 | Comments | Descriptions |
 |---|---|
@@ -106,7 +129,13 @@ closest stand-in. Some of what's in there:
 | Checklist with icons | |
 | Coloured status line | |
 
-A test checks that every template still lints clean.
+For the official MCP, HTML versions: quick status, ready for review (status lozenge, PRs as
+inline cards in a green panel, merge order, a mention), status report with a table, blocker,
+decision, and a question for someone. Built from the server's format guide; read the first one
+back after posting.
+
+Tests check that every mcp-atlassian template still lints clean and that no HTML template
+carries wiki markup, Markdown, a layout, a table inside a panel or a mention without an id.
 
 ## Comments that read well
 
@@ -164,20 +193,26 @@ backtracking on `??` that hangs the server.
 Then ask your agent to comment on a ticket, update a description or leave a status. The skill
 loads on its own, or call it with `/jira-write`.
 
-**Needs:** the mcp-atlassian MCP server with its Jira write tools. Python 3 and Docker are
-optional; they let the linter preview the real conversion.
+**Needs:** a Jira MCP with write tools: Atlassian's own (claude.ai → Settings → Connectors)
+or mcp-atlassian. Python 3 and Docker are optional; they let
+the linter preview mcp-atlassian's real conversion.
 
 ## Limits
 
-- **mcp-atlassian only.** Other Jira servers convert differently; the writing advice still
-  applies, the formatting rules don't.
+- **Two MCPs.** Other Jira servers convert differently; the writing advice still applies, the
+  formatting rules don't.
+- **The official path is not linted.** `jira_preview.py` knows mcp-atlassian's converter only;
+  HTML bodies are checked by the rules in `official-mcp.md` and by reading them back.
+- **The HTML templates follow the server's format guide** but were not posted to a live ticket
+  before release.
 - **Checked against one build** of the server (`cloudutil/mcp-atlassian`, digest in
   [formatting.md](skills/jira-write/references/formatting.md)). If yours differs, set
   `JIRA_MCP_IMAGE` and the preview shows what your build does.
 - **Editor-only elements** (real action items, status lozenges, dates, expands, layouts) can't
-  be created through wiki markup. The catalogue gives the closest stand-in for each.
-- **No file uploads.** The MCP runs in Docker without your files, so it can only embed images
-  that are already attached to the ticket.
+  be created through mcp-atlassian's wiki markup. The catalogue gives the closest stand-in for
+  each; the official MCP has the real ones, except column layouts, which Jira refuses.
+- **No file uploads on mcp-atlassian.** It runs in Docker without your files, so it can only
+  embed images that are already attached to the ticket.
 
 ## Layout
 
@@ -191,9 +226,10 @@ holotape/
     │   ├── jira_preview.py      # preview + lint
     │   └── test_jira_preview.py
     └── references/
-        ├── catalogue.md         # every Jira element, and how to get it
-        ├── templates.md         # checked comment and description templates
-        └── formatting.md        # the evidence behind every rule
+        ├── official-mcp.md      # the official Atlassian MCP: formats, HTML/ADF, editing, guardrails
+        ├── catalogue.md         # every Jira element through mcp-atlassian, and how to get it
+        ├── templates.md         # comment and description templates, wiki and HTML
+        └── formatting.md        # the evidence behind every mcp-atlassian rule
 ```
 
 <div align="center">

@@ -3,7 +3,10 @@
 Ready-made comments and descriptions, built only from elements that rendered in Jira Cloud
 (see [catalogue.md](catalogue.md)). Replace the placeholders in CAPITALS, drop the lines that do
 not apply, and run the preview script before posting. Comment templates are Markdown for
-`jira_add_comment`; description templates are wiki markup for `description`.
+`jira_add_comment`; description templates are wiki markup for `description`. Both are for the
+mcp-atlassian MCP. On the official Atlassian MCP use the HTML templates at the end
+([Official Atlassian MCP](#official-atlassian-mcp-html)); the preview script does not apply to
+them.
 
 Pick the lightest one that fits. A two-line update does not need panels.
 
@@ -215,4 +218,89 @@ h3. Evidence
 h3. Impact
 
 WHO, HOW MANY, HOW OFTEN.
+```
+
+## Official Atlassian MCP (HTML)
+
+For `addOrEditJiraIssueComment` with `contentFormat: "html"` (see
+[official-mcp.md](official-mcp.md)). Built from the shapes in the server's
+`getContentFormatGuide`; not posted to a live ticket yet, so read the first one back. Replace the
+CAPITALS, drop what does not apply, keep each smart-link anchor empty, and put a real account id
+in every mention or write the plain name instead. A body with none of these elements can go as
+plain Markdown.
+
+### Quick status (HTML)
+
+```html
+<p><span data-type="status" data-color="blue">IN REVIEW</span> A FEW WORDS ON WHERE IT STANDS.</p>
+<ul>
+<li>WHAT CHANGED FOR THE READER, in one line: <a href="https://github.com/ORG/REPO/pull/NN" data-card-appearance="inline"></a></li>
+<li>WHAT WAS CHECKED, and where, in one line.</li>
+</ul>
+<p><strong>Next:</strong> THE ACTION, BY WHOM.</p>
+```
+
+### Ready for review (HTML)
+
+A status lozenge first, the PRs as inline cards in a green panel, what changed since the last
+update, and who has to act. Status colours: `green` done or ready, `blue` in progress or in
+review, `yellow` at risk, `red` blocked, `neutral` not started.
+
+```html
+<p><span data-type="status" data-color="green">READY FOR REVIEW</span> ALL CHECKS GREEN, NEEDS A HUMAN APPROVAL.</p>
+<div data-type="panel-success">
+<ul>
+<li><a href="https://github.com/ORG/REPO/pull/NN" data-card-appearance="inline"></a> into BASE BRANCH</li>
+<li><a href="https://github.com/ORG/OTHER/pull/NN" data-card-appearance="inline"></a> into BASE BRANCH</li>
+</ul>
+</div>
+<p><strong>Since the last update:</strong> WHAT CHANGED, in one line.</p>
+<p><strong>Merge order:</strong> FIRST, THEN SECOND. <a href="https://SITE.atlassian.net/browse/PROJ-NN" data-card-appearance="inline"></a> is stacked on them.</p>
+<p><span data-type="mention" data-user-id="ACCOUNT_ID">@NAME</span> THE ASK, in one line.</p>
+```
+
+### Status report with a table (HTML)
+
+A table never goes inside a panel: put it between them.
+
+```html
+<div data-type="panel-success">
+<h3>LIVE SINCE YYYY-MM-DD</h3>
+<p>ONE SENTENCE ON WHAT NOW WORKS. <a href="https://github.com/ORG/REPO/pull/NN" data-card-appearance="inline"></a></p>
+</div>
+<table>
+<thead><tr><th>Case</th><th>Result</th></tr></thead>
+<tbody>
+<tr><td>CASE</td><td><span data-type="status" data-color="green">PASS</span></td></tr>
+<tr><td>CASE</td><td><span data-type="status" data-color="red">FAIL</span></td></tr>
+</tbody>
+</table>
+<div data-type="panel-warning">
+<p><strong>Still open:</strong> ITEM, WHY IT MATTERS. Owner: NAME.</p>
+</div>
+```
+
+### Blocker (HTML)
+
+```html
+<div data-type="panel-error">
+<p><strong>Blocked:</strong> THE WORK, and what it stops.</p>
+<p><strong>What would unblock it:</strong> THE THING, from <span data-type="mention" data-user-id="ACCOUNT_ID">@NAME</span>.</p>
+<p><strong>Since:</strong> <time datetime="YYYY-MM-DD">YYYY-MM-DD</time></p>
+</div>
+```
+
+### Decision (HTML)
+
+A real decision node, which the wiki path has to fake.
+
+```html
+<ul data-type="decision-list"><li data-type="decision-item" data-state="DECIDED">THE DECISION IN ONE SENTENCE.</li></ul>
+<p>Decided by NAME on YYYY-MM-DD. Revisit if CONDITION.</p>
+```
+
+### A question for someone (HTML)
+
+```html
+<p><span data-type="mention" data-user-id="ACCOUNT_ID">@NAME</span> THE QUESTION, with the one fact they need to answer it.</p>
 ```

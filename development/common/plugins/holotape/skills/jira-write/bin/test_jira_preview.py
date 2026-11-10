@@ -160,7 +160,8 @@ class CommentClean(unittest.TestCase):
         templates = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "references", "templates.md")
         with open(templates, encoding="utf-8") as f:
             content = f.read()
-        comments, descriptions = content.split("## Descriptions")
+        comments, rest = content.split("## Descriptions")
+        descriptions = rest.split("## Official Atlassian MCP")[0]
         comment_blocks = re.findall(r"### (.+?)\n.*?" + FENCE + r"markdown\n(.*?)" + FENCE, comments, re.S)
         description_blocks = re.findall(r"### (.+?)\n.*?" + FENCE + r"\n(.*?)" + FENCE, descriptions, re.S)
         self.assertGreaterEqual(len(comment_blocks), 5)
@@ -245,6 +246,33 @@ class Description(unittest.TestCase):
             "{panel}",
         ])
         self.assertEqual(jp.lint_description(text), [])
+
+
+class OfficialTemplates(unittest.TestCase):
+    NOT_HTML = {
+        "wiki markup": r"\{(?:panel|color|code|quote)[:}]|\[~accountid:|\|smart-link\]|^\s*h[1-6]\.\s|\[[^\]|\n]+\|https?://",
+        "markdown": r"\*\*[^*\n]+\*\*|\[[^\]\n]+\]\(https?://|^\s*- ",
+        "document wrapper": r"<(?:html|head|body)\b",
+        "column layout": r"<section\b",
+        "table in a panel": r"<div data-type=\"panel[^\"]*\">(?:(?!</div>).)*<table",
+        "bare <": r"<(?![A-Za-z/!])",
+        "card with text": r"data-card-appearance=\"[^\"]*\">[^<]",
+        "mention without an id": r"data-type=\"mention\"(?![^>]*data-user-id=\"[^\"]+\")",
+    }
+
+    def blocks(self):
+        templates = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "references", "templates.md")
+        with open(templates, encoding="utf-8") as f:
+            official = f.read().split("## Official Atlassian MCP")[1]
+        return re.findall(r"### (.+?)\n.*?" + FENCE + r"html\n(.*?)" + FENCE, official, re.S)
+
+    def test_html_templates_exist(self):
+        self.assertGreaterEqual(len(self.blocks()), 3)
+
+    def test_html_templates_are_plain_html(self):
+        for name, body in self.blocks():
+            for what, pattern in self.NOT_HTML.items():
+                self.assertIsNone(re.search(pattern, body, re.M | re.S), f"{name}: {what}")
 
 
 class Cli(unittest.TestCase):
