@@ -159,14 +159,14 @@
     {
       "name": "holotape",
       "source": "./development/common/plugins/holotape",
-      "description": "Holotape: write to Jira so it renders and reads well. Which format each field of the mcp-atlassian tools really takes, what the Markdown converter breaks, a catalogue of every Jira element and how to get it through the MCP, verified comment and description templates, comments shaped for their news (status, panels, icons, smart-link cards, screenshots), a linter that previews what Jira will receive, and the read-first / confirm / verify steps around posting.",
-      "version": "1.2.2",
+      "description": "Holotape: write to Jira so it renders and reads well, through either of the two common Jira MCPs. Works out whether the session has Atlassian's own MCP (the claude.ai connector: Markdown or HTML stored as ADF, comment editing, real mentions, status lozenges and smart-link cards) or mcp-atlassian (wiki markup, a Markdown converter that breaks things) and applies that server's format rules, with a catalogue of every Jira element, comment and description templates for both, comments shaped for their news, a linter that previews what mcp-atlassian will send, and the read-first / confirm / verify steps around posting.",
+      "version": "1.3.0",
       "author": {
         "name": "Marius Serban"
       },
       "homepage": "https://github.com/serban-marius/pip-boy",
       "repository": "https://github.com/serban-marius/pip-boy",
-      "keywords": ["jira", "atlassian", "ticket", "comment", "wiki-markup", "writing", "skill"],
+      "keywords": ["jira", "atlassian", "ticket", "comment", "wiki-markup", "adf", "writing", "skill"],
       "category": "Development Tools"
     },
     {

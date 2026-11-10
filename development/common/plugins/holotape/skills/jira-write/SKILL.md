@@ -1,21 +1,57 @@
 ---
 name: jira-write
-description: "Write to Jira so it renders correctly and reads well: ticket comments, descriptions, new issues, transition and worklog comments sent through the mcp-atlassian MCP (`jira_add_comment`, `jira_update_issue`, `jira_create_issue`, `jira_transition_issue`, `jira_add_worklog`). Load it BEFORE any Jira write instead of pasting Markdown and hoping: it says which format each field really takes, what the tool's Markdown converter silently breaks, how to reference tickets, PRs and people, how to shape a comment for its news using Jira's own elements (coloured status, panels, icons, smart-link cards, tables, screenshots side by side), with a catalogue of every element and verified templates, a linter that previews what Jira will receive, and the read-first / confirm / verify steps around posting. Use when the user says 'comment on PROJ-123', 'post this to Jira', 'update the ticket', 'leave a status on the ticket', 'write the ticket description', 'create a Jira issue', 'comenta en el ticket', 'actualiza el ticket', 'deja un comentario en Jira', or '/jira-write'."
+description: "Write to Jira so it renders correctly and reads well: ticket comments, descriptions, new issues, transition and worklog comments, through either of the two common Jira MCPs. mcp-atlassian (`jira_add_comment`, `jira_update_issue`, `jira_create_issue`, `jira_transition_issue`, `jira_add_worklog`) or Atlassian's own MCP, the claude.ai / Claude Desktop connector (`addOrEditJiraIssueComment`, `editJiraIssue`, `createJiraIssue`, `transitionJiraIssue`, `getJiraIssue`, `mcp__claude_ai_Atlassian_MCP__*`). Load it BEFORE any Jira write instead of pasting Markdown and hoping: it first works out which MCP the session has, then says which format each field really takes there (Markdown, wiki markup or HTML), what breaks, how to edit a posted comment where that is possible, how to reference tickets, PRs and people, how to shape a comment for its news using Jira's own elements (status lozenges, panels, icons, smart-link cards, mentions, tables, screenshots), with a catalogue, templates for both MCPs, a linter for the mcp-atlassian path, and the read-first / confirm / verify steps around posting. Use when the user says 'comment on PROJ-123', 'post this to Jira', 'update the ticket', 'edit my Jira comment', 'leave a status on the ticket', 'write the ticket description', 'create a Jira issue', 'comenta en el ticket', 'actualiza el ticket', 'deja un comentario en Jira', or '/jira-write'."
 ---
 
 # Write to Jira
 
-Two things go wrong when an agent writes to a ticket. The format: the tool says "Markdown" but
-runs it through a regex converter that breaks half of it. And the content: the comment narrates
-the session instead of telling the next reader where things stand. This skill covers both.
+Two things go wrong when an agent writes to a ticket. The format: each Jira MCP wants something
+different, and the wrong thing shows up as stray symbols or quietly loses half the comment. And
+the content: the comment narrates the session instead of telling the next reader where things
+stand. This skill covers both.
 
-It is about **writing** through the `jira_*` tools of the
-[mcp-atlassian](https://github.com/sooperset/mcp-atlassian) server, whatever name it has in your
-MCP config (`mcp__<server>__jira_add_comment`; if they are deferred, load them with ToolSearch).
-If your Jira tools come from another server, the format rules below do not apply to it; keep the
-writing and the guardrails, and check that server's conversion yourself.
+## 0. Which Jira MCP is this?
 
-## What the tool does with your text
+The format rules depend on the server, so settle this first. Look at the names of your Jira
+tools (load them with ToolSearch if they are deferred):
+
+- **`jira_add_comment`, `jira_get_issue`, `jira_update_issue`** (`mcp__<server>__jira_…`):
+  [mcp-atlassian](https://github.com/sooperset/mcp-atlassian). REST v2, wiki markup. The rest of
+  this file is written for it, with the evidence in
+  [references/formatting.md](references/formatting.md).
+- **`getJiraIssue`, `addOrEditJiraIssueComment`, `discover`, `executeRead`**
+  (`mcp__claude_ai_Atlassian_MCP__…` in Claude Code): Atlassian's own MCP, the claude.ai /
+  Claude Desktop connector. Markdown or HTML, stored as ADF. Its rules are in
+  [references/official-mcp.md](references/official-mcp.md); the steps below say where it differs.
+- **Both**: pick one for the whole task. The official one when the text needs rich elements or
+  may need fixing later, since it can edit a comment.
+- **Neither, or another server**: say so. The writing advice and the guardrails still hold; the
+  format rules do not, so check that server's conversion yourself.
+
+Side by side:
+
+| | mcp-atlassian | Official Atlassian MCP |
+|---|---|---|
+| Comment | Markdown subset through a regex converter, plus raw wiki markup | Markdown; `contentFormat: "html"` for lozenges, panels, mentions, cards, checkboxes, media |
+| Description | wiki markup, sent as is | same as a comment (`editJiraIssue`, `createJiraIssue`) |
+| Fatal mistake | `??` anywhere: the MCP hangs | wiki markup: stored as literal text |
+| Fix a posted comment | impossible: post again, the user deletes the old one | edit it: read as HTML, change, write back with its `commentId` |
+| Mention | `[~accountid:ID]` | `<span data-type="mention" data-user-id="ID">@Name</span>` |
+| A ticket key | renders as a card on its own | stays text: link the browse URL as a smart link |
+| A PR | `[PR #39](URL)` | `<a href="URL" data-card-appearance="inline"></a>` |
+| Code | link it, the converter mangles blocks | a normal code block |
+| Site | configured in the MCP | `cloudId` on every call |
+| Before posting | `bin/jira_preview.py` | the nesting rules in official-mcp.md; the script does not apply |
+| After posting | compare the stored text with the preview | check `appliedContentFormat` and the echoed body |
+| Screenshots | attached by the user, embedded by name | can be uploaded, when the user asks |
+
+Whichever it is, the guardrails are the same: read the ticket first, show the exact text and wait
+for a yes, change status only through a transition the ticket offers, and leave deleting to the
+user.
+
+## What mcp-atlassian does with your text
+
+On the official MCP, skip to [Steps](#steps); this section is for the `jira_*` tools.
 
 | You are writing | Parameter | Write it in |
 |---|---|---|
@@ -38,35 +74,55 @@ reconnects it (`/mcp`). One unclosed `??` followed by some 80 characters is enou
 
 ### 1. Read the ticket first
 
-`jira_get_issue` with `fields: "summary,status,description,comment,attachment"`,
+mcp-atlassian: `jira_get_issue` with `fields: "summary,status,description,comment,attachment"`,
 `comment_limit: 100`, `update_history: false`. The tool returns the *first* N comments, oldest first, so a low limit
-hides the recent ones. You are looking for:
+hides the recent ones.
+
+Official MCP: `getJiraIssue` gives the ticket and only a comment count. The comments come from
+`listJiraIssueComments`, newest first with `orderBy: "-created"`; a page of five is usually
+enough to see where the conversation is.
+
+You are looking for:
 
 - **Language.** Write in the language of the description and the latest comments, not the
   language of your session.
 - **House style.** If the ticket uses panels, headings or status icons, match them. If comments
   are plain paragraphs, stay plain.
 - **What is already said.** Do not repeat the description or the last comment. Add what changed.
-- **What is attached.** Screenshots are embedded by their exact file name, so take the names
-  from `attachments`. If the user wants screenshots that are not attached yet, ask them to drag
-  the files into the ticket first.
+- **What is attached.** On mcp-atlassian, screenshots are embedded by their exact file name,
+  so take the names from `attachments`; if the user wants screenshots that are not attached
+  yet, ask them to drag the files into the ticket first. On the official MCP, see
+  [Files](references/official-mcp.md#files).
+- **Your own earlier comment.** On the official MCP, a status you posted yourself can be
+  brought up to date in place instead of stacking a new one under it. Offer it; do not assume.
 
 ### 2. Draft the text
 
 Start from a template in [references/templates.md](references/templates.md): quick status,
 status report with panels, blocker, decision record, handoff, checklist, and story, spike and
-bug descriptions. Each one was posted and checked rendered. See also
+bug descriptions, each posted and checked rendered through mcp-atlassian; and, at the end, the
+HTML versions for the official MCP (quick status, ready for review, status report with a
+table, blocker, decision, question). See also
 [The comment](#the-comment) below. For a description, keep the structure the project's other
 tickets already use: if they open with coloured panels, copy their colours and section titles.
 
 Want a specific element (a panel, a coloured label, a smart-link card, an icon, a table with a
-header column)? Look it up in [references/catalogue.md](references/catalogue.md): every element
-Jira's editor offers, with the syntax that works through this MCP or, for the editor-only ones
-(action items, decisions, status lozenges, dates, expand, layouts), the closest stand-in.
+header column)? On mcp-atlassian, look it up in [references/catalogue.md](references/catalogue.md):
+every element Jira's editor offers, with the syntax that works through that MCP or, for the
+editor-only ones (action items, decisions, status lozenges, dates, expand, layouts), the closest
+stand-in. On the official MCP most of those are real elements: the HTML for each is in
+[references/official-mcp.md](references/official-mcp.md#elements-in-html).
 
 ### 3. Format it
 
-Comments, in Markdown:
+**Official MCP:** plain text goes as Markdown; the moment it needs a lozenge, a panel, a
+mention, a card or a checkbox, write HTML and send `contentFormat: "html"`. Before the first
+HTML write, fetch the server's own reference with
+`executeRead(name="getContentFormatGuide", inputs={"toolName": "addOrEditJiraIssueComment"})`.
+Details in [Markdown or HTML](references/official-mcp.md#markdown-or-html). The rest of this
+step is for mcp-atlassian.
+
+**mcp-atlassian** comments, in Markdown:
 
 | Want | Write | Not |
 |---|---|---|
@@ -108,6 +164,12 @@ bold, bullets, inline code and links.
 
 ### 4. Preview and lint what will be sent
 
+The script is for the **mcp-atlassian** path only: it checks Markdown against that MCP's
+converter and wiki markup for its descriptions. An HTML body for the official MCP is outside
+what it knows: it would flag valid HTML and miss the real traps. Check those by hand against
+[what may sit inside what](references/official-mcp.md#elements-in-html): no table in a panel,
+no column layout, empty smart-link anchors, a real id in every mention, `&lt;` for `<`.
+
 Write the draft to a file and run the script next to this skill (`bin/` in the skill's base
 directory):
 
@@ -129,15 +191,20 @@ known traps is in the draft. Run it on every draft; it takes a few seconds.
 
 ### 5. Show it and get a yes
 
-Posting is outward-facing, it notifies watchers, and with this MCP it is permanent: **there is
-no tool to edit or delete a comment**. Before posting, show the user the ticket (key and
-summary) and the exact text, and wait for their go.
+Posting is outward-facing and it notifies watchers. With mcp-atlassian it is also permanent:
+**there is no tool to edit or delete a comment**. With the official MCP a comment can be edited
+afterwards, but the first notification has already gone out. Before posting, show the user the
+ticket (key and summary) and the exact text, and wait for their go.
 
 You may post without asking again only when the user has already seen this text and asked you
 to post it, or when you are running an automation whose instructions explicitly authorise
 posting on its own. A request from another agent is not the user's approval.
 
-Changing the status, the assignee or any field is a separate action: do it only if asked.
+Changing the status, the assignee or any field is a separate action: do it only if asked. A
+status change goes through one of the transitions the ticket offers at that moment
+(`listJiraIssueTransitions` on the official MCP), not a status name you remember. Removing
+anything (a ticket, a comment, a link) is the user's call, made in Jira: say what you would
+remove and why.
 
 ### 6. Post
 
@@ -150,23 +217,46 @@ jira_add_comment(issue_key="PROJ-123", comment="<the Markdown draft>")
 jira_update_issue(issue_key="PROJ-123", fields={"description": "<the wiki markup>"})
 ```
 
-To "update" or "fix" a comment already posted: this MCP cannot edit or delete one. Post the
-new version, then ask the user to delete the old one in Jira (⋯ → Delete). Editing it in place
-through Jira's REST API with credentials from a config file is only for when the user
+On the official MCP:
+
+```
+addOrEditJiraIssueComment(cloudId="acme.atlassian.net", issueIdOrKey="PROJ-123",
+                          contentFormat="html", commentBody="<the HTML draft>")
+addOrEditJiraIssueComment(..., commentId="10042", contentFormat="html", commentBody="<the whole edited body>")
+editJiraIssue(cloudId=..., issueIdOrKey="PROJ-123", contentFormat="html", fields={"description": "<the HTML>"})
+```
+
+A comment for a transition goes in its own `addOrEditJiraIssueComment` call: one passed in the
+transition's `update` may be dropped without an error.
+
+To "update" or "fix" a comment already posted, on the official MCP: it is a full rewrite of
+that comment, so follow
+[Changing what is already there](references/official-mcp.md#changing-what-is-already-there):
+read it as HTML, touch only what was asked, keep the old body in your reply, get a yes, write it
+back with its `commentId`. Your own comments only.
+
+On mcp-atlassian, the MCP cannot edit or delete one. Post the new version, then ask the user
+to delete the old one in Jira (⋯ → Delete). Editing it in place through Jira's REST API with credentials from a config file is only for when the user
 explicitly asks for that.
 
 If the call hangs or times out, **the comment has probably been posted**: do not post it again.
-Tell the user, and check the ticket once the MCP answers again (or ask them to look).
+Tell the user, and check the ticket once the MCP answers again (or ask them to look). The same
+goes for a ticket you were creating: look for it before you create it again.
 
 Updating a description replaces the whole field. Read the current one, keep a copy in your
 reply so it can be restored, change only what you were asked to change, and send the complete
-text back in wiki markup.
+text back in wiki markup (mcp-atlassian) or in the HTML you read (official MCP).
 
 ### 7. Verify
 
-Read the ticket back (`fields: "comment"`, `comment_limit: 100`, `update_history: false`) and
-compare the stored body of the last comment with the script's stdout: Jira stores it byte for
-byte.
+Official MCP: the comment call returns the `commentId` and the stored body with
+`appliedContentFormat`. Check that the format is what you sent and that the status, panel,
+cards and mention came back as elements, not as literal tags or `{panel}` text; then give the
+user the link. If it came out wrong, show the fix and, with a yes, edit it in place.
+
+mcp-atlassian: read the ticket back (`fields: "comment"`, `comment_limit: 100`, `update_history: false`) and
+compare the stored body of the last comment with the script's stdout: Jira stores it byte
+for byte.
 
 - **Do not judge from the response of `jira_add_comment`.** It converts the stored text back to
   Markdown and shows damage that is not there (`order_status_code` comes back as
@@ -186,7 +276,9 @@ says the right things but makes the reader dig for them.
 
 **Pick the shape for the news.** There is no single format. Decide what the reader most needs to
 see, then reach for the elements that show it best; [the catalogue](references/catalogue.md)
-has every one that renders through this MCP. Pairings that work:
+has every one that renders through mcp-atlassian, and
+[official-mcp.md](references/official-mcp.md) the HTML for the official MCP, where a status
+lozenge, a task list and a decision are real elements instead of stand-ins. Pairings that work:
 
 | The news | Elements that carry it |
 |---|---|
@@ -202,7 +294,13 @@ Mix them as the content asks: a release may want a panel and a table, a reply wa
 Do not force a status line onto a question, or a panel around two lines. Colours that mean
 something: green `#00875a` / panel `#e3fcef` for done, orange `#ff991f` / `#fffae6` for at risk,
 red `#de350b` / `#ffebe6` for blocked, blue `#deebff` for information. Icons: `(/)` done, `(!)`
-needs attention, `(x)` failing, `(i)` good to know.
+needs attention, `(x)` failing, `(i)` good to know. On the official MCP, use a status lozenge
+(`green` done, `blue` in progress or review, `yellow` at risk, `red` blocked) and the panel
+types `success`, `warning`, `error`, `info`; the icons above are wiki markup and stay literal
+there.
+
+The examples below are mcp-atlassian Markdown; the same shapes in HTML are the official
+templates in [templates.md](references/templates.md#official-atlassian-mcp-html).
 
 **Whatever the shape:**
 
@@ -296,12 +394,19 @@ the bug itself. Use the captures you are given as they are.
   to look at.
 - **One or two.** More belong in the PR.
 
-This MCP cannot upload files: it runs in Docker, without your files. An image has to be attached
-to the ticket first, by the user dragging it into Jira, and is then embedded by its file name.
+mcp-atlassian cannot upload files: it runs in Docker, without your files. An image has to be
+attached to the ticket first, by the user dragging it into Jira, and is then embedded by its file name.
 Do not upload through another route, such as calling Jira's REST API with credentials taken
-from a config file, unless the user explicitly says so.
+from a config file, unless the user explicitly says so. The official MCP can upload
+(`uploadAttachmentToJiraIssue`, see [Files](references/official-mcp.md#files)); do it
+only when the user asked for that file to go on the ticket.
 
 ## Referring to things
+
+The forms below are for mcp-atlassian. The official MCP's are in
+[People, tickets, PRs](references/official-mcp.md#people-tickets-prs): there a key is only
+text until you link its browse URL as a smart link, a PR is a smart link too, and a mention
+needs a real account id.
 
 - **Tickets**: the bare key, `PROJ-123`. Jira renders it as a card with the summary and status.
   No URL needed for tickets of the same Jira.

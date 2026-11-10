@@ -7,6 +7,9 @@ Companion to the `jira-write` skill. Every row says how it is known:
 - **rendered**: posted through the tool and looked at in Jira Cloud.
 - **not checked**: nobody looked at the result; it follows how wiki markup is documented.
 
+None of this applies to the official Atlassian MCP (`addOrEditJiraIssueComment`,
+`contentFormat`), which writes ADF from Markdown or HTML: see [official-mcp.md](official-mcp.md).
+
 ## What was checked, and how to check again
 
 | | |

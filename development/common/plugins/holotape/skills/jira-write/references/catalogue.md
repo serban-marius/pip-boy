@@ -9,6 +9,10 @@ the converter turns into wiki markup) and in a **description** (wiki markup, sen
 wiki markup cannot, so no agent can post it through this MCP (every syntax tried stayed
 literal text). Details and failure cases are in [formatting.md](formatting.md).
 
+This catalogue is for mcp-atlassian. On the official Atlassian MCP the editor-only elements
+below (status lozenges, action items, decisions, dates, expand) are real HTML elements: see
+[official-mcp.md](official-mcp.md).
+
 ## Text
 
 | Element | Comment | Description | Known from |
