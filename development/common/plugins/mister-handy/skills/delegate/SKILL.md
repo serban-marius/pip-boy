@@ -208,7 +208,8 @@ prove its own result. Three pieces, all plain scripts:
 
 - **Router** `bin/route.sh <brief>` picks one of three tiers and prints one line
   `<agent> <model> <confidence> <reason>`: `cheap` = `foreman <ladder head>`, `mid` =
-  `MISTER_HANDY_MID` (default `claude sonnet`), `top` = `MISTER_HANDY_TOP` (default `claude opus`).
+  `MISTER_HANDY_MID` (default `claude sonnet`, or `foreman <rung>` to send mid work to the ladder),
+  `top` = `MISTER_HANDY_TOP` (default `claude opus`).
 - **Worker** a headless agent in its own worktree with the same brief, one rung of the ladder at a
   time: `claude:<model>` (`claude -p`) or `pi:<provider>/<model>` (any provider pi knows,
   `pi --list-models`).
@@ -230,6 +231,12 @@ The ladder is `<runner>:<model> <tries>` per line (`#` comments), first hit wins
 ladder in `~/.config` so plugin updates leave it alone. A bare `nan/x` line (the old format) is
 `pi:nan/x`; an unknown runner is `FAILED` before any worker runs. `MISTER_HANDY_ROUTER=rules|jev`
 forces a router.
+
+**Mid on a foreman.** `MISTER_HANDY_MID=foreman <rung>` is the official mid tier for a cheap setup:
+route.sh prints it verbatim, so mid-confidence briefs go to the foreman on that rung instead of to
+Claude (`MISTER_HANDY_ROUTE_THRESHOLD=0.5` with Jev sends most briefs there). An ESCALATE is still
+relaunched on Claude: `bash bin/route.sh --escalate` prints the model, `MISTER_HANDY_ESCALATE` if set,
+else `MISTER_HANDY_MID` when it starts with `claude `, else `claude sonnet`.
 
 Measured on NAN (`bench/RESULTS.md`, ladder `pi:nan/deepseek-v4-flash 2`, `pi:nan/glm5.3-flash 1`):
 deepseek first passed 12/12 runs on the first attempt, glm first 11/12 and about 3× slower; glm once
@@ -261,10 +268,12 @@ systems, are the real gates.
 | `rules` router, anything left (`Risk: low` or `normal` with Acceptance) | `foreman claude:haiku 1.00 rules` |
 | `jev`: missing key, timeout, HTTP error, unknown answer; an empty ladder | `claude sonnet 0.00 jev-<why>` / `empty-ladder` |
 | `jev` answer under `MISTER_HANDY_ROUTE_THRESHOLD` (0.6) | one tier up: `claude sonnet 0.41 low-confidence:cheap` |
-| `jev` answer `cheap` under `MISTER_HANDY_ROUTE_THRESHOLD_ADVISED` (0.3) when `MISTER_HANDY_ADVISOR` is set | one tier up; 0.3-0.6 stays cheap: the advisor covers it |
+| `jev` answer `cheap` under `MISTER_HANDY_ROUTE_THRESHOLD_ADVISED` (0.3) when the advisor is on (`MISTER_HANDY_ADVISOR` set, `MISTER_HANDY_ADVISOR_MAX` not 0) | one tier up; 0.3-0.6 stays cheap: the advisor covers it |
 | `jev` answer `cheap` / `mid` / `top` | `foreman <ladder head> 0.83 jev` / `claude sonnet ...` / `claude opus ...` |
 
-(`claude opus` / `claude sonnet` stand for `MISTER_HANDY_TOP` / `MISTER_HANDY_MID`.)
+(`claude opus` / `claude sonnet` stand for `MISTER_HANDY_TOP` / `MISTER_HANDY_MID`; with
+`MISTER_HANDY_MID=foreman <rung>` a `mid` answer prints that rung, and `route.sh --escalate` still
+prints the Claude model an ESCALATE is relaunched on.)
 Skip routing and launch Claude when the user names the agent or model ("hazlo con Claude", "con
 opus"; "con pi" or "con un modelo barato" forces the foreman), and for investigations, reviews and
 UI tasks that need a preview: they end in judgement, not in a command that exits 0.
@@ -339,7 +348,9 @@ it before substantive work, when stuck, and when it thinks it is done, to weigh 
 again to reconcile instead of silently switching. This is how Claude stays in the decide/advise role
 while a cheap provider implements: Claude tokens are spent only on advice, never on code.
 `claude:` workers never get it. `MISTER_HANDY_ADVISOR_MAX` (4) caps the calls per pi run; past it the
-tool answers "advisor budget used up". Each call becomes `MILESTONE advisor call n/max ($cost)` and
+tool answers "advisor budget used up". `MISTER_HANDY_ADVISOR_MAX=0` turns the advisor off everywhere:
+the foreman loads no extension and writes no advisor rules, and route.sh drops the advised threshold.
+Each call becomes `MILESTONE advisor call n/max ($cost)` and
 DONE/ESCALATE end with `advisor <calls> calls $<total>` (log in `<hq>/logs/<slug>/advisor.log`) and `claude $<total>`, the summed `total_cost_usd` of every `claude:` worker run and the `claude:` reviewer (left out when zero).
 Recommend `MISTER_HANDY_ADVISOR=opus` for `Risk: normal` briefs on a pi ladder (`sonnet` when quota
 is tight). The advisor has no tools and runs without the GH and Typesafe tokens. A failed or
@@ -354,12 +365,20 @@ cap for `pi:nan`. A run that ends on a rate limit is retried after a backoff
 (`MISTER_HANDY_RATE_BACKOFF` 60 s, doubling to 600 s, up to `MISTER_HANDY_RATE_RETRIES` 5 times)
 with `MILESTONE ... rate-limited, retry n`, and does not use up a ladder try.
 
+NAN work is paid for in credits, not per token you can see in a bill, and NAN has no balance
+endpoint. Before a batch of NAN work, run `bash <skill dir>/bin/nan-usage.sh`: `nan-usage set
+<credits left>` anchors to the dashboard's "Credits left this period", and the status afterwards
+subtracts each model's tokens from `/v1/usage` × its measured credits per 1M tokens (matched the
+dashboard within 2%); `--quiet` prints one line, and it exits 2 under `NAN_WARN_PCT` (20). Tell the
+user before a batch when it is low, instead of letting the ladder discover it as 429s.
+
 **When the watcher wakes HQ:**
 
 - `DONE` with a PR URL: as any DONE. `DONE <sha> on <branch> (local)`: not `no-code`; look at
   `git -C <worktree> diff --stat <base>...` and push + open the PR yourself, or launch a reviewer.
 - `ESCALATE`: relaunch on Claude in the same worktree, as Mode 1 step 6 with
-  `--worktree path:<worktree>` and the mid tier's model (`MISTER_HANDY_MID`, `sonnet` by default):
+  `--worktree path:<worktree>` and the model `bash bin/route.sh --escalate` prints (Claude sonnet by
+  default; not `MISTER_HANDY_MID` when that is a `foreman` rung, which the cheap ladder already tried):
   one tier up from the cheap one, as the router does; the top tier only when the user asks or the
   mid relaunch also fails. Send: "Your task brief is
   in <brief>. A cheap worker tried it first and failed: read <hq>/logs/<slug>/summary.md and
@@ -467,7 +486,7 @@ When it wakes HQ, handle what it printed, then arm it again unless it said `ALL-
 | `WAITING-APPROVAL <slug> <message>` | The worker's agent has sat on a permission prompt for over a minute (its Orca card). Tell the user at once, one line: slug, what it was doing, and that the prompt waits in that worktree's terminal. HQ never answers permission prompts. |
 | `PR-MERGED` / `PR-CLOSED <slug> <url>` | The PR left review. Close the worktree (Mode 5), or append `hq KEPT <slug> <why>` when its `on-done` is `keep` or `closable.sh` says `KEEP` (tell the user why). Launch tasks waiting `after` it. |
 | `FAILED` | One line with the reason; ask whether to relaunch with a better brief. |
-| `ESCALATE` | The foreman ran out of cheap attempts (or stopped on a secret or a branch change). Relaunch on the mid tier (Claude sonnet by default) in the same worktree with the foreman's summary ("Cheap workers"), without asking; tell the user one line. Tasks `after` it keep waiting for the relaunch's DONE. |
+| `ESCALATE` | The foreman ran out of cheap attempts (or stopped on a secret or a branch change). Relaunch on Claude in the same worktree with the model `route.sh --escalate` prints (sonnet by default) and the foreman's summary ("Cheap workers"), without asking; tell the user one line. Tasks `after` it keep waiting for the relaunch's DONE. |
 | `ANSWER` | Relay the answer in one line. `PREVIEW <url> <login>` and `PUNCH-LIST <path>` go to the user at once, with the URL and login or the screenshots. |
 | `BLOCKED` | Put the worker's exact question to the user. Forward the reply (Mode 4). |
 | `REVISED` | Launch the re-review, or report if no reviewer is involved. |

@@ -225,6 +225,12 @@ jev cheap 0.41
 expect "the advised threshold is configurable"  "$(MISTER_HANDY_ADVISOR=opus MISTER_HANDY_ROUTE_THRESHOLD_ADVISED=0.5 route)" "claude sonnet 0.41 low-confidence:cheap"
 jev mid 0.41
 expect "the advised threshold applies only to cheap answers" "$(MISTER_HANDY_ADVISOR=opus route)" "claude opus 0.41 low-confidence:mid"
+jev cheap 0.41
+expect "MISTER_HANDY_ADVISOR_MAX=0 turns the advised threshold off" "$(MISTER_HANDY_ADVISOR=opus MISTER_HANDY_ADVISOR_MAX=0 route)" "claude sonnet 0.41 low-confidence:cheap"
+jev cheap 0.25
+expect "with the advisor off a cheap answer under 0.6 still climbs" "$(MISTER_HANDY_ADVISOR=opus MISTER_HANDY_ADVISOR_MAX=0 route)" "claude sonnet 0.25 low-confidence:cheap"
+jev mid 0.74
+expect "MISTER_HANDY_MID=foreman <rung> is the mid tier" "$(MISTER_HANDY_MID='foreman pi:nan/deepseek-v4-flash' route)" "foreman pi:nan/deepseek-v4-flash 0.74 jev"
 jev top 0.9
 expect "Jev picks Claude"                       "$(route)" "claude opus 0.90 jev"
 expect "a Jev timeout routes to Claude"         "$(CURL_RC=28 route)" "claude sonnet 0.00 jev-timeout"
@@ -256,6 +262,10 @@ expect "rules router is used when no Jev key exists" "$(env -u TYPESAFE_API_KEY 
 expect "the jev router without a key is mid"    "$(MISTER_HANDY_ROUTER=jev env -u TYPESAFE_API_KEY bash "$here/route.sh" "$B" 2>&1)" "claude sonnet 0.00 jev-no-key"
 brief "Risk: high" "$ACC"
 expect "rules router keeps the hard gates"      "$(MISTER_HANDY_ROUTER=rules MISTER_HANDY_TOP='claude fable' route)" "claude fable 1.00 risk-high"
+expect "an ESCALATE relaunch defaults to sonnet" "$(bash "$here/route.sh" --escalate)" "claude sonnet"
+expect "--escalate follows a claude mid tier"     "$(MISTER_HANDY_MID='claude fable' bash "$here/route.sh" --escalate)" "claude fable"
+expect "--escalate leaves a foreman mid tier for Claude" "$(MISTER_HANDY_MID='foreman pi:nan/deepseek-v4-flash' bash "$here/route.sh" --escalate)" "claude sonnet"
+expect "--escalate prefers MISTER_HANDY_ESCALATE" "$(MISTER_HANDY_ESCALATE='claude opus' MISTER_HANDY_MID='claude fable' bash "$here/route.sh" --escalate)" "claude opus"
 expect "the plugin default ladder is claude-only" "$(unset MISTER_HANDY_LADDER; . "$here/brief.sh"; ladder | tr '\n' ' ')" "claude:haiku 2 claude:sonnet 1 "
 mkdir -p "$XDG_CONFIG_HOME/mister-handy" && printf '# mine\npi:openrouter/qwen/qwen3-coder 2\nollama/qwen3:8b\n' >"$XDG_CONFIG_HOME/mister-handy/ladder"
 expect "the ladder comes from ~/.config when set" "$(unset MISTER_HANDY_LADDER; . "$here/brief.sh"; ladder | tr '\n' ' ')" "pi:openrouter/qwen/qwen3-coder 2 pi:ollama/qwen3:8b 1 "
@@ -415,6 +425,14 @@ expect "a silent reviewer is inconclusive"      "$(grep -c 'DONE.*review inconcl
 fresh "" pass
 MISTER_HANDY_ADVISOR=opus foreman >/dev/null
 expect "the worker gets the advisor extension"  "$(grep -c -- "^$here/advisor.ts\$" "$PI_ARGS") $(grep -c 'You have an `advisor` tool' "$PI_LAST_PROMPT") $(grep -cx -- '-e' "$PI_ARGS")" "1 1 1"
+fresh "" pass
+MISTER_HANDY_ADVISOR=opus MISTER_HANDY_ADVISOR_MAX=0 foreman >/dev/null
+expect "MISTER_HANDY_ADVISOR_MAX=0 loads no advisor extension or rules" "$(grep -c advisor "$PI_ARGS") $(grep -c 'advisor' "$PI_LAST_PROMPT") $(states)" "0 0 START MILESTONE DONE "
+if command -v node >/dev/null 2>&1; then
+  expect "the advisor budget treats 0 as 0 and only unset/invalid as 4" \
+    "$(node --input-type=module -e "const { advisorMax } = await import('$here/advisor-max.mjs'); console.log([0, '0', undefined, 'x', '2'].map(advisorMax).join(' '))" 2>&1)" \
+    "0 0 4 4 2"
+fi
 fresh "" pass
 foreman >/dev/null
 expect "without MISTER_HANDY_ADVISOR no extension is loaded" "$(grep -c advisor "$PI_ARGS") $(grep -c 'advisor' "$PI_LAST_PROMPT")" "0 0"
@@ -708,6 +726,29 @@ expect "savings --all: positional dedup"        "$(HOME=$ALLHOME MISTER_HANDY_WO
 expect "savings --all: nothing found lines"     "$(emptyall | wc -l | tr -d ' ')" "4"
 expect "savings --all: nothing found TOTAL"     "$(emptyall | tail -n 1)" '- TOTAL - - - $0.00 $0.00 saving $0.00'
 expect "savings: --all with missing positional exits 2" "$(HOME=$ALLHOME MISTER_HANDY_WORKSPACES=$ALLWS bash "$here/savings.sh" --all "$tmp/nope" 2>/dev/null; echo $?)" "2"
+
+NU=$tmp/nan-usage
+mkdir -p "$NU"
+nu_today=$(date +%Y-%m-%d)
+nu_prev=$(date -v-1d +%Y-%m-%d 2>/dev/null || date -d '-1 day' +%Y-%m-%d)
+nanusage() {
+  NAN_USAGE_FILE=$NU/usage.json NAN_CREDITS_STATE=$NU/state.json NAN_PERIOD_CREDITS=7000 \
+    NAN_WARN_PCT=${NAN_WARN_PCT:-20} bash "$here/nan-usage.sh" "$@"
+}
+nu_usage() { # today's flash tokens, yesterday's pro tokens
+  printf '{"data":[{"date":"%s","model":"deepseek-v4-flash","total_tokens":%s},{"date":"%s","model":"deepseek-v4-pro","total_tokens":1000000}]}\n' \
+    "$nu_today" "$1" "$nu_prev" >"$NU/usage.json"
+}
+nu_usage 1000000
+expect "nan-usage set anchors to the dashboard" "$(nanusage set 7000)" "anchored: 7000 credits left on $nu_today"
+expect "nan-usage status prints left and period" "$(nanusage | head -n 1)" "NAN credits left ≈ 7000 / 7000  (100%)"
+expect "nan-usage counts only what came after the anchor" "$(nanusage | sed -n '2p')" "  spent since anchor $nu_today: 0"
+expect "nan-usage --quiet is one line"          "$(nanusage --quiet)" "NAN 7000/7000 cr (100%)"
+nu_usage 3000000
+expect "nan-usage subtracts usage × the measured rate" "$(nanusage | head -n 1)" "NAN credits left ≈ 6997 / 7000  (99%)"
+expect "nan-usage warns and exits 2 under NAN_WARN_PCT" "$(NAN_WARN_PCT=100 nanusage >/dev/null 2>&1; echo $?) $(NAN_WARN_PCT=100 nanusage | grep -c 'WARNING: under 100%')" "2 1"
+expect "nan-usage wants an anchor before a status" "$(NAN_CREDITS_STATE=$NU/none.json NAN_USAGE_FILE=$NU/usage.json bash "$here/nan-usage.sh" >/dev/null 2>&1; echo $?) $(NAN_CREDITS_STATE=$NU/none.json NAN_USAGE_FILE=$NU/usage.json bash "$here/nan-usage.sh" 2>&1 | grep -c "run 'nan-usage set")" "1 1"
+expect "nan-usage refuses a bad usage answer"  "$(printf 'nope' >"$NU/bad.json"; NAN_CREDITS_STATE=$NU/state.json NAN_USAGE_FILE=$NU/bad.json bash "$here/nan-usage.sh" >/dev/null 2>&1; echo $?)" "1"
 
 expect "the HQ note tells HQ to scout before a code brief" "$(MISTER_HANDY=hq CLAUDE_PROJECT_DIR=$tmp bash "$here/../../../hooks/role.sh" | grep -c 'run bin/scout.sh <repo dir> <question file> with the user.s request to draft its .What we already know. instead of reading the code yourself')" "1"
 expect "the HQ note tells HQ to route code tasks" "$(MISTER_HANDY=hq CLAUDE_PROJECT_DIR=$tmp bash "$here/../../../hooks/role.sh" | grep -c 'run bin/route.sh, and launch what it prints')" "1"

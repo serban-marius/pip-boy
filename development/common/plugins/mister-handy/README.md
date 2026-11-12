@@ -75,6 +75,11 @@ route.sh brief  ->  foreman claude:haiku 1.00 rules   foreman.sh <slug> <brief> 
 | + any pi provider | `pi` with the provider set up in pi | e.g. `pi:nan/deepseek-v4-flash 2`, `pi:nan/glm5.3-flash 1` (benchmarked), `pi:openrouter/<vendor>/<model>`, `pi:ollama/<model>` | rules or Jev |
 | + Jev router | `TYPESAFE_API_KEY` (or the macOS keychain item `jev`) | any | Jev |
 
+The mid tier can be the foreman too: `MISTER_HANDY_MID=foreman <rung>` makes route.sh send mid-confidence
+briefs to a cheap worker instead of to Claude (`route.sh <brief>` prints the rung it would run). An
+ESCALATE is still relaunched on Claude: `route.sh --escalate` prints that model — `MISTER_HANDY_ESCALATE`
+if set, else `MISTER_HANDY_MID` when it starts with `claude `, else `claude sonnet`.
+
 ### Recommended setup (measured)
 
 Measured on this repo, 2026-10-22: replayed tasks with their merged commit's tests hidden from the
@@ -105,6 +110,53 @@ quality you get today, keep the HQ on Opus with the rules router and an Opus adv
 
 Jev routed most real tasks to Sonnet (confidence 0.3-0.67) that the NAN foreman passed in the
 benchmark, so `rules` sends more work to the cheap ladder; the ladder escalates to Claude when it fails.
+
+### NAN + Jev profile (measured 2026-11-11/12)
+
+Same bench briefs, five big NAN models added (6 tasks × 2 reps each, `bench/RESULTS.md`), and two real
+tasks on another repo routed by Jev to the flash ladder. Credits are NAN's price list in credits per 1M
+tokens (1,000 credits = €26 list), measured on these agentic runs and divided by the task's total tokens:
+
+| Model | Median credits per task | ≈ € per task | Hidden tests | Timeouts |
+|-------|-------------------------|--------------|--------------|----------|
+| `deepseek-v4-flash` | 2.7 | 0.07 | 12/12 | 1 |
+| `glm5.3-flash` | 1.3 | 0.03 | 9/12 | 1 |
+| `deepseek-v4-pro` | 20 | 0.51 | 10/12 | 0 |
+| `glm5.3` | 21 | 0.55 | 9/12 | 1 |
+| `hy4` | 23 | 0.60 | 9/12 | 4 |
+| `kimi-k3.1-pro` | 24 | 0.62 | 9/12 | 5 |
+| `qwen3.8-max` | 25 | 0.65 | 10/12 | 1 |
+
+The big models cost about 8× the flash ladder and passed less: most of their failures were
+`jira-preview` (9 of their 10 runs there, near misses at 36/37 hidden tests or a wrong module name),
+which deepseek-v4-flash passes. Twelve runs per arm on one repo is a small sample: treat one or two
+runs of difference as noise, and the euro column as list price, not a bill.
+
+The setup measured here, in `~/.config` (keep it there so plugin updates leave it alone):
+
+```text
+~/.config/mister-handy/ladder   pi:nan/deepseek-v4-flash 2
+                                pi:nan/deepseek-v4-pro 1
+                                claude:sonnet 1
+~/.config/mister-handy/env      MISTER_HANDY_ROUTER=jev
+                                MISTER_HANDY_MID=foreman pi:nan/deepseek-v4-flash
+                                MISTER_HANDY_ROUTE_THRESHOLD=0.5
+                                MISTER_HANDY_ADVISOR=
+                                MISTER_HANDY_NAN_SLOTS=3
+```
+
+- The **mid tier is the foreman**, so a mid-confidence brief gets the cheap ladder with its retries and
+  the Sonnet rung as a safety net, instead of going straight to Sonnet. Re-run on the 6 bench briefs,
+  defaults sent 3 to Sonnet and 1 (`jira-preview`, confidence 0.53) to Opus; with this MID and threshold
+  0.5 all 6 went to the foreman.
+- **Advisor off** (`MISTER_HANDY_ADVISOR=` and `MISTER_HANDY_ADVISOR_MAX=0`, which is now a real 0).
+  Claude spend on the two real tasks was $1.86 and $1.41 per task against a $3.16 Opus baseline, but
+  $1.25-1.70 of each was the Opus advisor and only $0.16 the Sonnet reviewer: the advisor is the main
+  leftover Claude cost, so this profile relies on the ladder and the reviewer instead. Both tasks were
+  DONE on the first attempt by deepseek-v4-flash. Two tasks is not enough to promise that without an
+  advisor; keep the profile above, with `MISTER_HANDY_ADVISOR=opus`, when the briefs are harder.
+- An ESCALATE from this profile is relaunched on `claude sonnet` (`route.sh --escalate`), not on the
+  foreman: the cheap ladder has already failed it once.
 
 ### Keys and setup
 
@@ -158,6 +210,13 @@ benchmark, so `rules` sends more work to the cheap ladder; the ladder escalates 
   MISTER_HANDY_ADVISOR=opus
   ```
 - **Reviewer prompt**: `~/.config/mister-handy/judge.md` (used when `MISTER_HANDY_REVIEW` is set).
+- **NAN credits**: `bash skills/delegate/bin/nan-usage.sh` estimates what is left. NAN has no balance
+  endpoint, so `nan-usage set <credits left>` anchors to the dashboard's "Credits left this period" and
+  the script subtracts each model's tokens (from `GET /v1/usage`) × its measured credits per 1M tokens;
+  it matched the dashboard within 2%. `nan-usage --quiet` prints one line (`NAN 6989/7000 cr (99%)`) and
+  the status exits 2 under `NAN_WARN_PCT` (20). The anchor lives in
+  `${XDG_CONFIG_HOME:-~/.config}/mister-handy/nan-credits.json`; the key comes from `NAN_API_KEY`, else
+  pi's `~/.pi/agent/models.json` nan `apiKey` (a `!command` is run). Run it before a batch of NAN work.
 - The foreman unsets `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` and `TYPESAFE_API_KEY`
   for workers. Never put keys in briefs or STATUS lines.
 
@@ -165,7 +224,8 @@ benchmark, so `rules` sends more work to the cheap ladder; the ladder escalates 
 |--------------|---------|
 | `MISTER_HANDY_LADDER` | `<runner>:<model> <tries>`, comma-separated; else `~/.config/mister-handy/ladder` (one per line), else the plugin's `skills/delegate/ladder` (`claude:haiku` ×2, `claude:sonnet` ×1); a bare `nan/x` is `pi:nan/x`; an attempt cut by the output cap skips to the next rung |
 | `MISTER_HANDY_ROUTER` | `jev` when a Jev key is found, else `rules` (no LLM: what passes the hard gates goes to the foreman) |
-| `MISTER_HANDY_MID` / `MISTER_HANDY_TOP` | `claude sonnet` / `claude opus` |
+| `MISTER_HANDY_MID` / `MISTER_HANDY_TOP` | `claude sonnet` / `claude opus`; MID may be a foreman rung, `foreman pi:nan/deepseek-v4-flash` |
+| `MISTER_HANDY_ESCALATE` | the model HQ relaunches an ESCALATE on (`route.sh --escalate`); default `MISTER_HANDY_MID` when it starts with `claude `, else `claude sonnet` |
 | `MISTER_HANDY_ROUTE_THRESHOLD` | 0.6 Jev confidence, below it one tier up |
 | `MISTER_HANDY_ROUTE_THRESHOLD_ADVISED` | 0.3 instead for a Jev `cheap` answer when `MISTER_HANDY_ADVISOR` is set, so 0.3-0.6 stays cheap |
 | `MISTER_HANDY_PI_TIMEOUT` / `MISTER_HANDY_CHECK_TIMEOUT` | 1800 s per attempt (any runner) / 600 s per command |
@@ -173,7 +233,7 @@ benchmark, so `rules` sends more work to the cheap ladder; the ladder escalates 
 | `MISTER_HANDY_CLAUDE_ADVISOR` | off: `claude:` workers and reviewers run with `--settings '{"advisorModel":""}'`, so your Claude Code `advisorModel` does not bill on every attempt; `keep` leaves it on |
 | `MISTER_HANDY_PI_FLAGS` | extra pi flags; `-ne` (no pi extensions) is always on, and their `.atl/` + `.gitignore` lines are removed anyway |
 | `MISTER_HANDY_REVIEW` | off; a rung (e.g. `claude:sonnet`, `pi:nan/glm5.3-flash`) for one read-only review pass, REVISE gets one more round; set it for `Risk: normal` briefs. `MISTER_HANDY_JUDGE` or `~/.config/mister-handy/judge.md` adds a reviewer system prompt |
-| `MISTER_HANDY_ADVISOR` / `MISTER_HANDY_ADVISOR_MAX` | off; a Claude model (e.g. `opus`) a `pi:` worker can consult through an `advisor` tool that sees its whole conversation, max 4 calls per run; recommended for `Risk: normal` briefs |
+| `MISTER_HANDY_ADVISOR` / `MISTER_HANDY_ADVISOR_MAX` | off; a Claude model (e.g. `opus`) a `pi:` worker can consult through an `advisor` tool that sees its whole conversation, max 4 calls per run; `MISTER_HANDY_ADVISOR_MAX=0` turns it off (no extension, no advisor rules, no advised routing threshold); recommended for `Risk: normal` briefs |
 | `MISTER_HANDY_HEARTBEAT` | 600 s between `MILESTONE still working` lines during an attempt |
 | `MISTER_HANDY_SLOTS` | 3 worker runs at once per user and provider (`pi:<provider>`, `claude`), machine-wide; `MISTER_HANDY_NAN_SLOTS` sets `pi:nan` alone (NAN allows 7 parallel requests per key) |
 | `MISTER_HANDY_RATE_BACKOFF` / `MISTER_HANDY_RATE_RETRIES` | 60 s doubling to 600 s / 5: a 429 is retried without using a ladder try |

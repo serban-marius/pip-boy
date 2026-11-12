@@ -68,7 +68,7 @@ def row: "| " + join(" | ") + " |";
   "",
   "## Jev pick vs best cheapest passing arm",
   "",
-  "Best cheapest passing arm: the cheapest tier (NAN < Sonnet < Opus) with an arm passing at least half its runs; within the tier, the highest pass rate, then the fastest. Jev = raw answer to route.sh's question; route.sh = what cheap-mvp's router finally picks (its pre-checks and confidence threshold included).",
+  "Best cheapest passing arm: the cheapest tier (NAN < Sonnet < Opus) with an arm passing at least half its runs; within the tier, the highest pass rate, then the fastest. Every NAN arm counts as the cheap tier whatever it costs per token: the plugin README's NAN credits table has the measured cost per model. Jev = raw answer to route.sh's question; route.sh = what cheap-mvp's router finally picks (its pre-checks and confidence threshold included).",
   "",
   "| task | best cheapest passing | Jev | route.sh | Jev tier right? |",
   "|---|---|---|---|---|",

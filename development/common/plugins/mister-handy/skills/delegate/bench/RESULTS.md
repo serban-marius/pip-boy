@@ -1,39 +1,39 @@
 # Bench results
 
-96 runs, 6 tasks, 9 arms. Each task × arm × rep counts its last run that was not cut short by NAN throttling or an API error (5 such runs re-run, not counted; 13 earlier runs of the same task × arm × rep, not counted; 5 superseded by a harness change and re-run). Cell: passes/runs (mean fraction of the merged commit's new tests passing).
+156 runs, 6 tasks, 14 arms. Each task × arm × rep counts its last run that was not cut short by NAN throttling or an API error (5 such runs re-run, not counted; 13 earlier runs of the same task × arm × rep, not counted; 5 superseded by a harness change and re-run). Cell: passes/runs (mean fraction of the merged commit's new tests passing).
 
 ## Pass rate by task × arm
 
-| task | claude-opus | claude-sonnet | pi-deepseek-v4-flash | pi-glm5.3-flash | pi-glm5.3-flash-ne | pi-mimo-v2.6-flash | pi-qwen3.8-flash | pipeline | pipeline-ds |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| overseer-deno | 1/1 (1) | 1/1 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) |
-| overseer-worktree | 1/1 (1) | 1/1 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) |
-| jira-length | 1/1 (1) | 1/1 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 1/2 (0.5) | 2/2 (1) | 2/2 (1) |
-| close-worktrees | 1/1 (1) | 1/1 (1) | 2/2 (1) | 1/2 (0.84) | 1/2 (0.95) | 0/2 (0.45) | 2/2 (1) | 1/2 (0.89) | 2/2 (1) |
-| reachable-workers | 1/1 (1) | 1/1 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 1/2 (0.5) | 2/2 (1) | 2/2 (1) | 2/2 (1) |
-| jira-preview | 1/1 (1) | 1/1 (1) | 2/2 (1) | 0/2 (0) | 0/2 (0.96) | 0/2 (0) | 1/2 (0.99) | 2/2 (1) | 2/2 (1) |
+| task | claude-opus | claude-sonnet | pi-deepseek-v4-flash | pi-deepseek-v4-pro | pi-glm5.3 | pi-glm5.3-flash | pi-glm5.3-flash-ne | pi-hy4 | pi-kimi-k3.1-pro | pi-mimo-v2.6-flash | pi-qwen3.8-flash | pi-qwen3.8-max | pipeline | pipeline-ds |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| overseer-deno | 1/1 (1) | 1/1 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) |
+| overseer-worktree | 1/1 (1) | 1/1 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) |
+| jira-length | 1/1 (1) | 1/1 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 1/2 (0.5) | 2/2 (1) | 2/2 (1) | 2/2 (1) |
+| close-worktrees | 1/1 (1) | 1/1 (1) | 2/2 (1) | 2/2 (1) | 1/2 (0.95) | 1/2 (0.84) | 1/2 (0.95) | 1/2 (0.95) | 1/2 (0.95) | 0/2 (0.45) | 2/2 (1) | 2/2 (1) | 1/2 (0.89) | 2/2 (1) |
+| reachable-workers | 1/1 (1) | 1/1 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 1/2 (0.5) | 1/2 (0.5) | 2/2 (1) | 2/2 (1) | 2/2 (1) | 2/2 (1) |
+| jira-preview | 1/1 (1) | 1/1 (1) | 2/2 (1) | 0/2 (0.49) | 0/2 (0.96) | 0/2 (0) | 0/2 (0.96) | 0/2 (0.97) | 1/2 (0.99) | 0/2 (0) | 1/2 (0.99) | 0/2 (0) | 2/2 (1) | 2/2 (1) |
 
 ## Median wall time (s)
 
-| task | claude-opus | claude-sonnet | pi-deepseek-v4-flash | pi-glm5.3-flash | pi-glm5.3-flash-ne | pi-mimo-v2.6-flash | pi-qwen3.8-flash | pipeline | pipeline-ds |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| overseer-deno | 54 | 57 | 189.5 | 136.5 | 115.5 | 363 | 224.5 | 131 | 82.5 |
-| overseer-worktree | 345 | 52 | 317 | 274 | 295.5 | 1035.5 | 1152 | 544 | 206 |
-| jira-length | 339 | 62 | 339 | 484 | 385.5 | 1337.5 | 924.5 | 359.5 | 185.5 |
-| close-worktrees | 503 | 119 | 433 | 1082.5 | 748.5 | 1089.5 | 1049 | 982.5 | 686.5 |
-| reachable-workers | 478 | 327 | 1216 | 919 | 820.5 | 1505 | 648.5 | 1426 | 807.5 |
-| jira-preview | 1022 | 181 | 454.5 | 785.5 | 1106.5 | 661 | 1497.5 | 1717 | 366.5 |
+| task | claude-opus | claude-sonnet | pi-deepseek-v4-flash | pi-deepseek-v4-pro | pi-glm5.3 | pi-glm5.3-flash | pi-glm5.3-flash-ne | pi-hy4 | pi-kimi-k3.1-pro | pi-mimo-v2.6-flash | pi-qwen3.8-flash | pi-qwen3.8-max | pipeline | pipeline-ds |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| overseer-deno | 54 | 57 | 189.5 | 262.5 | 109.5 | 136.5 | 115.5 | 417.5 | 530 | 363 | 224.5 | 489 | 131 | 82.5 |
+| overseer-worktree | 345 | 52 | 317 | 642 | 441.5 | 274 | 295.5 | 1134 | 860.5 | 1035.5 | 1152 | 520.5 | 544 | 206 |
+| jira-length | 339 | 62 | 339 | 498 | 298 | 484 | 385.5 | 1136 | 587 | 1337.5 | 924.5 | 908 | 359.5 | 185.5 |
+| close-worktrees | 503 | 119 | 433 | 813 | 1080.5 | 1082.5 | 748.5 | 1505 | 1505 | 1089.5 | 1049 | 1242 | 982.5 | 686.5 |
+| reachable-workers | 478 | 327 | 1216 | 912 | 883 | 919 | 820.5 | 1196 | 1099 | 1505 | 648.5 | 1331.5 | 1426 | 807.5 |
+| jira-preview | 1022 | 181 | 454.5 | 950.5 | 769.5 | 785.5 | 1106.5 | 1364 | 1505 | 661 | 1497.5 | 674 | 1717 | 366.5 |
 
 ## Cost per run (Claude: total USD for the task's runs; NAN: median tokens per run, quota not money)
 
-| task | claude-opus | claude-sonnet | pi-deepseek-v4-flash | pi-glm5.3-flash | pi-glm5.3-flash-ne | pi-mimo-v2.6-flash | pi-qwen3.8-flash | pipeline | pipeline-ds |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| overseer-deno | $0.43 | $0.17 | 1M | 460k | 226k | 680k | 651k | 168k | 217k |
-| overseer-worktree | $2.62 | $0.23 | 1.7M | 522k | 378k | 1.3M | 3.4M | 510k | 622k |
-| jira-length | $3.03 | $0.27 | 3.2M | 1.2M | 702k | 2.2M | 3.7M | 674k | 1.1M |
-| close-worktrees | $3.29 | $0.4 | 3M | 2.3M | 1.2M | 1.1M | 4.1M | 1.2M | 1.3M |
-| reachable-workers | $3.37 | $0.38 | 2.8M | 1.9M | 1.1M | 2M | 1.5M | 1.5M | 2.3M |
-| jira-preview | $6.23 | $0.54 | 3.4M | 220k | 1.6M | 272k | 5.1M | 1.8M | 1.8M |
+| task | claude-opus | claude-sonnet | pi-deepseek-v4-flash | pi-deepseek-v4-pro | pi-glm5.3 | pi-glm5.3-flash | pi-glm5.3-flash-ne | pi-hy4 | pi-kimi-k3.1-pro | pi-mimo-v2.6-flash | pi-qwen3.8-flash | pi-qwen3.8-max | pipeline | pipeline-ds |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| overseer-deno | $0.43 | $0.17 | 1M | 847k | 583k | 460k | 226k | 1.1M | 476k | 680k | 651k | 817k | 168k | 217k |
+| overseer-worktree | $2.62 | $0.23 | 1.7M | 2.3M | 565k | 522k | 378k | 1.2M | 1.2M | 1.3M | 3.4M | 713k | 510k | 622k |
+| jira-length | $3.03 | $0.27 | 3.2M | 1.9M | 1.4M | 1.2M | 702k | 3.8M | 875k | 2.2M | 3.7M | 1.2M | 674k | 1.1M |
+| close-worktrees | $3.29 | $0.4 | 3M | 3.4M | 3.6M | 2.3M | 1.2M | 2.6M | 404k | 1.1M | 4.1M | 1.4M | 1.2M | 1.3M |
+| reachable-workers | $3.37 | $0.38 | 2.8M | 3M | 1.6M | 1.9M | 1.1M | 6.9M | 1.4M | 2M | 1.5M | 2.1M | 1.5M | 2.3M |
+| jira-preview | $6.23 | $0.54 | 3.4M | 2.3M | 2.4M | 220k | 1.6M | 4.8M | 415k | 272k | 5.1M | 238k | 1.8M | 1.8M |
 
 ## Per arm
 
@@ -42,22 +42,27 @@
 | claude-opus | 6 | 6 (100%) | 1 | 411.5 | $18.96 | 1.2M | 0.97 | 100% | 100% | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | claude-sonnet | 6 | 6 (100%) | 1 | 90.5 | $1.99 | 445k | 1 | 100% | 100% | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | pi-deepseek-v4-flash | 12 | 12 (100%) | 1 | 339 | – | 2.2M | 0.82 | 100% | 92% | 12 | 8 | 1 | 0 | 0 | 0 | 2 |
+| pi-deepseek-v4-pro | 12 | 10 (83%) | 0.91 | 645 | – | 2.3M | 0.79 | 92% | 92% | 12 | 8 | 0 | 1 | 0 | 0 | 0 |
+| pi-glm5.3 | 12 | 9 (75%) | 0.98 | 581.5 | – | 1.6M | 0.78 | 83% | 92% | 12 | 7 | 1 | 0 | 0 | 0 | 0 |
 | pi-glm5.3-flash | 12 | 9 (75%) | 0.81 | 599.5 | – | 917k | 0.65 | 58% | 67% | 12 | 8 | 1 | 2 | 1 | 3 | 1 |
 | pi-glm5.3-flash-ne | 12 | 9 (75%) | 0.98 | 520.5 | – | 863k | 0.96 | 75% | 100% | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| pi-hy4 | 12 | 9 (75%) | 0.99 | 1240.5 | – | 3.3M | 0.73 | 100% | 67% | 12 | 9 | 4 | 0 | 0 | 0 | 0 |
+| pi-kimi-k3.1-pro | 12 | 9 (75%) | 0.9 | 922 | – | 488k | 0.69 | 100% | 58% | 12 | 8 | 5 | 0 | 0 | 0 | 0 |
 | pi-mimo-v2.6-flash | 12 | 7 (58%) | 0.66 | 1035.5 | – | 1.3M | 0.64 | 100% | 42% | 12 | 8 | 4 | 3 | 1 | 0 | 0 |
 | pi-qwen3.8-flash | 12 | 10 (83%) | 0.91 | 903.5 | – | 3.3M | 0.75 | 92% | 67% | 12 | 8 | 2 | 0 | 1 | 0 | 2 |
+| pi-qwen3.8-max | 12 | 10 (83%) | 0.83 | 782 | – | 1M | 0.76 | 100% | 75% | 12 | 8 | 1 | 2 | 0 | 0 | 0 |
 | pipeline | 12 | 11 (92%) | 0.98 | 756.5 | – | 762k | 1 | 100% | 100% | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 | pipeline-ds | 12 | 12 (100%) | 1 | 267 | – | 1.1M | 1 | 100% | 100% | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
 
 ## Jev pick vs best cheapest passing arm
 
-Best cheapest passing arm: the cheapest tier (NAN < Sonnet < Opus) with an arm passing at least half its runs; within the tier, the highest pass rate, then the fastest. Jev = raw answer to route.sh's question; route.sh = what cheap-mvp's router finally picks (its pre-checks and confidence threshold included).
+Best cheapest passing arm: the cheapest tier (NAN < Sonnet < Opus) with an arm passing at least half its runs; within the tier, the highest pass rate, then the fastest. Every NAN arm counts as the cheap tier whatever it costs per token: the plugin README's NAN credits table has the measured cost per model. Jev = raw answer to route.sh's question; route.sh = what cheap-mvp's router finally picks (its pre-checks and confidence threshold included).
 
 | task | best cheapest passing | Jev | route.sh | Jev tier right? |
 |---|---|---|---|---|
-| overseer-deno | pi-glm5.3-flash-ne (2/2) | nan-flash 0.92 | pi nan/glm5.3-flash 0.92 jev | yes |
+| overseer-deno | pi-glm5.3 (2/2) | nan-flash 0.92 | pi nan/glm5.3-flash 0.92 jev | yes |
 | overseer-worktree | pi-glm5.3-flash (2/2) | claude-sonnet 0.45 | claude opus 0.40 low-confidence:claude-sonnet | no, over-spends |
-| jira-length | pi-deepseek-v4-flash (2/2) | nan-flash 0.49 | claude sonnet 0.45 low-confidence:nan-flash | yes |
+| jira-length | pi-glm5.3 (2/2) | nan-flash 0.49 | claude sonnet 0.45 low-confidence:nan-flash | yes |
 | close-worktrees | pi-deepseek-v4-flash (2/2) | claude-sonnet 0.76 | claude sonnet 0.72 jev | no, over-spends |
 | reachable-workers | pi-qwen3.8-flash (2/2) | claude-sonnet 0.64 | claude sonnet 0.69 jev | no, over-spends |
 | jira-preview | pi-deepseek-v4-flash (2/2) | claude-sonnet 0.58 | claude sonnet 0.61 jev | no, over-spends |

@@ -13,6 +13,7 @@
 # change. MISTER_HANDY_REVIEW=<rung> adds one read-only reviewer pass; REVISE gets one more round.
 # MISTER_HANDY_ADVISOR=<claude model> gives a pi worker an `advisor` tool (bin/advisor.ts) that sends its
 # conversation to that model; up to MISTER_HANDY_ADVISOR_MAX (4) calls, each logged to <hq>/logs/<slug>/advisor.log.
+# MISTER_HANDY_ADVISOR_MAX=0 turns the advisor off: no extension, no advisor rules in the prompt.
 # At most MISTER_HANDY_SLOTS (3) runs at once per user and provider (pi:<provider>, claude), machine-wide;
 # MISTER_HANDY_NAN_SLOTS caps pi:nan. A run cut off by a rate limit (429) is retried after a backoff without
 # using up a ladder try. A failed attempt that ended on the output cap (pi stopReason length, claude max
@@ -174,6 +175,11 @@ Give its advice serious weight. If you follow a step and it fails, or you have d
 
 adv_seen=0
 adv_total=0
+# The advisor is on only when a model is set and MISTER_HANDY_ADVISOR_MAX is not 0 (0 means off, not 4).
+advisor_on() {
+  [ -n "${MISTER_HANDY_ADVISOR:-}" ] || return 1
+  ! awk -v m="${MISTER_HANDY_ADVISOR_MAX:-4}" 'BEGIN { exit !(m ~ /^[0-9]+([.][0-9]+)?$/ && m + 0 == 0) }'
+}
 adv_sync() {
   local line n=0 c
   [ -f "$logs/advisor.log" ] || return 0
@@ -218,7 +224,7 @@ run_worker() {
         [ ! -s "$logs/judge.md" ] || args+=(--append-system-prompt "$logs/judge.md")
       else
         args=(--session-dir "$logs/sessions")
-        [ -z "${MISTER_HANDY_ADVISOR:-}" ] || args+=(-e "$here/advisor.ts")
+        advisor_on && args+=(-e "$here/advisor.ts")
         ls "$logs/sessions" >"$logs/sessions.before" 2>/dev/null
       fi
       key=pi
@@ -260,7 +266,7 @@ work() {
     echo "Do not push, open pull requests, switch branches, rewrite history, write to any STATUS.md or _hq folder, or touch files outside this worktree. You need not commit."
     echo
     brief_without "$brief" Reporting | grep -v '^PR:'
-    [ -z "${MISTER_HANDY_ADVISOR:-}" ] || [ "${2%%:*}" != pi ] || printf '\n%s\n' "$advisor_rules"
+    advisor_on && [ "${2%%:*}" = pi ] && printf '\n%s\n' "$advisor_rules"
     [ -z "$3" ] || printf '\n%s\n' "$3"
   } >"$pf"
   beat "attempt $attempt/$total $2"

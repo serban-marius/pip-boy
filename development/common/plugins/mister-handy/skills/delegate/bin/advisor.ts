@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Type } from "@earendil-works/pi-ai";
 import { convertToLlm, defineTool, serializeConversation, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { advisorMax } from "./advisor-max.mjs";
 
 const SYSTEM_PROMPT =
 	"You are the advisor for a cheaper coding agent working on the task below. It cannot see you except through this reply. " +
@@ -66,7 +67,7 @@ export default function (pi: ExtensionAPI) {
 				"Consult a stronger reviewer model that sees your whole conversation so far. Takes no parameters. Call it before substantive work (after orienting), when stuck, and when you believe the task is done (after making the result durable).",
 			parameters: Type.Object({}),
 			async execute(_id, _params, _signal, _onUpdate, ctx) {
-				const max = Number(process.env.MISTER_HANDY_ADVISOR_MAX) || 4;
+				const max = advisorMax(process.env.MISTER_HANDY_ADVISOR_MAX);
 				if (calls >= max) {
 					return { content: [{ type: "text", text: "advisor budget used up; continue on your own" }], details: { calls, max } };
 				}
