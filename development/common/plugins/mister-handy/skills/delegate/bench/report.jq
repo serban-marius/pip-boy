@@ -4,6 +4,9 @@ def r2: if . == null then null else . * 100 | round / 100 end;
 def pct: if . == null then "–" else "\(. * 100 | round)%" end;
 def tier: if startswith("pi-") then 0 elif startswith("pipeline") then 0 elif . == "claude-sonnet" then 1 else 2 end;
 def kilo: if . == null then "–" elif . >= 1000000 then "\(. / 100000 | round / 10)M" else "\(. / 1000 | round)k" end;
+def credrate: {"pi-deepseek-v4-flash": 1.05, "pi-deepseek-v4-pro": 8.54, "pi-glm5.3": 13.26,
+  "pi-glm5.3-flash": 2.01, "pi-glm5.3-flash-ne": 2.01, "pi-hy4": 6.57, "pi-kimi-k3.1-pro": 34.66,
+  "pi-mimo-v2.6-flash": 1.08, "pi-qwen3.8-flash": 1.28, "pi-qwen3.8-max": 25.65}[.] // 25;
 def usd: if . == null then "–" else "$\(. * 100 | round / 100)" end;
 def row: "| " + join(" | ") + " |";
 
@@ -21,8 +24,9 @@ def row: "| " + join(" | ") + " |";
     frac: ([$rs[].new_tests_frac] | mean | r2), wall: ([$rs[].wall_s] | median),
     cost: ([$rs[].cost_usd // 0] | add), tokens: ([$rs[] | .tokens.total // ((.tokens.in // 0) + (.tokens.out // 0) + (.tokens.cache_read // 0) + (.tokens.cache_write // 0))] | median)};
   def cell($t; $a; f): runs($t; $a) as $rs | if ($rs | length) == 0 then "–" else (stats($rs) | f) end;
-  def best($t): [$arms[] | select(startswith("pipeline") | not) | . as $a | stats(runs($t; $a)) + {arm: $a, tier: ($a | tier)}
-      | select(.n > 0 and .rate >= 0.5)] | sort_by(.tier, -.rate, .wall) | first;
+  def best($t): [$arms[] | select(startswith("pipeline") | not) | . as $a | stats(runs($t; $a)) as $s
+      | $s + {arm: $a, tier: ($a | tier), credits: (($s.tokens // 0) * ($a | credrate))}
+      | select(.n > 0 and .rate >= 0.5)] | sort_by(.tier, -.rate, .credits, .wall) | first;
   def jevtier: if . == "nan-flash" or . == "cheap" then 0 elif . == "claude-sonnet" or . == "mid" then 1 elif . == "claude-opus" or . == "top" then 2 else null end;
   def routetier: if . == null then null elif startswith("pi ") or startswith("foreman ") then 0 elif startswith("claude sonnet") then 1 else 2 end;
 
@@ -68,7 +72,7 @@ def row: "| " + join(" | ") + " |";
   "",
   "## Jev pick vs best cheapest passing arm",
   "",
-  "Best cheapest passing arm: the cheapest tier (NAN < Sonnet < Opus) with an arm passing at least half its runs; within the tier, the highest pass rate, then the fastest. Jev = raw answer to route.sh's question; route.sh = what cheap-mvp's router finally picks (its pre-checks and confidence threshold included).",
+  "Best cheapest passing arm: the cheapest tier (NAN < Sonnet < Opus) with an arm passing at least half its runs. Every NAN arm counts as the cheap tier whatever its provider, so within the tier a tie on pass rate goes to the fewest median credits per run (median tokens × the model's measured credits per 1M from `bin/nan-usage.sh`), then to the fastest: a big model that burns fewer tokens but pays 10× the rate does not win. Jev = raw answer to route.sh's question; route.sh = what cheap-mvp's router finally picks (its pre-checks and confidence threshold included).",
   "",
   "| task | best cheapest passing | Jev | route.sh | Jev tier right? |",
   "|---|---|---|---|---|",

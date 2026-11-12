@@ -4,20 +4,47 @@
 # Top without asking: no runnable Acceptance, Risk missing or high, a production write. Then the router,
 # MISTER_HANDY_ROUTER=jev|rules (default jev when a key is found, else rules). rules: everything left is cheap.
 # jev: an error is mid, an answer under MISTER_HANDY_ROUTE_THRESHOLD (0.6) goes one tier up,
-# except a cheap answer when MISTER_HANDY_ADVISOR is set: then MISTER_HANDY_ROUTE_THRESHOLD_ADVISED (0.3).
+# except a cheap answer when the advisor is on (MISTER_HANDY_ADVISOR set, MISTER_HANDY_ADVISOR_MAX not 0):
+# then MISTER_HANDY_ROUTE_THRESHOLD_ADVISED (0.3).
+# --escalate: prints the model HQ relaunches an ESCALATE on (MISTER_HANDY_ESCALATE, else
+# MISTER_HANDY_MID when that is a "claude ..." tier, else "claude sonnet"). No brief needed.
+# The same model is the fallback when Jev says cheap and the ladder is empty: a foreman cannot run
+# with no rung. A Jev error is not an empty ladder: it means "no opinion", so it takes the mid tier.
 # Jev key: TYPESAFE_API_KEY, else the macOS keychain item "jev". Never printed.
 
 here=$(cd "$(dirname "$0")" && pwd)
 . "$here/brief.sh"
 load_config
-brief=${1:?usage: route.sh <brief>}
+# Only unset, empty or invalid means 4 calls; 0 disables the advisor, so the advised threshold goes too.
+advisor_on() {
+  [ -n "${MISTER_HANDY_ADVISOR:-}" ] || return 1
+  ! awk -v m="${MISTER_HANDY_ADVISOR_MAX:-4}" 'BEGIN { exit !(m ~ /^[0-9]+([.][0-9]+)?$/ && m + 0 == 0) }'
+}
+
+escalate_model() {
+  if [ -n "${MISTER_HANDY_ESCALATE:-}" ]; then
+    echo "$MISTER_HANDY_ESCALATE"
+  else
+    case ${MISTER_HANDY_MID:-} in
+      'claude '*) echo "$MISTER_HANDY_MID" ;;
+      *) echo 'claude sonnet' ;;
+    esac
+  fi
+}
+
+if [ "${1:-}" = --escalate ]; then
+  escalate_model
+  exit 0
+fi
+
+brief=${1:?usage: route.sh <brief>     (route.sh --escalate prints the ESCALATE model)}
 [ -f "$brief" ] || { echo "no brief: $brief" >&2; exit 1; }
 threshold=${MISTER_HANDY_ROUTE_THRESHOLD:-0.6}
 
 pick() {
   case $1 in
     0) head=$(ladder | awk '{ print $1; exit }')
-      [ -n "$head" ] && echo "foreman $head $2 $3" || echo "${MISTER_HANDY_MID:-claude sonnet} $2 empty-ladder" ;;
+      [ -n "$head" ] && echo "foreman $head $2 $3" || echo "$(escalate_model) $2 empty-ladder" ;;
     1) echo "${MISTER_HANDY_MID:-claude sonnet} $2 $3" ;;
     *) echo "${MISTER_HANDY_TOP:-claude opus} $2 $3" ;;
   esac
@@ -76,6 +103,6 @@ case $choice in
 esac
 awk -v c="$conf" 'BEGIN { exit !(c + 0 == c && c >= 0 && c <= 1) }' || pick 1 0.00 jev-undecided
 conf=$(awk -v c="$conf" 'BEGIN { printf "%.2f", c }')
-[ "$choice" != cheap ] || [ -z "${MISTER_HANDY_ADVISOR:-}" ] || threshold=${MISTER_HANDY_ROUTE_THRESHOLD_ADVISED:-0.3}
+[ "$choice" != cheap ] || ! advisor_on || threshold=${MISTER_HANDY_ROUTE_THRESHOLD_ADVISED:-0.3}
 awk -v c="$conf" -v t="$threshold" 'BEGIN { exit !(c < t) }' && pick $((tier < 2 ? tier + 1 : 2)) "$conf" "low-confidence:$choice"
 pick "$tier" "$conf" jev
