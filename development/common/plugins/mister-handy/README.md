@@ -142,6 +142,7 @@ The setup measured here, in `~/.config` (keep it there so plugin updates leave i
                                 MISTER_HANDY_MID=foreman pi:nan/deepseek-v4-flash
                                 MISTER_HANDY_ROUTE_THRESHOLD=0.5
                                 MISTER_HANDY_ADVISOR=
+                                MISTER_HANDY_ADVISOR_MAX=0
                                 MISTER_HANDY_NAN_SLOTS=3
 ```
 
@@ -149,7 +150,8 @@ The setup measured here, in `~/.config` (keep it there so plugin updates leave i
   the Sonnet rung as a safety net, instead of going straight to Sonnet. Re-run on the 6 bench briefs,
   defaults sent 3 to Sonnet and 1 (`jira-preview`, confidence 0.53) to Opus; with this MID and threshold
   0.5 all 6 went to the foreman.
-- **Advisor off** (`MISTER_HANDY_ADVISOR=` and `MISTER_HANDY_ADVISOR_MAX=0`, which is now a real 0).
+- **Advisor off** (`MISTER_HANDY_ADVISOR=` and `MISTER_HANDY_ADVISOR_MAX=0`, which is a real 0, not
+  the 4-call default).
   Claude spend on the two real tasks was $1.86 and $1.41 per task against a $3.16 Opus baseline, but
   $1.25-1.70 of each was the Opus advisor and only $0.16 the Sonnet reviewer: the advisor is the main
   leftover Claude cost, so this profile relies on the ladder and the reviewer instead. Both tasks were
@@ -217,6 +219,9 @@ The setup measured here, in `~/.config` (keep it there so plugin updates leave i
   the status exits 2 under `NAN_WARN_PCT` (20). The anchor lives in
   `${XDG_CONFIG_HOME:-~/.config}/mister-handy/nan-credits.json`; the key comes from `NAN_API_KEY`, else
   pi's `~/.pi/agent/models.json` nan `apiKey` (a `!command` is run). Run it before a batch of NAN work.
+  What NAN answers once the credits are gone is unverified: if it is a 429, the foreman's rate-limit
+  regex reads it as throttling and retries with backoff instead of escalating, which is why this check
+  comes before a batch and not after the first failure.
 - The foreman unsets `GH_TOKEN`, `GITHUB_TOKEN`, `GH_ENTERPRISE_TOKEN` and `TYPESAFE_API_KEY`
   for workers. Never put keys in briefs or STATUS lines.
 

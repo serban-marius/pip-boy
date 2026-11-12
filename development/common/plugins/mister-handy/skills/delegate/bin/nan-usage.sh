@@ -5,8 +5,9 @@
 #   nan-usage set <left>      anchor to the dashboard's "Credits left this period" (do it now and then)
 # NAN has no balance endpoint: the anchor + per-model token deltas keep the estimate within a few %.
 #
-# Env: NAN_API_KEY       key to use; default the nan apiKey in ~/.pi/agent/models.json (a literal,
-#                        $ENV_VAR or !command, resolved the way pi does it)
+# Env: NAN_API_KEY       key to use; default the nan apiKey in ~/.pi/agent/models.json, taken as a
+#                        literal, or run as a shell command when it starts with "!" (not expanded
+#                        when it is a $VAR reference: put NAN_API_KEY in the env for that)
 #      NAN_USAGE_FILE    read this file as the /v1/usage answer instead of calling NAN (offline/tests)
 #      NAN_CREDITS_STATE state file; default ${XDG_CONFIG_HOME:-~/.config}/mister-handy/nan-credits.json
 #      NAN_PERIOD_CREDITS  credits in a full period (7000); NAN_WARN_PCT  warning threshold (20)
@@ -48,7 +49,7 @@ if [ "${1:-}" = set ]; then
 fi
 [ -f "$state" ] || { echo "nan-usage: run 'nan-usage set <credits left>' first (NAN dashboard)" >&2; exit 1; }
 
-jq -r --argjson s "$(cat "$state")" --argjson r "$rates" --argjson period "$period" --argjson warn "$warn" \
+report=$(jq -r --argjson s "$(cat "$state")" --argjson r "$rates" --argjson period "$period" --argjson warn "$warn" \
   --arg today "$today" --arg quiet "${1:-}" '
   def cr: .total_tokens / 1e6 * ($r[.model] // 25);
   [.data[] | select(.date > $s.date)] as $after
@@ -56,7 +57,7 @@ jq -r --argjson s "$(cat "$state")" --argjson r "$rates" --argjson period "$peri
   | (($after + $anchorday) | map(cr) | add // 0) as $spent
   | ($s.left - $spent) as $left
   | ([.data[] | select(.date == $today) | cr] | add // 0) as $day
-  | ([.data[] | select(.date > ($today | strptime("%Y-%m-%d") | mktime - 6*86400 | strftime("%Y-%m-%d"))) | cr] | add // 0) as $week
+  | ([.data[] | select(.date >= ($today | strptime("%Y-%m-%d") | mktime - 6*86400 | strftime("%Y-%m-%d"))) | cr] | add // 0) as $week
   | ($left / $period * 100) as $pct
   | (if $week > 0 then $left / ($week / 7) else null end) as $days
   | if $quiet == "--quiet" then
@@ -68,11 +69,13 @@ jq -r --argjson s "$(cat "$state")" --argjson r "$rates" --argjson period "$peri
       (if $days then "  at the 7-day pace: ~\($days | floor) days left" else empty end),
       (if $pct < $warn then "  WARNING: under \($warn)% — buy a pack or turn on auto-recharge" else empty end)
     end,
-    (if $pct < $warn then "__LOW__" else empty end)' <<<"$usage" | {
-  low=0
-  while IFS= read -r line; do
-    [ "$line" = __LOW__ ] && { low=1; continue; }
-    echo "$line"
-  done
-  exit $((low * 2))
+    (if $pct < $warn then "__LOW__" else empty end)' <<<"$usage") || {
+  echo "nan-usage: cannot read the state $state (a malformed file: run 'nan-usage set <credits left>' again)" >&2
+  exit 1
 }
+low=0
+while IFS= read -r line; do
+  [ "$line" = __LOW__ ] && { low=1; continue; }
+  echo "$line"
+done <<<"$report"
+exit $((low * 2))

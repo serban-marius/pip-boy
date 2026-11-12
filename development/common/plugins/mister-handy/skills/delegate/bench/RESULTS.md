@@ -56,13 +56,13 @@
 
 ## Jev pick vs best cheapest passing arm
 
-Best cheapest passing arm: the cheapest tier (NAN < Sonnet < Opus) with an arm passing at least half its runs; within the tier, the highest pass rate, then the fastest. Every NAN arm counts as the cheap tier whatever it costs per token: the plugin README's NAN credits table has the measured cost per model. Jev = raw answer to route.sh's question; route.sh = what cheap-mvp's router finally picks (its pre-checks and confidence threshold included).
+Best cheapest passing arm: the cheapest tier (NAN < Sonnet < Opus) with an arm passing at least half its runs. Every NAN arm counts as the cheap tier whatever its provider, so within the tier a tie on pass rate goes to the fewest median credits per run (median tokens × the model's measured credits per 1M from `bin/nan-usage.sh`), then to the fastest: a big model that burns fewer tokens but pays 10× the rate does not win. Jev = raw answer to route.sh's question; route.sh = what cheap-mvp's router finally picks (its pre-checks and confidence threshold included).
 
 | task | best cheapest passing | Jev | route.sh | Jev tier right? |
 |---|---|---|---|---|
-| overseer-deno | pi-glm5.3 (2/2) | nan-flash 0.92 | pi nan/glm5.3-flash 0.92 jev | yes |
-| overseer-worktree | pi-glm5.3-flash (2/2) | claude-sonnet 0.45 | claude opus 0.40 low-confidence:claude-sonnet | no, over-spends |
-| jira-length | pi-glm5.3 (2/2) | nan-flash 0.49 | claude sonnet 0.45 low-confidence:nan-flash | yes |
+| overseer-deno | pi-glm5.3-flash-ne (2/2) | nan-flash 0.92 | pi nan/glm5.3-flash 0.92 jev | yes |
+| overseer-worktree | pi-glm5.3-flash-ne (2/2) | claude-sonnet 0.45 | claude opus 0.40 low-confidence:claude-sonnet | no, over-spends |
+| jira-length | pi-glm5.3-flash-ne (2/2) | nan-flash 0.49 | claude sonnet 0.45 low-confidence:nan-flash | yes |
 | close-worktrees | pi-deepseek-v4-flash (2/2) | claude-sonnet 0.76 | claude sonnet 0.72 jev | no, over-spends |
 | reachable-workers | pi-qwen3.8-flash (2/2) | claude-sonnet 0.64 | claude sonnet 0.69 jev | no, over-spends |
 | jira-preview | pi-deepseek-v4-flash (2/2) | claude-sonnet 0.58 | claude sonnet 0.61 jev | no, over-spends |

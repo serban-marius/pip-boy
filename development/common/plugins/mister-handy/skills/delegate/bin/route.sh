@@ -8,6 +8,8 @@
 # then MISTER_HANDY_ROUTE_THRESHOLD_ADVISED (0.3).
 # --escalate: prints the model HQ relaunches an ESCALATE on (MISTER_HANDY_ESCALATE, else
 # MISTER_HANDY_MID when that is a "claude ..." tier, else "claude sonnet"). No brief needed.
+# The same model is the fallback when Jev says cheap and the ladder is empty: a foreman cannot run
+# with no rung. A Jev error is not an empty ladder: it means "no opinion", so it takes the mid tier.
 # Jev key: TYPESAFE_API_KEY, else the macOS keychain item "jev". Never printed.
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -19,7 +21,7 @@ advisor_on() {
   ! awk -v m="${MISTER_HANDY_ADVISOR_MAX:-4}" 'BEGIN { exit !(m ~ /^[0-9]+([.][0-9]+)?$/ && m + 0 == 0) }'
 }
 
-if [ "${1:-}" = --escalate ]; then
+escalate_model() {
   if [ -n "${MISTER_HANDY_ESCALATE:-}" ]; then
     echo "$MISTER_HANDY_ESCALATE"
   else
@@ -28,6 +30,10 @@ if [ "${1:-}" = --escalate ]; then
       *) echo 'claude sonnet' ;;
     esac
   fi
+}
+
+if [ "${1:-}" = --escalate ]; then
+  escalate_model
   exit 0
 fi
 
@@ -38,7 +44,7 @@ threshold=${MISTER_HANDY_ROUTE_THRESHOLD:-0.6}
 pick() {
   case $1 in
     0) head=$(ladder | awk '{ print $1; exit }')
-      [ -n "$head" ] && echo "foreman $head $2 $3" || echo "${MISTER_HANDY_MID:-claude sonnet} $2 empty-ladder" ;;
+      [ -n "$head" ] && echo "foreman $head $2 $3" || echo "$(escalate_model) $2 empty-ladder" ;;
     1) echo "${MISTER_HANDY_MID:-claude sonnet} $2 $3" ;;
     *) echo "${MISTER_HANDY_TOP:-claude opus} $2 $3" ;;
   esac

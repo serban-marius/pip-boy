@@ -266,7 +266,8 @@ systems, are the real gates.
 | `Risk: high`, or no `Risk:` line | `claude opus 1.00 risk-high` / `no-risk` |
 | `Prod: yes`; without a `Prod:` line, a phrase like "deploy to prod", "run … on production", "prod db/infra/cluster", "live customer data" with no negation | `claude opus 1.00 production` |
 | `rules` router, anything left (`Risk: low` or `normal` with Acceptance) | `foreman claude:haiku 1.00 rules` |
-| `jev`: missing key, timeout, HTTP error, unknown answer; an empty ladder | `claude sonnet 0.00 jev-<why>` / `empty-ladder` |
+| `jev`: missing key, timeout, HTTP error, unknown answer | mid tier, "no opinion": `claude sonnet 0.00 jev-<why>`, or the rung of `MISTER_HANDY_MID=foreman <rung>`; `MISTER_HANDY_ROUTER=rules` when you want no Jev call at all |
+| Jev says `cheap` but the ladder is empty | the `route.sh --escalate` model (`claude sonnet 0.00 empty-ladder`, or `MISTER_HANDY_ESCALATE`): a foreman with no rung cannot run |
 | `jev` answer under `MISTER_HANDY_ROUTE_THRESHOLD` (0.6) | one tier up: `claude sonnet 0.41 low-confidence:cheap` |
 | `jev` answer `cheap` under `MISTER_HANDY_ROUTE_THRESHOLD_ADVISED` (0.3) when the advisor is on (`MISTER_HANDY_ADVISOR` set, `MISTER_HANDY_ADVISOR_MAX` not 0) | one tier up; 0.3-0.6 stays cheap: the advisor covers it |
 | `jev` answer `cheap` / `mid` / `top` | `foreman <ladder head> 0.83 jev` / `claude sonnet ...` / `claude opus ...` |
@@ -370,7 +371,9 @@ endpoint. Before a batch of NAN work, run `bash <skill dir>/bin/nan-usage.sh`: `
 <credits left>` anchors to the dashboard's "Credits left this period", and the status afterwards
 subtracts each model's tokens from `/v1/usage` × its measured credits per 1M tokens (matched the
 dashboard within 2%); `--quiet` prints one line, and it exits 2 under `NAN_WARN_PCT` (20). Tell the
-user before a batch when it is low, instead of letting the ladder discover it as 429s.
+user before a batch when it is low, instead of letting the ladder discover it as 429s: what NAN
+answers on an empty balance is unverified, and if it is a 429 the foreman's rate-limit regex retries
+it with backoff instead of escalating.
 
 **When the watcher wakes HQ:**
 

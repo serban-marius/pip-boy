@@ -235,8 +235,11 @@ jev top 0.9
 expect "Jev picks Claude"                       "$(route)" "claude opus 0.90 jev"
 expect "a Jev timeout routes to Claude"         "$(CURL_RC=28 route)" "claude sonnet 0.00 jev-timeout"
 expect "a Jev error routes to Claude"           "$(JEV_HTTP=500 route)" "claude sonnet 0.00 jev-http-500"
+expect "a Jev error takes the mid tier, a foreman rung included" "$(CURL_RC=28 MISTER_HANDY_MID='foreman pi:nan/deepseek-v4-flash' route)" "foreman pi:nan/deepseek-v4-flash 0.00 jev-timeout"
 jev cheap 0.74
 expect "an empty ladder routes to Claude"        "$(MISTER_HANDY_LADDER=' ' route)" "claude sonnet 0.74 empty-ladder"
+expect "an empty ladder with a foreman mid tier still routes to Claude" "$(MISTER_HANDY_LADDER=' ' MISTER_HANDY_MID='foreman pi:nan/deepseek-v4-flash' route)" "claude sonnet 0.74 empty-ladder"
+expect "an empty ladder follows MISTER_HANDY_ESCALATE" "$(MISTER_HANDY_LADDER=' ' MISTER_HANDY_ESCALATE='claude fable' MISTER_HANDY_MID='foreman pi:nan/deepseek-v4-flash' route)" "claude fable 0.74 empty-ladder"
 brief "Risk: low" "## Acceptance
 \`test -f x\` passes"
 expect "a prose Acceptance line routes to Claude" "$(route)" "claude opus 1.00 acceptance-not-runnable"
@@ -428,6 +431,10 @@ expect "the worker gets the advisor extension"  "$(grep -c -- "^$here/advisor.ts
 fresh "" pass
 MISTER_HANDY_ADVISOR=opus MISTER_HANDY_ADVISOR_MAX=0 foreman >/dev/null
 expect "MISTER_HANDY_ADVISOR_MAX=0 loads no advisor extension or rules" "$(grep -c advisor "$PI_ARGS") $(grep -c 'advisor' "$PI_LAST_PROMPT") $(states)" "0 0 START MILESTONE DONE "
+# The source check runs with or without node, so a reintroduced `|| 4` fails on every machine.
+expect "advisor.ts reads the budget through advisorMax, never a '|| 4' default" \
+  "$(grep -c 'advisorMax(process.env.MISTER_HANDY_ADVISOR_MAX)' "$here/advisor.ts") $(grep -c 'MISTER_HANDY_ADVISOR_MAX) ||' "$here/advisor.ts")" \
+  "1 0"
 if command -v node >/dev/null 2>&1; then
   expect "the advisor budget treats 0 as 0 and only unset/invalid as 4" \
     "$(node --input-type=module -e "const { advisorMax } = await import('$here/advisor-max.mjs'); console.log([0, '0', undefined, 'x', '2'].map(advisorMax).join(' '))" 2>&1)" \
@@ -749,6 +756,29 @@ expect "nan-usage subtracts usage × the measured rate" "$(nanusage | head -n 1)
 expect "nan-usage warns and exits 2 under NAN_WARN_PCT" "$(NAN_WARN_PCT=100 nanusage >/dev/null 2>&1; echo $?) $(NAN_WARN_PCT=100 nanusage | grep -c 'WARNING: under 100%')" "2 1"
 expect "nan-usage wants an anchor before a status" "$(NAN_CREDITS_STATE=$NU/none.json NAN_USAGE_FILE=$NU/usage.json bash "$here/nan-usage.sh" >/dev/null 2>&1; echo $?) $(NAN_CREDITS_STATE=$NU/none.json NAN_USAGE_FILE=$NU/usage.json bash "$here/nan-usage.sh" 2>&1 | grep -c "run 'nan-usage set")" "1 1"
 expect "nan-usage refuses a bad usage answer"  "$(printf 'nope' >"$NU/bad.json"; NAN_CREDITS_STATE=$NU/state.json NAN_USAGE_FILE=$NU/bad.json bash "$here/nan-usage.sh" >/dev/null 2>&1; echo $?)" "1"
+nu_day() { date -v-"$1"d +%Y-%m-%d 2>/dev/null || date -d "-$1 day" +%Y-%m-%d; }
+nu_week_usage() { # one 1M-token flash line per day, today-6 .. today, and an anchor 6 days back
+  local i sep=
+  { printf '{"data":['
+    for i in 6 5 4 3 2 1 0; do
+      printf '%s{"date":"%s","model":"deepseek-v4-flash","total_tokens":1000000}' "$sep" "$(nu_day "$i")"
+      sep=,
+    done
+    printf ']}\n'
+  } >"$NU/week.json"
+  printf '{"date":"%s","left":7000,"set_at":"","seen":{}}\n' "$(nu_day 6)" >"$NU/week-state.json"
+}
+nanusagew() {
+  NAN_USAGE_FILE=$NU/week.json NAN_CREDITS_STATE=$NU/week-state.json NAN_PERIOD_CREDITS=7000 \
+    NAN_WARN_PCT=20 bash "$here/nan-usage.sh" "$@"
+}
+nu_week_usage
+expect "nan-usage counts 7 days in the last-7-days window, not 6" "$(nanusagew | sed -n '3p')" "  today: 1   last 7 days: 7"
+expect "nan-usage paces on that 7-day window"   "$(nanusagew | sed -n '4p')" "  at the 7-day pace: ~6659 days left"
+printf '{"date":"%s",' "$nu_today" >"$NU/corrupt.json"
+expect "nan-usage fails loudly on a corrupt state file" \
+  "$(NAN_USAGE_FILE=$NU/usage.json NAN_CREDITS_STATE=$NU/corrupt.json bash "$here/nan-usage.sh" >/dev/null 2>&1; echo $?) $(NAN_USAGE_FILE=$NU/usage.json NAN_CREDITS_STATE=$NU/corrupt.json bash "$here/nan-usage.sh" 2>&1 | grep -c 'cannot read the state')" \
+  "1 1"
 
 expect "the HQ note tells HQ to scout before a code brief" "$(MISTER_HANDY=hq CLAUDE_PROJECT_DIR=$tmp bash "$here/../../../hooks/role.sh" | grep -c 'run bin/scout.sh <repo dir> <question file> with the user.s request to draft its .What we already know. instead of reading the code yourself')" "1"
 expect "the HQ note tells HQ to route code tasks" "$(MISTER_HANDY=hq CLAUDE_PROJECT_DIR=$tmp bash "$here/../../../hooks/role.sh" | grep -c 'run bin/route.sh, and launch what it prints')" "1"
